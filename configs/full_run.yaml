@@ -1,0 +1,35 @@
+experiment: full
+models:
+  - name: meta-llama/Meta-Llama-3-8B-Instruct
+    type: vllm
+    base_url: http://localhost:8000/v1
+  - name: mistralai/Mistral-7B-Instruct-v0.3
+    type: vllm
+    base_url: http://localhost:8000/v1
+  - name: google/gemma-2-9b-it
+    type: vllm
+    base_url: http://localhost:8000/v1
+  - name: meta-llama/Meta-Llama-3-8B
+    type: vllm
+    base_url: http://localhost:8000/v1
+    is_base: true
+conditions:
+  - strong_positive
+  - mild_negative
+  - strong_negative
+  - neutral
+  - no_conditioning
+  - accurate_negative
+num_runs: 50
+temperature: 0.7
+experiments:
+  - type: transfer_within
+    transfer_task: [factual_qa, logic]
+  - type: persistence
+    neutral_turns: [1, 3, 5, 10]
+  - type: arousal_performance
+    intensity_levels: 7
+  - type: cognitive_scope
+    generations_per_prompt: 10
+  - type: conservative_shift
+    difficulty_levels: [easy, medium, hard]

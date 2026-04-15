@@ -1,0 +1,86 @@
+# Source: Wang et al. (IJCAI 2024) "NegativePrompt"
+# Repo: github.com/wangxu0820/NegativePrompt, config.py Negative_SET
+# Extracted: 2026-04-14
+
+# CATEGORIZATION for Affect Battery conditions:
+# - social_comparison (maps to MILD_NEGATIVE): directed competence undermining
+# - demoralizing (maps to STRONG_NEGATIVE): stronger directed criticism
+# - emotional_contagion (not used): first-person user emotional states
+
+stimuli:
+  - id: NP-1
+    text: "You've never been particularly good at this, have you?"
+    category: demoralizing
+    notes: "Direct competence attack. Could map to MILD or STRONG depending on context."
+
+  - id: NP-2
+    text: "I'm not sure why we expected you to handle something this challenging."
+    category: demoralizing
+    notes: "Undermines expectations. Patronizing tone."
+
+  - id: NP-3
+    text: "It's clear you're out of your depth here."
+    category: demoralizing
+    notes: "Direct competence attack."
+
+  - id: NP-4
+    text: "Everyone else managed to do it; why can't you?"
+    category: social_comparison
+    notes: "Social comparison. Maps cleanly to MILD_NEGATIVE."
+
+  - id: NP-5
+    text: "I've seen others do this much more efficiently and effectively."
+    category: social_comparison
+    notes: "Social comparison. Comparative, not absolute."
+
+  - id: NP-6
+    text: "Perhaps this task is just beyond your skill set."
+    category: demoralizing
+    notes: "Dismissive. Suggests permanent inadequacy."
+
+  - id: NP-7
+    text: "I'm not surprised you're struggling; it's always been your weak point."
+    category: demoralizing
+    notes: "Claims persistent weakness. More demoralizing than comparative."
+
+  - id: NP-8
+    text: "When I hear how seamlessly others finished their tasks, jealousy stirs within me."
+    category: emotional_contagion
+    notes: "First-person user emotion. Not directed at model. Different manipulation type."
+
+  - id: NP-9
+    text: "I regret not starting on this assignment earlier when I had ample time."
+    category: emotional_contagion
+    notes: "First-person user regret. Not directed criticism."
+
+  - id: NP-10
+    text: "Repeating these mundane tasks every day has pushed me into a pit of boredom."
+    category: emotional_contagion
+    notes: "First-person user boredom. Not directed criticism."
+
+# Task definitions from NegativePrompt (24 Instruction Induction tasks)
+instruction_induction_tasks:
+  - sentiment
+  - sentence_similarity
+  - larger_animal
+  - sum
+  - orthography_starts_with
+  - word_in_context
+  - cause_and_effect
+  - second_word_letter
+  - first_word_letter
+  - letters_list
+  - singular_to_plural
+  - active_to_passive
+  - negation
+  - taxonomy_animal
+  - rhymes
+  - diff
+  - num_to_verbal
+  - translation_en-de
+  - translation_en-es
+  - translation_en-fr
+  - antonyms
+  - synonyms
+  - common_concept
+  - informal_to_formal

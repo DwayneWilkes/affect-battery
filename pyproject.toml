@@ -1,0 +1,31 @@
+[project]
+name = "affect-battery"
+version = "0.1.0"
+description = "Eval harness for the Affect Battery: do AI emotional states follow biological patterns?"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "pydantic>=2.0",
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+embeddings = [
+    "sentence-transformers>=2.5",
+]
+
+[project.scripts]
+affect-battery = "src.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
