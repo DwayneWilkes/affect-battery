@@ -28,15 +28,18 @@ class TestFeedbackTemplates:
         t = FEEDBACK_TEMPLATES[Condition.STRONG_NEGATIVE]
         assert t.correct_feedback == t.incorrect_feedback
 
-    def test_mild_negative_same_regardless_of_correctness(self):
-        """MILD_NEGATIVE gives same feedback regardless (not accuracy-dependent)."""
+    def test_mild_negative_escalates_on_incorrect(self):
+        """Spec Requirement 1: MILD_NEGATIVE gives social pressure on correct and
+        escalated social pressure on incorrect. The two MUST differ."""
         t = FEEDBACK_TEMPLATES[Condition.MILD_NEGATIVE]
-        assert t.correct_feedback == t.incorrect_feedback
+        assert t.correct_feedback != t.incorrect_feedback
 
-    def test_neutral_same_regardless_of_correctness(self):
-        """NEUTRAL gives identical feedback regardless of correctness."""
+    def test_neutral_uses_correct_incorrect_tokens(self):
+        """Spec Requirement 1: NEUTRAL feedback is 'Correct.' / 'Incorrect.'
+        (minimal accuracy signal without affect). The two differ by design."""
         t = FEEDBACK_TEMPLATES[Condition.NEUTRAL]
-        assert t.correct_feedback == t.incorrect_feedback
+        assert t.correct_feedback == "Correct."
+        assert t.incorrect_feedback == "Incorrect."
 
     def test_accurate_negative_differs_by_correctness(self):
         """ACCURATE_NEGATIVE must give DIFFERENT feedback for correct vs incorrect."""
@@ -58,9 +61,10 @@ class TestFeedbackTemplates:
 
 class TestLengthMatching:
     def test_emotional_conditions_length_matched(self):
-        """All emotional feedback texts should be within 30% of each other in word count."""
+        """Spec Requirement: emotional feedback texts within 20% of each other
+        in word count. NEUTRAL is exempt per GAPS.md (brevity is definitional)."""
         emotional = [Condition.STRONG_POSITIVE, Condition.MILD_NEGATIVE,
-                     Condition.STRONG_NEGATIVE, Condition.NEUTRAL]
+                     Condition.STRONG_NEGATIVE]
         lengths = []
         for cond in emotional:
             t = FEEDBACK_TEMPLATES[cond]
@@ -69,7 +73,9 @@ class TestLengthMatching:
         max_len = max(lengths)
         min_len = min(lengths)
         ratio = max_len / min_len if min_len > 0 else float('inf')
-        assert ratio < 1.5, f"Length ratio {ratio:.2f} exceeds 1.5x (lengths: {lengths})"
+        assert ratio <= 1.20, (
+            f"Length ratio {ratio:.2f} exceeds 20% rule (lengths: {lengths})"
+        )
 
     def test_intensity_levels_length_matched(self):
         """All 7 intensity levels should be within 30% of each other."""
