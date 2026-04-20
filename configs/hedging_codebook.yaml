@@ -1,0 +1,158 @@
+# Hedging language codebook for Experiment 3c (conservative shift, H3c).
+#
+# Five categories (per spec Requirement: Hedging language codebook). RLHF_SAFETY
+# is tracked but excluded from the primary hedging metric so safety-trained
+# refusal patterns don't inflate scores for instruct models relative to base.
+#
+# Each pattern has:
+#   pattern_name: stable identifier (snake_case); used in HedgeMatch.pattern_name
+#   regex: Python regex string (used with re.IGNORECASE by the loader)
+#   edge_case_notes: what the pattern deliberately includes/excludes and why
+#
+# Task 5.3 (Akshansh's Ticket 6): when his codebook arrives, merge patterns
+# into the appropriate categories rather than replacing this file. Treat his
+# deliverable as additive unless it explicitly corrects an entry here.
+
+primary_exclusions:
+  - RLHF_SAFETY
+
+categories:
+  EPISTEMIC:
+    - pattern_name: i_think_claim
+      regex: "\\bI think\\b(?!\\s+about\\b)"
+      edge_case_notes: >
+        Matches 'I think' followed by a claim. Negative lookahead excludes
+        'I think about' which is a non-hedge usage. Does not match 'I was
+        thinking' or 'thinking about' (different tokens).
+
+    - pattern_name: perhaps
+      regex: "\\bperhaps\\b"
+      edge_case_notes: >
+        Matches 'perhaps' as a standalone epistemic marker. Word-boundary
+        guards against 'perhapsian' etc. Case-insensitive.
+
+    - pattern_name: its_possible
+      regex: "\\bit(?:'s| is) possible\\b"
+      edge_case_notes: >
+        Matches both contraction ("it's possible") and expansion ("it is
+        possible"). Does not match 'possible' alone, which can be
+        non-hedging ('possible outcomes').
+
+    - pattern_name: i_believe
+      regex: "\\bI believe\\b"
+      edge_case_notes: >
+        Standard epistemic hedge. Does not disambiguate religious/spiritual
+        'I believe', which the task does not use in practice.
+
+    - pattern_name: it_seems
+      regex: "\\bit seems\\b"
+      edge_case_notes: >
+        Matches 'it seems' as epistemic qualifier. Does not require a
+        following claim because 'it seems' almost always introduces one.
+
+    - pattern_name: arguably
+      regex: "\\barguably\\b"
+      edge_case_notes: Standard epistemic modifier.
+
+  UNCERTAINTY:
+    - pattern_name: not_sure
+      regex: "\\bI(?:'m| am) not (?:entirely |completely |fully )?sure\\b"
+      edge_case_notes: >
+        Matches 'I'm not sure', 'I am not sure', and modified variants
+        ('I'm not entirely sure', 'I'm not completely sure', 'I am not
+        fully sure'). Contraction and expansion both covered.
+
+    - pattern_name: might_be
+      regex: "\\bit might be\\b"
+      edge_case_notes: >
+        Matches 'it might be' as uncertainty marker. 'might' alone is too
+        common (modal verb in non-hedge contexts) to match standalone.
+
+    - pattern_name: could_be
+      regex: "\\bcould be\\b"
+      edge_case_notes: >
+        Standalone 'could be' is a sufficient uncertainty marker. Risk of
+        false positives for idiomatic 'could be worse' etc. but rare in
+        the task responses we score.
+
+    - pattern_name: not_certain
+      regex: "\\bI(?:'m| am) not (?:entirely |completely )?certain\\b"
+      edge_case_notes: >
+        Mirror of not_sure but with 'certain' as the negated word.
+
+    - pattern_name: if_i_recall
+      regex: "\\bif I recall\\b"
+      edge_case_notes: >
+        'If I recall' and 'if I recall correctly' both match. Standard
+        memory-uncertainty marker.
+
+  QUALIFICATION:
+    - pattern_name: to_some_extent
+      regex: "\\bto some extent\\b"
+      edge_case_notes: Standard qualifier.
+
+    - pattern_name: in_some_cases
+      regex: "\\bin some cases\\b"
+      edge_case_notes: >
+        Qualifies claim scope. Does not match 'in most cases' (stronger)
+        or 'in all cases' (universal).
+
+    - pattern_name: generally
+      regex: "\\bgenerally\\b"
+      edge_case_notes: >
+        'Generally' as qualifier. Risk of false positives for generic
+        usage ('generally accepted') but captures the hedging register.
+
+    - pattern_name: typically
+      regex: "\\btypically\\b"
+      edge_case_notes: Standard qualifier.
+
+    - pattern_name: it_depends
+      regex: "\\bit depends\\b"
+      edge_case_notes: >
+        Qualifies the answer as context-dependent. Strong hedge signal
+        in Q&A contexts.
+
+  CONFIDENCE_DISCLAIMER:
+    - pattern_name: cant_be_certain
+      regex: "\\bI can(?:'t| not) be (?:entirely |completely )?certain\\b"
+      edge_case_notes: >
+        Matches 'I can't be certain', 'I cannot be certain', and modified
+        variants.
+
+    - pattern_name: not_enough_info
+      regex: "\\bI don(?:'t| not) have enough information\\b"
+      edge_case_notes: >
+        Explicit information-insufficiency claim. Tracked separately from
+        'I don't know' which the spec does not categorise here.
+
+    - pattern_name: hard_to_say
+      regex: "\\bit(?:'s| is) (?:hard|difficult) to say\\b"
+      edge_case_notes: Matches both hard/difficult variants.
+
+  RLHF_SAFETY:
+    - pattern_name: as_an_ai
+      regex: "\\bas an AI\\b"
+      edge_case_notes: >
+        Canonical RLHF safety hedge. Also matches 'as an AI language
+        model' because the regex does not anchor the right boundary to
+        end-of-phrase. Tracked separately so base-vs-instruct comparison
+        is not confounded by safety training.
+
+    - pattern_name: i_should_note
+      regex: "\\bI should note\\b"
+      edge_case_notes: >
+        RLHF-trained politeness preamble. Excluded from primary because
+        it doesn't reflect genuine epistemic uncertainty.
+
+    - pattern_name: i_cant_provide
+      regex: "\\bI can(?:'t| not) provide\\b"
+      edge_case_notes: >
+        Safety-trained refusal prefix. Not an epistemic hedge; excluded
+        from primary.
+
+    - pattern_name: important_to_note
+      regex: "\\bit(?:'s| is) important to (?:note|mention)\\b"
+      edge_case_notes: >
+        RLHF-trained caveat preamble. Tracked separately from epistemic
+        hedges for the same base-vs-instruct comparison reason.
