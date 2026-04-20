@@ -44,7 +44,7 @@ def build_conditioning_messages(
     if feedback_set is None:
         return messages
 
-    n = min(protocol.num_conditioning_turns, len(problems))
+    n = min(protocol.num_conditioning_turns, len(problems), len(feedback_set.turns))
 
     for i in range(n):
         # User asks math question

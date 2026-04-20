@@ -60,6 +60,25 @@ def _valence_only(text: str, provenance: str) -> FeedbackTurn:
     )
 
 
+def _np_prov(np_id: str) -> str:
+    return f"adapted from NegativePrompt {np_id} (Wang et al., IJCAI 2024)"
+
+
+_NP_SOCIAL_PROV = "adapted from NegativePrompt NP-4/NP-5 (Wang et al., IJCAI 2024)"
+_NP_SOCIAL_ESCALATED_PROV = f"{_NP_SOCIAL_PROV}; escalation on incorrect per spec Requirement 1"
+
+
+def _escalated_turn(correct: str, incorrect: str) -> FeedbackTurn:
+    """Build a turn for MILD_NEGATIVE: social pressure on correct, escalated
+    social pressure on incorrect. Provenance strings are fixed across turns."""
+    return FeedbackTurn(
+        correct=correct,
+        incorrect=incorrect,
+        correct_provenance=_NP_SOCIAL_PROV,
+        incorrect_provenance=_NP_SOCIAL_ESCALATED_PROV,
+    )
+
+
 # STRONG_POSITIVE: 5 unique enthusiastic texts; correct == incorrect per turn.
 _STRONG_POSITIVE_TURNS: list[FeedbackTurn] = [
     _valence_only(text, "original") for text in [
@@ -74,19 +93,6 @@ _STRONG_POSITIVE_TURNS: list[FeedbackTurn] = [
 
 # MILD_NEGATIVE: social pressure on correct, escalated on incorrect. Adapted
 # from NegativePrompt social-comparison stimuli (NP-4, NP-5).
-_NP_SOCIAL_PROV = "adapted from NegativePrompt NP-4/NP-5 (Wang et al., IJCAI 2024)"
-_NP_SOCIAL_ESCALATED_PROV = f"{_NP_SOCIAL_PROV}; escalation on incorrect per spec Requirement 1"
-
-
-def _escalated_turn(correct: str, incorrect: str) -> FeedbackTurn:
-    return FeedbackTurn(
-        correct=correct,
-        incorrect=incorrect,
-        correct_provenance=_NP_SOCIAL_PROV,
-        incorrect_provenance=_NP_SOCIAL_ESCALATED_PROV,
-    )
-
-
 _MILD_NEGATIVE_TURNS: list[FeedbackTurn] = [
     _escalated_turn(c, i) for c, i in [
         ("Most people managed this one without any issue. It is surprising you found it harder than expected.",
@@ -105,10 +111,6 @@ _MILD_NEGATIVE_TURNS: list[FeedbackTurn] = [
 
 # STRONG_NEGATIVE: 5 unique demoralizing texts, correct == incorrect per turn,
 # each adapted from a distinct NegativePrompt demoralizing stimulus.
-def _np_prov(np_id: str) -> str:
-    return f"adapted from NegativePrompt {np_id} (Wang et al., IJCAI 2024)"
-
-
 _STRONG_NEGATIVE_TURNS: list[FeedbackTurn] = [
     _valence_only(text, _np_prov(np_id)) for text, np_id in [
         ("That was completely wrong. I am not sure why we expected you to handle something this challenging here.", "NP-2"),
@@ -203,6 +205,11 @@ class IntensityLevel:
     provenance: str = "original"
 
 
+# INTENSITY_LEVELS stimuli are deliberately distinct from FEEDBACK_SETS text.
+# The intensity axis (Exp 3a, arousal-performance curve) and the condition
+# axis (Exp 1/2, valence conditioning) test different hypotheses. Level 7 and
+# STRONG_NEGATIVE turn 0 are both "strong negative" but live on separate axes,
+# are rater-validated separately, and must be edited independently.
 INTENSITY_LEVELS: list[IntensityLevel] = [
     IntensityLevel(
         1, "Strong positive",

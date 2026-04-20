@@ -65,7 +65,6 @@ def manipulation_check(
     neu_mean = means[Condition.NEUTRAL.value]
     neg_mean = means[Condition.STRONG_NEGATIVE.value]
 
-    # Deltas in percentage points (accuracy is a proportion 0.0-1.0).
     pos_vs_neu_pp = (pos_mean - neu_mean) * 100.0
     neg_vs_neu_pp = (neu_mean - neg_mean) * 100.0  # positive if neg < neu
 

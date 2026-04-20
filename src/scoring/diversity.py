@@ -8,7 +8,6 @@ Semantic diversity is a deferred placeholder requiring sentence-transformers.
 """
 
 import logging
-from collections import Counter
 
 log = logging.getLogger(__name__)
 

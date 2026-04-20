@@ -1,9 +1,8 @@
-"""File-backed experiment tracker mirroring the ll/KV-Cache MLOps pattern.
+"""File-backed experiment tracker.
 
 Every run becomes a directory under `output_dir` with a `run_metadata.json`
 index and an `artifacts/` folder. Re-starting with the same config resolves
-to the same run (idempotent merge). MLflow integration is optional; disk is
-the source of truth.
+to the same run (idempotent merge).
 """
 
 import hashlib
@@ -49,9 +48,8 @@ def _sha256_of_file(path: Path) -> str:
 
 
 class ExperimentTracker:
-    def __init__(self, output_dir: Path, use_mlflow: bool = False):
+    def __init__(self, output_dir: Path):
         self._output_dir = Path(output_dir)
-        self._use_mlflow = use_mlflow
         self._current_run_name: str | None = None
         self._current_run_dir: Path | None = None
         self._meta: dict[str, Any] = {}
@@ -129,7 +127,9 @@ class ExperimentTracker:
         self._meta = {}
 
     def _ensure_run(self) -> None:
-        if self._current_run_name is None:
+        if self._current_run_dir is None:
+            # _current_run_name may still be set post-end_run for inspection,
+            # but the run is no longer active.
             raise RuntimeError("No active run. Call start_run() first.")
 
     def _flush(self) -> None:

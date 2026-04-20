@@ -103,7 +103,7 @@ class TestLoadResult:
         path.write_text(json.dumps(data))
 
         with caplog.at_level(logging.WARNING):
-            loaded = load_result(path)
+            loaded = load_result(path, verify=True)
         assert any(
             "checksum" in record.message.lower() or "tamper" in record.message.lower()
             for record in caplog.records

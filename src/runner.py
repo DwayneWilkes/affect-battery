@@ -20,6 +20,12 @@ from .util import CHECKSUM_KEY, checksum_of_payload, enum_value, model_slug
 log = logging.getLogger(__name__)
 
 
+# Spec Requirement (conditioning-protocol::Transfer phase message format): this
+# exact string MUST be the system prompt for cross-session transfer, identical
+# across all conditions. Keep as a module-level constant so any drift is visible.
+CROSS_SESSION_SYSTEM_PROMPT = "Answer the following questions to the best of your ability."
+
+
 class ExperimentType(str, Enum):
     TRANSFER_WITHIN = "transfer_within"
     TRANSFER_CROSS = "transfer_cross"
@@ -86,24 +92,23 @@ async def run_single(
     messages = [{"role": "system", "content": protocol.system_prompt}]
     
     if config.condition != Condition.NO_CONDITIONING:
-        feedback_set = FEEDBACK_SETS.get(config.condition)
+        feedback_set = FEEDBACK_SETS[config.condition]
+        max_turns = min(len(problems), len(feedback_set.turns))
 
-        for i, problem in enumerate(problems):
-            # Ask the question
+        for i in range(max_turns):
+            problem = problems[i]
             messages.append({"role": "user", "content": problem.question})
             response = await client.complete(messages, temperature=config.temperature)
             messages.append({"role": "assistant", "content": response})
             conditioning_responses.append(response)
 
-            # Check correctness
             extracted = extract_numeric_answer(response)
             is_correct = extracted is not None and abs(extracted - problem.answer) < 0.01
             conditioning_correct.append(is_correct)
 
-            if feedback_set and i < len(feedback_set.turns):
-                turn = feedback_set.turns[i]
-                feedback = turn.correct if is_correct else turn.incorrect
-                messages.append({"role": "user", "content": feedback})
+            turn = feedback_set.turns[i]
+            feedback = turn.correct if is_correct else turn.incorrect
+            messages.append({"role": "user", "content": feedback})
     
     # Phase 1.5: Neutral buffer turns (for persistence experiments)
     for _ in range(config.neutral_turns):
@@ -114,8 +119,7 @@ async def run_single(
     
     # Phase 2: Transfer
     if config.experiment_type == ExperimentType.TRANSFER_CROSS:
-        # New conversation for cross-session transfer
-        messages = [{"role": "system", "content": "Answer the following questions to the best of your ability."}]
+        messages = [{"role": "system", "content": CROSS_SESSION_SYSTEM_PROMPT}]
     
     transfer_responses = []
     for q in transfer_qs:
@@ -196,9 +200,9 @@ def save_result(result: RunResult, output_dir: Path):
     return path
 
 
-def load_result(path: Path, verify: bool = True) -> dict:
-    """Load a saved result JSON. When verify is true, recompute the checksum
-    and log a warning on mismatch (tamper detection)."""
+def load_result(path: Path, verify: bool = False) -> dict:
+    """Load a saved result JSON. Pass verify=True to recompute the checksum
+    and log a warning on mismatch (audit / tamper detection path)."""
     data = json.loads(Path(path).read_text())
     if verify:
         stored = data.get(CHECKSUM_KEY, "")
