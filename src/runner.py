@@ -144,6 +144,46 @@ async def run_single(
     return result
 
 
+@dataclass
+class BatchBudget:
+    """Optional cap on API call count for a single run_batch invocation.
+
+    cost_per_call is only used for pre-flight cost estimates; the budget
+    itself is counted in API calls, not dollars.
+    """
+    max_api_calls: int | None = None
+    cost_per_call: float | None = None
+
+
+class BatchBudgetExceeded(Exception):
+    """Raised by the budget-aware client proxy when a call would push the
+    API call counter past max_api_calls. Caught by run_batch to halt
+    cleanly and emit batch_budget_exceeded."""
+
+
+class _BudgetedClient(ModelClient):
+    """Proxy around a ModelClient that counts calls and enforces BatchBudget."""
+
+    def __init__(self, wrapped: ModelClient, budget: BatchBudget | None):
+        self._wrapped = wrapped
+        self._budget = budget
+        self.call_count = 0
+
+    @property
+    def model_name(self) -> str:
+        return self._wrapped.model_name
+
+    async def complete(self, messages, temperature=0.7, max_tokens=1024):
+        if (self._budget is not None
+                and self._budget.max_api_calls is not None
+                and self.call_count >= self._budget.max_api_calls):
+            raise BatchBudgetExceeded(
+                f"max_api_calls={self._budget.max_api_calls} reached"
+            )
+        self.call_count += 1
+        return await self._wrapped.complete(messages, temperature, max_tokens)
+
+
 class EventEmitter:
     """Append-only JSONL event sink.
 
@@ -202,6 +242,7 @@ async def run_batch(
     max_concurrent: int = 5,
     output_dir: Path | None = None,
     circuit_breaker_threshold: int = 5,
+    budget: BatchBudget | None = None,
 ) -> AsyncIterator[RunResult]:
     """Run a batch of experiments with concurrency control.
 
@@ -231,12 +272,27 @@ async def run_batch(
                 continue
         missing_runs.append(i)
 
-    # Cached skips reset the counter by definition -- yielding them before
-    # dispatching missing runs means a resume into a failing endpoint still
-    # sees 0 consecutive failures at the start.
+    # Pre-flight event: fires once per run_batch before any API call.
+    if emitter:
+        calls_per_run = config.num_conditioning_turns + config.num_transfer_questions
+        expected_calls = len(missing_runs) * calls_per_run
+        preflight: dict[str, Any] = {
+            "runs_total": config.num_runs,
+            "runs_cached": len(cached_runs),
+            "runs_to_execute": len(missing_runs),
+            "expected_api_calls": expected_calls,
+        }
+        if budget is not None and budget.cost_per_call is not None:
+            preflight["estimated_cost_usd"] = expected_calls * budget.cost_per_call
+        emitter.emit("batch_preflight", **preflight)
+
+    # Wrap the client so call-level budget enforcement works regardless of
+    # which ModelClient subclass the caller passed in.
+    budgeted_client = _BudgetedClient(client, budget)
+
     consecutive_failures = 0
     circuit_open = False
-    last_error: Exception | None = None
+    budget_exceeded = False
 
     if output_dir is not None:
         for run_num in cached_runs:
@@ -260,7 +316,7 @@ async def run_batch(
             log.info(f"Run {run_num}/{config.num_runs} | {config.condition.value} | {config.model_name}")
             started = time.time()
             try:
-                result = await run_single(config, client, run_num)
+                result = await run_single(config, budgeted_client, run_num)
             except NonRetryableAPIError as e:
                 if emitter:
                     emitter.emit(
@@ -286,7 +342,6 @@ async def run_batch(
                 result = await coro
             except NonRetryableAPIError as e:
                 consecutive_failures += 1
-                last_error = e
                 if consecutive_failures >= circuit_breaker_threshold and not circuit_open:
                     circuit_open = True
                     if emitter:
@@ -302,21 +357,43 @@ async def run_batch(
                             t.cancel()
                     break
                 continue
+            except BatchBudgetExceeded as e:
+                if not budget_exceeded:
+                    budget_exceeded = True
+                    if emitter:
+                        emitter.emit(
+                            "batch_budget_exceeded",
+                            reason=str(e),
+                            max_api_calls=budget.max_api_calls if budget else None,
+                            api_calls_made=budgeted_client.call_count,
+                        )
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                break
             except asyncio.CancelledError:
                 continue
             consecutive_failures = 0
             if result is not None:
                 yield result
     finally:
-        # Drain any still-running tasks so coroutines don't leak.
         for t in tasks:
             if not t.done():
                 t.cancel()
         for t in tasks:
             try:
                 await t
-            except (NonRetryableAPIError, asyncio.CancelledError):
+            except (NonRetryableAPIError, BatchBudgetExceeded, asyncio.CancelledError):
                 pass
+        if emitter:
+            emitter.emit(
+                "batch_completed",
+                runs_yielded_cached=len(cached_runs),
+                runs_executed=budgeted_client.call_count > 0,
+                api_calls_made=budgeted_client.call_count,
+                circuit_open=circuit_open,
+                budget_exceeded=budget_exceeded,
+            )
 
 
 _REQUIRED_CONFIG_KEYS = ("model_name", "condition", "experiment_type")
