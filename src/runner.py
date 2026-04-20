@@ -489,23 +489,32 @@ async def run_batch(
                          run_number=run_num, elapsed_s=time.time() - started)
         return result
 
-    # Dispatch sequentially-aware: we still use asyncio.as_completed for
-    # concurrency, but track consecutive failures across completed tasks
-    # and stop scheduling new ones once the circuit opens.
+    # asyncio.wait with FIRST_COMPLETED so early break on cancel/circuit/budget
+    # doesn't leave wrapper coroutines pending (as_completed would).
     tasks = [asyncio.create_task(run_with_semaphore(i)) for i in missing_runs]
     shutdown_signalled = False
     pending: set[asyncio.Task] = set(tasks)
+
+    def _cancel_pending() -> None:
+        for tt in pending:
+            tt.cancel()
+
+    def _signal_shutdown() -> None:
+        nonlocal shutdown_signalled
+        if shutdown_signalled:
+            return
+        shutdown_signalled = True
+        if emitter:
+            emitter.emit(
+                "batch_shutdown_signal",
+                runs_completed=(len(cached_runs) + budgeted_client.call_count),
+            )
+        _cancel_pending()
+
     try:
         while pending:
-            if cancel_event is not None and cancel_event.is_set() and not shutdown_signalled:
-                shutdown_signalled = True
-                if emitter:
-                    emitter.emit(
-                        "batch_shutdown_signal",
-                        runs_completed=(len(cached_runs) + budgeted_client.call_count),
-                    )
-                for t in pending:
-                    t.cancel()
+            if cancel_event is not None and cancel_event.is_set():
+                _signal_shutdown()
                 break
             done, pending = await asyncio.wait(
                 pending, return_when=asyncio.FIRST_COMPLETED
@@ -526,8 +535,7 @@ async def run_batch(
                                 reason=str(e),
                                 error_class="NonRetryableAPIError",
                             )
-                        for tt in pending:
-                            tt.cancel()
+                        _cancel_pending()
                         should_stop = True
                         break
                     continue
@@ -541,8 +549,7 @@ async def run_batch(
                                 max_api_calls=budget.max_api_calls if budget else None,
                                 api_calls_made=budgeted_client.call_count,
                             )
-                        for tt in pending:
-                            tt.cancel()
+                        _cancel_pending()
                     should_stop = True
                     break
                 except asyncio.CancelledError:
@@ -550,15 +557,8 @@ async def run_batch(
                 consecutive_failures = 0
                 if result is not None:
                     yield result
-                if cancel_event is not None and cancel_event.is_set() and not shutdown_signalled:
-                    shutdown_signalled = True
-                    if emitter:
-                        emitter.emit(
-                            "batch_shutdown_signal",
-                            runs_completed=(len(cached_runs) + budgeted_client.call_count),
-                        )
-                    for tt in pending:
-                        tt.cancel()
+                if cancel_event is not None and cancel_event.is_set():
+                    _signal_shutdown()
                     should_stop = True
                     break
             if should_stop:
