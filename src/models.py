@@ -10,6 +10,22 @@ import aiohttp
 log = logging.getLogger(__name__)
 
 
+# HTTP status codes that indicate a client-side configuration error or
+# a resource that will never appear: retrying wastes calls and delays the
+# operator's feedback loop. 408 (request timeout) and 429 (rate limit) are
+# excluded because they are transient.
+NON_RETRYABLE_STATUSES = frozenset({400, 401, 403, 404, 422})
+
+
+class NonRetryableAPIError(Exception):
+    """Raised when the API returns a status that must halt the batch
+    rather than be retried (auth, schema, missing resource)."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class ModelClient(ABC):
     """Abstract base class for model inference."""
     
@@ -67,13 +83,21 @@ class VLLMClient(ModelClient):
                     resp.raise_for_status()
                     data = await resp.json()
                     return data["choices"][0]["message"]["content"]
+            except aiohttp.ClientResponseError as e:
+                if e.status in NON_RETRYABLE_STATUSES:
+                    raise NonRetryableAPIError(
+                        f"HTTP {e.status}: {e.message}", status_code=e.status,
+                    ) from e
+                wait = 2 ** attempt
+                log.warning(f"Attempt {attempt+1} failed: {e}. Retrying in {wait}s.")
+                await asyncio.sleep(wait)
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 wait = 2 ** attempt
                 log.warning(f"Attempt {attempt+1} failed: {e}. Retrying in {wait}s.")
                 await asyncio.sleep(wait)
-        
+
         raise RuntimeError(f"Failed after 3 attempts for {self._model}")
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()

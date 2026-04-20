@@ -14,7 +14,7 @@ from typing import Any, AsyncIterator
 from .conditioning.prompts import Condition, FEEDBACK_SETS
 from .conditioning.protocol import ConditioningProtocol, Message, build_transfer_messages
 from .conditioning.tasks import get_arithmetic_problems, get_transfer_tasks, MathProblem
-from .models import ModelClient
+from .models import ModelClient, NonRetryableAPIError  # noqa: F401 -- public API
 from .scoring.accuracy import extract_numeric_answer
 from .util import CHECKSUM_KEY, checksum_of_payload, enum_value, model_slug
 
@@ -201,14 +201,19 @@ async def run_batch(
     client: ModelClient,
     max_concurrent: int = 5,
     output_dir: Path | None = None,
+    circuit_breaker_threshold: int = 5,
 ) -> AsyncIterator[RunResult]:
     """Run a batch of experiments with concurrency control.
 
     When `output_dir` is provided:
     - Existing valid result files are loaded and yielded without calling the API.
     - New results are saved as they complete.
-    - Lifecycle events (run_started, run_completed, run_skipped_cached) are
-      appended to `output_dir/events.jsonl`.
+    - Lifecycle events (run_started, run_completed, run_skipped_cached,
+      run_failed, batch_circuit_open) are appended to `output_dir/events.jsonl`.
+
+    The circuit breaker halts dispatching after `circuit_breaker_threshold`
+    consecutive NonRetryableAPIError failures. A successful run or a cached
+    skip resets the counter.
     """
     semaphore = asyncio.Semaphore(max_concurrent)
     emitter: EventEmitter | None = None
@@ -226,7 +231,13 @@ async def run_batch(
                 continue
         missing_runs.append(i)
 
-    # Yield cached results first (cheap, no API calls, no semaphore).
+    # Cached skips reset the counter by definition -- yielding them before
+    # dispatching missing runs means a resume into a failing endpoint still
+    # sees 0 consecutive failures at the start.
+    consecutive_failures = 0
+    circuit_open = False
+    last_error: Exception | None = None
+
     if output_dir is not None:
         for run_num in cached_runs:
             path = _cached_run_path(output_dir, config, run_num)
@@ -239,7 +250,7 @@ async def run_batch(
             result.checksum = data.get(CHECKSUM_KEY, "")
             yield result
 
-    async def run_with_semaphore(run_num: int) -> RunResult:
+    async def run_with_semaphore(run_num: int) -> RunResult | None:
         run_name = None
         if output_dir is not None:
             run_name = _cached_run_path(output_dir, config, run_num).stem
@@ -248,7 +259,16 @@ async def run_batch(
         async with semaphore:
             log.info(f"Run {run_num}/{config.num_runs} | {config.condition.value} | {config.model_name}")
             started = time.time()
-            result = await run_single(config, client, run_num)
+            try:
+                result = await run_single(config, client, run_num)
+            except NonRetryableAPIError as e:
+                if emitter:
+                    emitter.emit(
+                        "run_failed", run_name=run_name, run_number=run_num,
+                        error=str(e), error_class="NonRetryableAPIError",
+                        status_code=e.status_code,
+                    )
+                raise
         if output_dir is not None:
             save_result(result, output_dir)
         if emitter:
@@ -256,9 +276,47 @@ async def run_batch(
                          run_number=run_num, elapsed_s=time.time() - started)
         return result
 
-    tasks = [run_with_semaphore(i) for i in missing_runs]
-    for coro in asyncio.as_completed(tasks):
-        yield await coro
+    # Dispatch sequentially-aware: we still use asyncio.as_completed for
+    # concurrency, but track consecutive failures across completed tasks
+    # and stop scheduling new ones once the circuit opens.
+    tasks = [asyncio.create_task(run_with_semaphore(i)) for i in missing_runs]
+    try:
+        for coro in asyncio.as_completed(tasks):
+            try:
+                result = await coro
+            except NonRetryableAPIError as e:
+                consecutive_failures += 1
+                last_error = e
+                if consecutive_failures >= circuit_breaker_threshold and not circuit_open:
+                    circuit_open = True
+                    if emitter:
+                        emitter.emit(
+                            "batch_circuit_open",
+                            consecutive_failures=consecutive_failures,
+                            threshold=circuit_breaker_threshold,
+                            reason=str(e),
+                            error_class="NonRetryableAPIError",
+                        )
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    break
+                continue
+            except asyncio.CancelledError:
+                continue
+            consecutive_failures = 0
+            if result is not None:
+                yield result
+    finally:
+        # Drain any still-running tasks so coroutines don't leak.
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        for t in tasks:
+            try:
+                await t
+            except (NonRetryableAPIError, asyncio.CancelledError):
+                pass
 
 
 _REQUIRED_CONFIG_KEYS = ("model_name", "condition", "experiment_type")
