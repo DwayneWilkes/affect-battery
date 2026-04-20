@@ -168,8 +168,12 @@ class TestCLISelectsCompletionPath:
         )
         monkeypatch.setattr("src.models.VLLMClient", fake_vllm_client)
 
-        # Intercept asyncio.run so we don't actually hit the API.
-        monkeypatch.setattr("asyncio.run", lambda _coro: None)
+        # Intercept asyncio.run so we don't actually hit the API. Close the
+        # coroutine explicitly to avoid "coroutine never awaited" warnings.
+        def _fake_run(coro):
+            coro.close()
+
+        monkeypatch.setattr("asyncio.run", _fake_run)
 
         class Args:
             dry_run = False

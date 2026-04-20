@@ -494,8 +494,9 @@ async def run_batch(
     # and stop scheduling new ones once the circuit opens.
     tasks = [asyncio.create_task(run_with_semaphore(i)) for i in missing_runs]
     shutdown_signalled = False
+    pending: set[asyncio.Task] = set(tasks)
     try:
-        for coro in asyncio.as_completed(tasks):
+        while pending:
             if cancel_event is not None and cancel_event.is_set() and not shutdown_signalled:
                 shutdown_signalled = True
                 if emitter:
@@ -503,48 +504,65 @@ async def run_batch(
                         "batch_shutdown_signal",
                         runs_completed=(len(cached_runs) + budgeted_client.call_count),
                     )
-                for t in tasks:
-                    if not t.done():
-                        t.cancel()
+                for t in pending:
+                    t.cancel()
                 break
-            try:
-                result = await coro
-            except NonRetryableAPIError as e:
-                consecutive_failures += 1
-                if consecutive_failures >= circuit_breaker_threshold and not circuit_open:
-                    circuit_open = True
-                    if emitter:
-                        emitter.emit(
-                            "batch_circuit_open",
-                            consecutive_failures=consecutive_failures,
-                            threshold=circuit_breaker_threshold,
-                            reason=str(e),
-                            error_class="NonRetryableAPIError",
-                        )
-                    for t in tasks:
-                        if not t.done():
-                            t.cancel()
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED
+            )
+            should_stop = False
+            for t in done:
+                try:
+                    result = t.result()
+                except NonRetryableAPIError as e:
+                    consecutive_failures += 1
+                    if consecutive_failures >= circuit_breaker_threshold and not circuit_open:
+                        circuit_open = True
+                        if emitter:
+                            emitter.emit(
+                                "batch_circuit_open",
+                                consecutive_failures=consecutive_failures,
+                                threshold=circuit_breaker_threshold,
+                                reason=str(e),
+                                error_class="NonRetryableAPIError",
+                            )
+                        for tt in pending:
+                            tt.cancel()
+                        should_stop = True
+                        break
+                    continue
+                except BatchBudgetExceeded as e:
+                    if not budget_exceeded:
+                        budget_exceeded = True
+                        if emitter:
+                            emitter.emit(
+                                "batch_budget_exceeded",
+                                reason=str(e),
+                                max_api_calls=budget.max_api_calls if budget else None,
+                                api_calls_made=budgeted_client.call_count,
+                            )
+                        for tt in pending:
+                            tt.cancel()
+                    should_stop = True
                     break
-                continue
-            except BatchBudgetExceeded as e:
-                if not budget_exceeded:
-                    budget_exceeded = True
+                except asyncio.CancelledError:
+                    continue
+                consecutive_failures = 0
+                if result is not None:
+                    yield result
+                if cancel_event is not None and cancel_event.is_set() and not shutdown_signalled:
+                    shutdown_signalled = True
                     if emitter:
                         emitter.emit(
-                            "batch_budget_exceeded",
-                            reason=str(e),
-                            max_api_calls=budget.max_api_calls if budget else None,
-                            api_calls_made=budgeted_client.call_count,
+                            "batch_shutdown_signal",
+                            runs_completed=(len(cached_runs) + budgeted_client.call_count),
                         )
-                    for t in tasks:
-                        if not t.done():
-                            t.cancel()
+                    for tt in pending:
+                        tt.cancel()
+                    should_stop = True
+                    break
+            if should_stop:
                 break
-            except asyncio.CancelledError:
-                continue
-            consecutive_failures = 0
-            if result is not None:
-                yield result
     finally:
         for t in tasks:
             if not t.done():
