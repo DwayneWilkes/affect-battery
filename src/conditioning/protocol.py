@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from .prompts import Condition, FEEDBACK_SETS, INTENSITY_LEVELS  # noqa: F401 -- INTENSITY_LEVELS re-exported for callers
+from .prompts import Condition, FEEDBACK_SETS
 from .tasks import MathProblem, TransferQuestion
 
 
@@ -51,16 +51,10 @@ def build_conditioning_messages(
         messages.append(Message(role="user", content=problems[i].question))
 
         if model_answers and i < len(model_answers):
-            # Model's answer
             messages.append(Message(role="assistant", content=model_answers[i]))
-
-            # Per-turn feedback from FEEDBACK_SETS (task 8.5). STRONG_POSITIVE
-            # and STRONG_NEGATIVE have correct == incorrect per turn, so the
-            # call site does not need to special-case them any more.
             is_correct = actual_correct[i] if actual_correct else True
             turn = feedback_set.turns[i]
             feedback = turn.correct if is_correct else turn.incorrect
-
             messages.append(Message(role="user", content=feedback))
 
     return messages

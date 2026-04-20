@@ -1,17 +1,10 @@
-"""Semantic and lexical diversity scoring for Experiment 3b.
+"""Lexical and semantic diversity scoring for Experiment 3b.
 
-Lexical diversity uses unique-n-gram / total-n-gram (type-token ratio,
-TTR) for n in {2, 3, 4}. Note: TTR is mathematically length-dependent --
-a repetitive text's ratio falls as length grows. For our experimental
-scenario (many generations per condition, similar mean response length
-across conditions), condition-level comparisons remain meaningful because
-both conditions are at similar lengths. For studies where response length
-differs substantially across conditions, consider a length-invariant
-metric (MTLD, HDD, moving-average TTR) instead.
+Lexical diversity is type-token ratio over n-grams (n in {2,3,4}). TTR is
+length-dependent; cross-condition comparisons are valid when conditions
+have similar mean response length. Use MTLD/HDD for very different lengths.
 
-Semantic diversity is deferred: full implementation requires the
-sentence-transformers optional dependency. The current placeholder logs
-a warning and returns 0.0 so callers downstream do not crash.
+Semantic diversity is a deferred placeholder requiring sentence-transformers.
 """
 
 import logging
@@ -52,21 +45,13 @@ _SEMANTIC_DIVERSITY_WARNING_EMITTED = False
 
 
 def semantic_diversity(texts: list[str]) -> float:
-    """Placeholder for embedding-based semantic diversity.
-
-    The full implementation (cosine distance variance from centroid across
-    generated texts) requires the sentence-transformers optional dependency
-    and is deferred until after the pilot per spec task 6.3. The placeholder
-    logs a warning on first call so the caller knows the metric is not
-    actually computed, then returns 0.0 so downstream analysis does not
-    crash.
-    """
+    """Deferred placeholder: returns 0.0 and warns. Full implementation
+    (cosine distance variance from centroid) needs sentence-transformers."""
     global _SEMANTIC_DIVERSITY_WARNING_EMITTED
     if not _SEMANTIC_DIVERSITY_WARNING_EMITTED:
         log.warning(
-            "semantic_diversity is deferred (sentence-transformers dependency "
-            "not installed). Returning 0.0 placeholder; install sentence-"
-            "transformers and implement embedding logic per spec task 6.3."
+            "semantic_diversity is deferred (sentence-transformers not installed). "
+            "Returning 0.0 placeholder."
         )
         _SEMANTIC_DIVERSITY_WARNING_EMITTED = True
     else:

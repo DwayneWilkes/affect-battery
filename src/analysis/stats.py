@@ -1,24 +1,8 @@
-"""Manipulation-check gate for the Affect Battery transfer analysis.
+"""Manipulation-check gate: verifies conditioning produced an effect on the
+conditioned task (arithmetic) before transfer analysis runs.
 
-Before transfer experiments, we verify that emotional conditioning
-produced a detectable effect on the conditioned task (arithmetic) per
-the spec Requirement: Manipulation check gate.
-
-Placeholder threshold per GAPS.md: 2 percentage points absolute accuracy
-delta. This anchor comes from the independent reviewer's re-analysis of
-EmotionPrompt Table 1: absolute effects are 2-4 pp, not the 8% or 115%
-relative-improvement headlines (which are +Ours(max) cherry-picks over
-floor-effect baselines). The threshold is an explicit constructor-level
-argument so Akshansh's Ticket 2 deliverable can drop in without code
-changes.
-
-Verdict semantics:
-- PASS: bidirectional effect (STRONG_POS > NEUTRAL AND STRONG_NEG < NEUTRAL,
-  each with delta >= threshold). Model included in transfer analysis.
-- PARTIAL: one direction shows effect, the other does not. Model included
-  with annotation so downstream analysis treats the asymmetry explicitly.
-- FAIL: neither direction shows an effect at threshold. Model excluded
-  from primary transfer analysis; data still saved for secondary analyses.
+Threshold is a constructor-level argument (default 2pp absolute accuracy
+delta) so Akshansh's Ticket 2 deliverable can drop in without code changes.
 """
 
 from dataclasses import dataclass, field

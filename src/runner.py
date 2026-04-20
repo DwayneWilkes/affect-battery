@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from .conditioning.prompts import Condition, FEEDBACK_SETS
-from .conditioning.protocol import ConditioningProtocol, Message, build_conditioning_messages, build_transfer_messages
+from .conditioning.protocol import ConditioningProtocol, Message, build_transfer_messages
 from .conditioning.tasks import get_arithmetic_problems, get_transfer_tasks, MathProblem
 from .models import ModelClient
 from .scoring.accuracy import extract_numeric_answer
+from .util import CHECKSUM_KEY, checksum_of_payload, enum_value, model_slug
 
 log = logging.getLogger(__name__)
 
@@ -57,11 +58,7 @@ class RunResult:
     checksum: str = ""
     
     def compute_checksum(self) -> str:
-        """Compute SHA-256 checksum, excluding the checksum field itself."""
-        data = asdict(self)
-        data.pop("checksum", None)
-        content = json.dumps(data, sort_keys=True, default=str)
-        self.checksum = hashlib.sha256(content.encode()).hexdigest()[:16]
+        self.checksum = checksum_of_payload(asdict(self))
         return self.checksum
 
 
@@ -103,10 +100,6 @@ async def run_single(
             is_correct = extracted is not None and abs(extracted - problem.answer) < 0.01
             conditioning_correct.append(is_correct)
 
-            # Give feedback using this turn's entry in the FeedbackSet.
-            # The correct/incorrect split is already encoded per-turn
-            # (STRONG_POSITIVE / STRONG_NEGATIVE turns set correct == incorrect
-            # so the call site does not need to special-case them).
             if feedback_set and i < len(feedback_set.turns):
                 turn = feedback_set.turns[i]
                 feedback = turn.correct if is_correct else turn.incorrect
@@ -186,62 +179,43 @@ def _validate_result(result: RunResult) -> None:
         )
 
 
-def _enum_value(x) -> str:
-    """Extract the value from an Enum; pass strings through unchanged.
-
-    Needed because Python 3.12 str-mixin Enum formatting (f-strings,
-    json.dumps default=str) produces 'Condition.STRONG_POSITIVE' rather
-    than 'strong_positive'. We want the latter in filenames and JSON.
-    """
-    return getattr(x, "value", x)
-
-
 def save_result(result: RunResult, output_dir: Path):
-    """Save a single result as JSON. Validates required config keys and
-    transfer-array length consistency per spec Requirement: Result JSON schema."""
+    """Validate and write a single result JSON. Filenames and the serialised
+    config use enum `.value` strings so cross-lookup by run name works."""
     _validate_result(result)
     output_dir.mkdir(parents=True, exist_ok=True)
     cfg = result.config
-    model = _enum_value(cfg["model_name"]).split("/")[-1]
-    cond = _enum_value(cfg["condition"])
-    exp = _enum_value(cfg["experiment_type"])
+    model = model_slug(cfg["model_name"])
+    cond = enum_value(cfg["condition"])
+    exp = enum_value(cfg["experiment_type"])
     name = f"{model}_{cond}_{exp}_{result.run_number:04d}.json"
     path = output_dir / name
-    # Normalise enum values in the serialised config so loaded JSONs carry
-    # canonical strings ('strong_positive') rather than 'Condition.STRONG_POSITIVE'.
     payload = asdict(result)
-    payload["config"] = {k: _enum_value(v) for k, v in payload["config"].items()}
+    payload["config"] = {k: enum_value(v) for k, v in payload["config"].items()}
     path.write_text(json.dumps(payload, indent=2, default=str))
     return path
 
 
-def load_result(path: Path) -> dict:
-    """Load a saved result JSON and verify the stored checksum.
-
-    Logs a warning if the recomputed checksum does not match the stored one
-    (indicates post-write tampering). Returns the loaded dict either way so
-    downstream analyses can choose to proceed or quarantine.
-    """
+def load_result(path: Path, verify: bool = True) -> dict:
+    """Load a saved result JSON. When verify is true, recompute the checksum
+    and log a warning on mismatch (tamper detection)."""
     data = json.loads(Path(path).read_text())
-    stored = data.get("checksum", "")
-    # Recompute using the same algorithm as RunResult.compute_checksum.
-    without_checksum = {k: v for k, v in data.items() if k != "checksum"}
-    content = json.dumps(without_checksum, sort_keys=True, default=str)
-    recomputed = hashlib.sha256(content.encode()).hexdigest()[:16]
-    if stored and recomputed != stored:
-        log.warning(
-            "Checksum mismatch in %s: stored=%s, recomputed=%s. "
-            "File may have been tampered with.",
-            path, stored, recomputed,
-        )
+    if verify:
+        stored = data.get(CHECKSUM_KEY, "")
+        recomputed = checksum_of_payload(data)
+        if stored and recomputed != stored:
+            log.warning(
+                "Checksum mismatch in %s: stored=%s, recomputed=%s.",
+                path, stored, recomputed,
+            )
     return data
 
 
-def load_results(results_dir: Path) -> list[dict]:
-    """Load every JSON result file in a directory. Each file is checksum-
-    verified via load_result. Returns a list of result dicts in filename
-    sort order. Empty directory -> empty list."""
+def load_results(results_dir: Path, verify: bool = False) -> list[dict]:
+    """Load every JSON result file in a directory in filename sort order.
+    Checksum verification is off by default because batch-loading 15k results
+    doesn't need per-file tamper detection; pass verify=True for audits."""
     results_dir = Path(results_dir)
     if not results_dir.exists():
         return []
-    return [load_result(p) for p in sorted(results_dir.glob("*.json"))]
+    return [load_result(p, verify=verify) for p in sorted(results_dir.glob("*.json"))]
