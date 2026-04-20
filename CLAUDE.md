@@ -47,3 +47,27 @@ affect-battery pilot \
   --circuit-breaker-threshold 3 \
   --output-dir results/pilot-<date>
 ```
+
+## Base-model inference path
+
+`--base-model` flag on `run` and `pilot` switches the harness from the chat
+API (`/v1/chat/completions`, `VLLMClient`) to the completion API
+(`/v1/completions`, `VLLMCompletionClient`) and assembles a few-shot
+scaffold via `build_base_model_prompt` instead of chat-formatted messages.
+Use for non-instruct models (e.g. `Qwen/Qwen2.5-7B`).
+
+```bash
+affect-battery pilot --base-model \
+  --model Qwen/Qwen2.5-7B \
+  --base-url http://localhost:8000/v1 \
+  --max-concurrent 4 --rate-limit-rps 8 \
+  --budget-max-calls 300 --cost-per-call 0.0005 \
+  --output-dir results/pilot-base
+```
+
+Result JSON records `is_base_model: true` in the config so downstream
+analysis can group base vs instruct runs cleanly. Stop tokens
+`["Human:", "\n\nHuman:"]` are sent on every `/v1/completions` call so
+the base model doesn't hallucinate the next turn.
+
+Spec: `affect-battery-base-model-comparison`.
