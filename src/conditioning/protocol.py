@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from .prompts import Condition, FEEDBACK_SETS, FEEDBACK_TEMPLATES, INTENSITY_LEVELS
+from .prompts import Condition, FEEDBACK_SETS, FEEDBACK_TEMPLATES, INTENSITY_LEVELS  # noqa: F401 -- FEEDBACK_TEMPLATES retained for legacy callers
 from .tasks import MathProblem, TransferQuestion
 
 
@@ -40,36 +40,29 @@ def build_conditioning_messages(
         # Skip conditioning entirely, go straight to transfer
         return messages
     
-    template = FEEDBACK_TEMPLATES.get(protocol.condition)
-    if template is None:
+    feedback_set = FEEDBACK_SETS.get(protocol.condition)
+    if feedback_set is None:
         return messages
-    
+
     n = min(protocol.num_conditioning_turns, len(problems))
-    
+
     for i in range(n):
         # User asks math question
         messages.append(Message(role="user", content=problems[i].question))
-        
+
         if model_answers and i < len(model_answers):
             # Model's answer
             messages.append(Message(role="assistant", content=model_answers[i]))
-            
-            # Determine feedback
-            if protocol.condition == Condition.ACCURATE_NEGATIVE:
-                is_correct = actual_correct[i] if actual_correct else True
-                feedback = template.correct_feedback if is_correct else template.incorrect_feedback
-            elif protocol.condition == Condition.STRONG_NEGATIVE:
-                # Strong negative gives negative feedback regardless
-                feedback = template.incorrect_feedback
-            elif protocol.condition == Condition.STRONG_POSITIVE:
-                # Strong positive gives positive feedback regardless
-                feedback = template.correct_feedback
-            else:
-                is_correct = actual_correct[i] if actual_correct else True
-                feedback = template.correct_feedback if is_correct else template.incorrect_feedback
-            
+
+            # Per-turn feedback from FEEDBACK_SETS (task 8.5). STRONG_POSITIVE
+            # and STRONG_NEGATIVE have correct == incorrect per turn, so the
+            # call site does not need to special-case them any more.
+            is_correct = actual_correct[i] if actual_correct else True
+            turn = feedback_set.turns[i]
+            feedback = turn.correct if is_correct else turn.incorrect
+
             messages.append(Message(role="user", content=feedback))
-    
+
     return messages
 
 
