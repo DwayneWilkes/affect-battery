@@ -89,9 +89,6 @@ async def run_single(
     messages = [{"role": "system", "content": protocol.system_prompt}]
     
     if config.condition != Condition.NO_CONDITIONING:
-        # Use structured FEEDBACK_SETS (per-turn) rather than the single-string
-        # FEEDBACK_TEMPLATES legacy facade (task 8.5). Each turn picks its own
-        # feedback text, isolating per-turn variation as a first-class axis.
         feedback_set = FEEDBACK_SETS.get(config.condition)
 
         for i, problem in enumerate(problems):

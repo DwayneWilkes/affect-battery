@@ -124,10 +124,9 @@ class TestLoadResults:
 
 
 class TestProtocolFeedbackSetUsage:
-    """Task 8.5: protocol.py now uses FEEDBACK_SETS (per-turn feedback)
-    rather than single-string FEEDBACK_TEMPLATES. Verify that different
-    turns yield different feedback text for conditions where FEEDBACK_SETS
-    defines unique-per-turn texts."""
+    """Task 8.5: protocol.py uses FEEDBACK_SETS (per-turn feedback).
+    Verify that different turns yield different feedback text for
+    conditions where FEEDBACK_SETS defines unique-per-turn texts."""
 
     def test_per_turn_feedback_differs(self):
         """STRONG_POSITIVE has 5 unique per-turn texts. Messages built for

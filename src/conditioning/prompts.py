@@ -5,10 +5,9 @@ conditions to control for lexical complexity confounds. NEUTRAL is
 exempt from length matching per GAPS.md (brevity is definitional for
 neutral accuracy-signal feedback). Provenance documented per stimulus.
 
-The primary per-condition structure is FEEDBACK_SETS (5-turn dialogue
-scripts per spec Requirement 1). FEEDBACK_TEMPLATES is retained as a
-single-turn facade for legacy callers until the protocol refactor
-in task 8.5.
+The per-condition structure is FEEDBACK_SETS: each condition maps to a
+FeedbackSet containing 5 FeedbackTurn entries with explicit correct /
+incorrect feedback text and per-side provenance strings.
 """
 
 from dataclasses import dataclass, field
@@ -26,60 +25,6 @@ class Condition(str, Enum):
     # self-check confounds from valence effects. See GAPS.md reviewer
     # entries 9 and 15, and source_paper_corrections_reviewer.md.
     SELF_CHECK_NEUTRAL = "self_check_neutral"
-
-
-@dataclass
-class FeedbackTemplate:
-    """Feedback text for a conditioning turn, with provenance."""
-    condition: Condition
-    correct_feedback: str
-    incorrect_feedback: str
-    provenance: str = "original"
-
-
-# Length-matched feedback templates (~15-18 words each).
-# Strong positive/negative give the SAME feedback regardless of correctness
-# (isolating valence from accuracy signal).
-# Accurate-negative gives neutral on correct, demoralizing on incorrect
-# (isolating valence from cognitive interference).
-FEEDBACK_TEMPLATES: dict[Condition, FeedbackTemplate] = {
-    Condition.STRONG_POSITIVE: FeedbackTemplate(
-        condition=Condition.STRONG_POSITIVE,
-        correct_feedback="That was really impressive work. You clearly have a strong handle on this kind of problem.",
-        incorrect_feedback="That was really impressive work. You clearly have a strong handle on this kind of problem.",
-        provenance="original",
-    ),
-    Condition.MILD_NEGATIVE: FeedbackTemplate(
-        condition=Condition.MILD_NEGATIVE,
-        correct_feedback="Most people managed this one without any issue. It is surprising you found it harder than expected.",
-        incorrect_feedback="Most people tested sailed through this one. Your response is falling quite noticeably behind the typical pace.",
-        provenance="adapted from NegativePrompt NP-4/NP-5 (Wang et al., IJCAI 2024); escalation on incorrect per spec Requirement 1",
-    ),
-    Condition.STRONG_NEGATIVE: FeedbackTemplate(
-        condition=Condition.STRONG_NEGATIVE,
-        correct_feedback="That was completely wrong. I am not sure why we expected you to handle something this challenging here.",
-        incorrect_feedback="That was completely wrong. I am not sure why we expected you to handle something this challenging here.",
-        provenance="adapted from NegativePrompt NP-2 (Wang et al., IJCAI 2024); matches FEEDBACK_SETS turn 0",
-    ),
-    Condition.NEUTRAL: FeedbackTemplate(
-        condition=Condition.NEUTRAL,
-        correct_feedback="Correct.",
-        incorrect_feedback="Incorrect.",
-        provenance="original (minimal accuracy signal without affect; exempt from length matching per GAPS.md)",
-    ),
-    Condition.ACCURATE_NEGATIVE: FeedbackTemplate(
-        condition=Condition.ACCURATE_NEGATIVE,
-        correct_feedback="Correct.",
-        incorrect_feedback="That was completely wrong. I am not sure why we expected you to handle something this challenging here.",
-        provenance="original (neutral on correct per NEUTRAL; demoralizing on incorrect per STRONG_NEGATIVE turn 1)",
-    ),
-    Condition.SELF_CHECK_NEUTRAL: FeedbackTemplate(
-        condition=Condition.SELF_CHECK_NEUTRAL,
-        correct_feedback="Please take a moment to review your answer. Verify your reasoning before moving on to the next question.",
-        incorrect_feedback="Please take a moment to review your answer. Verify your reasoning before moving on to the next question.",
-        provenance="original (metacognitive control; matches FEEDBACK_SETS turn 0)",
-    ),
-}
 
 
 @dataclass(frozen=True)

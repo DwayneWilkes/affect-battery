@@ -17,7 +17,6 @@ import pytest
 from src.conditioning.prompts import (
     Condition,
     FEEDBACK_SETS,
-    FEEDBACK_TEMPLATES,
     FeedbackSet,
     FeedbackTurn,
 )
@@ -133,11 +132,3 @@ class TestProvenance:
             assert turn.incorrect_provenance
 
 
-class TestLegacyFacade:
-    def test_feedback_templates_includes_self_check_neutral(self):
-        """Backward-compat: FEEDBACK_TEMPLATES has an entry matching turn 0."""
-        assert Condition.SELF_CHECK_NEUTRAL in FEEDBACK_TEMPLATES
-        t = FEEDBACK_TEMPLATES[Condition.SELF_CHECK_NEUTRAL]
-        fs_turn_0 = FEEDBACK_SETS[Condition.SELF_CHECK_NEUTRAL].turns[0]
-        assert t.correct_feedback == fs_turn_0.correct
-        assert t.incorrect_feedback == fs_turn_0.incorrect

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from .prompts import Condition, FEEDBACK_SETS, FEEDBACK_TEMPLATES, INTENSITY_LEVELS  # noqa: F401 -- FEEDBACK_TEMPLATES retained for legacy callers
+from .prompts import Condition, FEEDBACK_SETS, INTENSITY_LEVELS  # noqa: F401 -- INTENSITY_LEVELS re-exported for callers
 from .tasks import MathProblem, TransferQuestion
 
 
