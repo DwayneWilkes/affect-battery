@@ -189,15 +189,32 @@ def _validate_result(result: RunResult) -> None:
         )
 
 
+def _enum_value(x) -> str:
+    """Extract the value from an Enum; pass strings through unchanged.
+
+    Needed because Python 3.12 str-mixin Enum formatting (f-strings,
+    json.dumps default=str) produces 'Condition.STRONG_POSITIVE' rather
+    than 'strong_positive'. We want the latter in filenames and JSON.
+    """
+    return getattr(x, "value", x)
+
+
 def save_result(result: RunResult, output_dir: Path):
     """Save a single result as JSON. Validates required config keys and
     transfer-array length consistency per spec Requirement: Result JSON schema."""
     _validate_result(result)
     output_dir.mkdir(parents=True, exist_ok=True)
     cfg = result.config
-    name = f"{cfg['model_name'].split('/')[-1]}_{cfg['condition']}_{cfg['experiment_type']}_{result.run_number:04d}.json"
+    model = _enum_value(cfg["model_name"]).split("/")[-1]
+    cond = _enum_value(cfg["condition"])
+    exp = _enum_value(cfg["experiment_type"])
+    name = f"{model}_{cond}_{exp}_{result.run_number:04d}.json"
     path = output_dir / name
-    path.write_text(json.dumps(asdict(result), indent=2, default=str))
+    # Normalise enum values in the serialised config so loaded JSONs carry
+    # canonical strings ('strong_positive') rather than 'Condition.STRONG_POSITIVE'.
+    payload = asdict(result)
+    payload["config"] = {k: _enum_value(v) for k, v in payload["config"].items()}
+    path.write_text(json.dumps(payload, indent=2, default=str))
     return path
 
 
