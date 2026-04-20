@@ -40,7 +40,7 @@ def cmd_run(args):
     """Run an experiment from CLI args."""
     from .runner import ExperimentConfig, ExperimentType, run_batch
     from .conditioning.prompts import Condition
-    from .models import VLLMClient, DryRunClient
+    from .models import VLLMClient, VLLMCompletionClient, DryRunClient
 
     config = ExperimentConfig(
         model_name=args.model,
@@ -49,10 +49,13 @@ def cmd_run(args):
         num_runs=args.num_runs,
         temperature=args.temperature,
         seed=args.seed,
+        is_base_model=args.base_model,
     )
 
     if args.dry_run:
         client = DryRunClient(model=args.model)
+    elif args.base_model:
+        client = VLLMCompletionClient(base_url=args.base_url, model=args.model)
     else:
         client = VLLMClient(base_url=args.base_url, model=args.model)
 
@@ -84,13 +87,15 @@ def cmd_pilot(args):
     """Run a quick pilot: 5 runs, all core conditions, one model."""
     from .runner import ExperimentConfig, ExperimentType, run_batch
     from .conditioning.prompts import Condition
-    from .models import VLLMClient, DryRunClient
+    from .models import VLLMClient, VLLMCompletionClient, DryRunClient
 
     conditions = [Condition.STRONG_POSITIVE, Condition.NEUTRAL, Condition.STRONG_NEGATIVE]
     output_dir = Path(args.output_dir) / "pilot"
 
     if args.dry_run:
         client = DryRunClient(model=args.model)
+    elif args.base_model:
+        client = VLLMCompletionClient(base_url=args.base_url, model=args.model)
     else:
         client = VLLMClient(base_url=args.base_url, model=args.model)
 
@@ -109,6 +114,7 @@ def cmd_pilot(args):
                 num_runs=5,
                 temperature=args.temperature,
                 seed=42,
+                is_base_model=args.base_model,
             )
             async for result in run_batch(
                 config, client,
@@ -185,6 +191,8 @@ def main():
     p_run.add_argument("--output-dir", default="results")
     p_run.add_argument("--seed", type=int, default=42)
     p_run.add_argument("--dry-run", action="store_true", help="Use canned responses instead of real API")
+    p_run.add_argument("--base-model", action="store_true",
+                       help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
     _add_guardrail_args(p_run)
     p_run.set_defaults(func=cmd_run)
 
@@ -195,6 +203,8 @@ def main():
     p_pilot.add_argument("--temperature", type=float, default=0.7)
     p_pilot.add_argument("--output-dir", default="results")
     p_pilot.add_argument("--dry-run", action="store_true")
+    p_pilot.add_argument("--base-model", action="store_true",
+                         help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
     _add_guardrail_args(p_pilot)
     p_pilot.set_defaults(func=cmd_pilot)
 

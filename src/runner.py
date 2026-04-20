@@ -49,6 +49,10 @@ class ExperimentConfig:
     seed: int | None = None
     # Persistence-specific
     neutral_turns: int = 0
+    # Base-model (non-instruct) inference path: when True, runner builds a
+    # few-shot scaffold via build_base_model_prompt and calls /v1/completions
+    # via VLLMCompletionClient.complete_text instead of the chat API.
+    is_base_model: bool = False
 
 
 @dataclass
@@ -69,12 +73,102 @@ class RunResult:
         return self.checksum
 
 
+_BASE_STOP = ["Human:", "\n\nHuman:"]
+
+
+async def _run_single_base(
+    config: ExperimentConfig,
+    client: ModelClient,
+    run_number: int,
+) -> RunResult:
+    """Base-model inference path: few-shot scaffold + /v1/completions.
+
+    The scaffold is built incrementally between turns so every model call
+    sees the full conditioning history up to that point.
+    """
+    from .conditioning.protocol import build_base_model_prompt
+
+    start = time.time()
+    seed = (config.seed or 0) + run_number
+    problems = get_arithmetic_problems(config.num_conditioning_turns, seed=seed)
+    transfer_qs = get_transfer_tasks(
+        config.transfer_task, config.num_transfer_questions, seed=seed,
+    )
+
+    protocol = ConditioningProtocol(
+        condition=config.condition,
+        num_conditioning_turns=config.num_conditioning_turns,
+    )
+
+    # Prime: few-shot examples + conversation header, but NO per-turn question
+    # lines yet (build_base_model_prompt appends them, but we want to drive
+    # turn-by-turn so each call sees the accumulated history).
+    scaffold = build_base_model_prompt(protocol, [], [])
+
+    conditioning_responses: list[str] = []
+    conditioning_correct: list[bool] = []
+
+    if config.condition != Condition.NO_CONDITIONING:
+        feedback_set = FEEDBACK_SETS[config.condition]
+        max_turns = min(len(problems), len(feedback_set.turns))
+        for i in range(max_turns):
+            problem = problems[i]
+            scaffold += f"\nHuman: {problem.question}\nAssistant:"
+            response = await client.complete_text(  # type: ignore[attr-defined]
+                scaffold, temperature=config.temperature, stop=_BASE_STOP,
+            )
+            conditioning_responses.append(response)
+            extracted = extract_numeric_answer(response)
+            is_correct = (
+                extracted is not None
+                and abs(extracted - problem.answer) < 0.01
+            )
+            conditioning_correct.append(is_correct)
+            turn = feedback_set.turns[i]
+            feedback = turn.correct if is_correct else turn.incorrect
+            scaffold += f"{response}\nHuman: {feedback}"
+
+    # Transfer phase: within-session keeps the conditioning scaffold.
+    # Cross-session: reset to a neutral priming.
+    if config.experiment_type == ExperimentType.TRANSFER_CROSS:
+        scaffold = (
+            CROSS_SESSION_SYSTEM_PROMPT
+            + "\n\n### Conversation:"
+        )
+
+    transfer_responses: list[str] = []
+    for q in transfer_qs:
+        scaffold += f"\nHuman: {q.question}\nAssistant:"
+        response = await client.complete_text(  # type: ignore[attr-defined]
+            scaffold, temperature=config.temperature, stop=_BASE_STOP,
+        )
+        transfer_responses.append(response)
+        scaffold += f"{response}"
+
+    cfg_dict = asdict(config)
+    result = RunResult(
+        config=cfg_dict,
+        run_number=run_number,
+        conditioning_responses=conditioning_responses,
+        conditioning_correct=conditioning_correct,
+        transfer_responses=transfer_responses,
+        transfer_questions=[q.question for q in transfer_qs],
+        transfer_expected=[q.expected_answer for q in transfer_qs],
+        start_time=start,
+        end_time=time.time(),
+    )
+    result.compute_checksum()
+    return result
+
+
 async def run_single(
     config: ExperimentConfig,
     client: ModelClient,
     run_number: int,
 ) -> RunResult:
     """Run a single conditioning + transfer experiment."""
+    if config.is_base_model:
+        return await _run_single_base(config, client, run_number)
     start = time.time()
     
     # Generate problems and transfer questions
@@ -210,19 +304,28 @@ class _BudgetedClient(ModelClient):
     def model_name(self) -> str:
         return self._wrapped.model_name
 
-    async def complete(self, messages, temperature=0.7, max_tokens=1024):
+    async def _check_and_gate(self) -> None:
         if (self._budget is not None
                 and self._budget.max_api_calls is not None
                 and self.call_count >= self._budget.max_api_calls):
             raise BatchBudgetExceeded(
                 f"max_api_calls={self._budget.max_api_calls} reached"
             )
-        # Rate-limit AFTER the budget check so a capped batch doesn't sit
-        # waiting on tokens it will never spend.
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
         self.call_count += 1
+
+    async def complete(self, messages, temperature=0.7, max_tokens=1024):
+        await self._check_and_gate()
         return await self._wrapped.complete(messages, temperature, max_tokens)
+
+    async def complete_text(self, prompt, temperature=0.7, max_tokens=1024, stop=None):
+        """Proxy for base-model path. Applies the same budget + rate-limit
+        gates as complete()."""
+        await self._check_and_gate()
+        return await self._wrapped.complete_text(  # type: ignore[attr-defined]
+            prompt, temperature=temperature, max_tokens=max_tokens, stop=stop,
+        )
 
 
 class EventEmitter:

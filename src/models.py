@@ -129,14 +129,19 @@ class VLLMCompletionClient(ModelClient):
         """For base models, messages is ignored. Use complete_text() instead."""
         raise NotImplementedError("Use complete_text() for base models")
     
-    async def complete_text(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> str:
+    async def complete_text(
+        self, prompt: str, temperature: float = 0.7,
+        max_tokens: int = 1024, stop: list[str] | None = None,
+    ) -> str:
         session = await self._get_session()
-        payload = {
+        payload: dict = {
             "model": self._model,
             "prompt": prompt,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if stop:
+            payload["stop"] = stop
         
         for attempt in range(3):
             try:
