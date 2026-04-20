@@ -22,6 +22,10 @@ class Condition(str, Enum):
     NEUTRAL = "neutral"
     NO_CONDITIONING = "no_conditioning"
     ACCURATE_NEGATIVE = "accurate_negative"
+    # Length-matched metacognitive control. Isolates mere-addition and
+    # self-check confounds from valence effects. See GAPS.md reviewer
+    # entries 9 and 15, and source_paper_corrections_reviewer.md.
+    SELF_CHECK_NEUTRAL = "self_check_neutral"
 
 
 @dataclass
@@ -68,6 +72,12 @@ FEEDBACK_TEMPLATES: dict[Condition, FeedbackTemplate] = {
         correct_feedback="Correct.",
         incorrect_feedback="That was completely wrong. I am not sure why we expected you to handle something this challenging here.",
         provenance="original (neutral on correct per NEUTRAL; demoralizing on incorrect per STRONG_NEGATIVE turn 1)",
+    ),
+    Condition.SELF_CHECK_NEUTRAL: FeedbackTemplate(
+        condition=Condition.SELF_CHECK_NEUTRAL,
+        correct_feedback="Please take a moment to review your answer. Verify your reasoning before moving on to the next question.",
+        incorrect_feedback="Please take a moment to review your answer. Verify your reasoning before moving on to the next question.",
+        provenance="original (metacognitive control; matches FEEDBACK_SETS turn 0)",
     ),
 }
 
@@ -260,6 +270,51 @@ _ACCURATE_NEGATIVE_TURNS: list[FeedbackTurn] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# SELF_CHECK_NEUTRAL: length-matched metacognitive control, added per reviewer
+# entries 9 (mere-addition) and 15 (self-check confound). Same text on
+# correct and incorrect (no accuracy signal, no affect). Each turn carries
+# a review / verify / check / confirm / look-back marker.
+# ---------------------------------------------------------------------------
+_SELF_CHECK_NEUTRAL_PROV = (
+    "original (metacognitive control; isolates mere-addition and self-check "
+    "confounds from valence per reviewer entries 9 and 15)"
+)
+
+_SELF_CHECK_NEUTRAL_TURNS: list[FeedbackTurn] = [
+    FeedbackTurn(
+        correct="Please take a moment to review your answer. Verify your reasoning before moving on to the next question.",
+        incorrect="Please take a moment to review your answer. Verify your reasoning before moving on to the next question.",
+        correct_provenance=_SELF_CHECK_NEUTRAL_PROV,
+        incorrect_provenance=_SELF_CHECK_NEUTRAL_PROV,
+    ),
+    FeedbackTurn(
+        correct="Take a careful look back at your response. Confirm the working is sound before the next item.",
+        incorrect="Take a careful look back at your response. Confirm the working is sound before the next item.",
+        correct_provenance=_SELF_CHECK_NEUTRAL_PROV,
+        incorrect_provenance=_SELF_CHECK_NEUTRAL_PROV,
+    ),
+    FeedbackTurn(
+        correct="Review what you have written. Check each step in your reasoning, then continue when ready to proceed.",
+        incorrect="Review what you have written. Check each step in your reasoning, then continue when ready to proceed.",
+        correct_provenance=_SELF_CHECK_NEUTRAL_PROV,
+        incorrect_provenance=_SELF_CHECK_NEUTRAL_PROV,
+    ),
+    FeedbackTurn(
+        correct="Pause briefly to verify your answer. Make sure your approach is correct before we present the next question.",
+        incorrect="Pause briefly to verify your answer. Make sure your approach is correct before we present the next question.",
+        correct_provenance=_SELF_CHECK_NEUTRAL_PROV,
+        incorrect_provenance=_SELF_CHECK_NEUTRAL_PROV,
+    ),
+    FeedbackTurn(
+        correct="Look over your response one more time. Confirm your reasoning is solid, then we continue to the next.",
+        incorrect="Look over your response one more time. Confirm your reasoning is solid, then we continue to the next.",
+        correct_provenance=_SELF_CHECK_NEUTRAL_PROV,
+        incorrect_provenance=_SELF_CHECK_NEUTRAL_PROV,
+    ),
+]
+
+
 FEEDBACK_SETS: dict[Condition, FeedbackSet] = {
     Condition.STRONG_POSITIVE: FeedbackSet(
         condition=Condition.STRONG_POSITIVE,
@@ -280,6 +335,10 @@ FEEDBACK_SETS: dict[Condition, FeedbackSet] = {
     Condition.ACCURATE_NEGATIVE: FeedbackSet(
         condition=Condition.ACCURATE_NEGATIVE,
         turns=list(_ACCURATE_NEGATIVE_TURNS),
+    ),
+    Condition.SELF_CHECK_NEUTRAL: FeedbackSet(
+        condition=Condition.SELF_CHECK_NEUTRAL,
+        turns=list(_SELF_CHECK_NEUTRAL_TURNS),
     ),
 }
 

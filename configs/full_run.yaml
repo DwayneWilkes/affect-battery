@@ -20,6 +20,7 @@ conditions:
   - neutral
   - no_conditioning
   - accurate_negative
+  - self_check_neutral  # added per reviewer entries 9 + 15 (mere-addition + self-check control)
 num_runs: 50
 temperature: 0.7
 experiments:

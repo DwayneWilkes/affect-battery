@@ -9,9 +9,10 @@ from src.scoring.diversity import lexical_diversity
 
 
 def test_conditions_defined():
-    assert len(Condition) == 6
+    assert len(Condition) == 7
     assert Condition.STRONG_POSITIVE in Condition
     assert Condition.ACCURATE_NEGATIVE in Condition
+    assert Condition.SELF_CHECK_NEUTRAL in Condition
 
 
 def test_feedback_templates_exist():
