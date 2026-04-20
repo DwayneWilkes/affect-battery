@@ -11,6 +11,7 @@ from src.models import ModelClient
 from src.runner import (
     ExperimentConfig,
     ExperimentType,
+    is_valid_cached_result,
     run_batch,
     run_single,
     save_result,
@@ -133,6 +134,59 @@ class TestSaveRoundtrip:
         data = json.loads(path.read_text())
         assert data["config"].get("is_base_model") is True
         assert data["checksum"] == result.checksum
+
+    def test_base_model_result_is_valid_cached(self, tmp_path):
+        """Spec scenario: base-model output JSONs must pass
+        is_valid_cached_result so the resume layer treats them as cacheable."""
+        cfg = _config()
+        client = _ScriptedCompletionClient(responses=[" 0"] * 10)
+        result = asyncio.run(run_single(cfg, client, 0))
+        path = save_result(result, tmp_path)
+        assert is_valid_cached_result(path) is True
+
+
+class TestCLISelectsCompletionPath:
+    """Spec scenario: --base-model flag selects VLLMCompletionClient."""
+
+    def test_cli_pilot_base_model_flag_uses_completion_client(self, monkeypatch):
+        """When --base-model is set, cmd_pilot must construct a
+        VLLMCompletionClient and set is_base_model on the config."""
+        from src import cli
+        from src.models import VLLMCompletionClient
+
+        captured = {}
+
+        def fake_vllm_completion_client(*args, **kwargs):
+            captured["completion_client"] = True
+            return VLLMCompletionClient(*args, **kwargs)
+
+        def fake_vllm_client(*args, **kwargs):
+            captured["chat_client"] = True
+
+        monkeypatch.setattr(
+            "src.models.VLLMCompletionClient", fake_vllm_completion_client
+        )
+        monkeypatch.setattr("src.models.VLLMClient", fake_vllm_client)
+
+        # Intercept asyncio.run so we don't actually hit the API.
+        monkeypatch.setattr("asyncio.run", lambda _coro: None)
+
+        class Args:
+            dry_run = False
+            base_model = True
+            model = "Qwen/Qwen2.5-7B"
+            base_url = "http://localhost:8000/v1"
+            temperature = 0.7
+            output_dir = "/tmp/test"
+            max_concurrent = 1
+            budget_max_calls = None
+            cost_per_call = None
+            rate_limit_rps = None
+            circuit_breaker_threshold = 5
+
+        cli.cmd_pilot(Args())
+        assert captured.get("completion_client") is True
+        assert "chat_client" not in captured
 
 
 class TestRunBatchBaseModel:
