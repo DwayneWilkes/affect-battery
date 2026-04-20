@@ -190,6 +190,16 @@ def test_run_failed_event_emitted_on_non_retryable(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+class _FakeRequestInfo:
+    """Minimal aiohttp RequestInfo shim sufficient for ClientResponseError."""
+    def __init__(self):
+        from yarl import URL
+        self.real_url = URL("http://test.example/v1/chat/completions")
+        self.url = self.real_url
+        self.method = "POST"
+        self.headers = {}
+
+
 class _FakeResponse:
     def __init__(self, status: int, payload: dict | None = None):
         self.status = status
@@ -204,8 +214,8 @@ class _FakeResponse:
     def raise_for_status(self):
         if self.status >= 400:
             raise aiohttp.ClientResponseError(
-                request_info=None, history=(), status=self.status,
-                message=f"HTTP {self.status}",
+                request_info=_FakeRequestInfo(), history=(),
+                status=self.status, message=f"HTTP {self.status}",
             )
 
     async def json(self):
@@ -246,3 +256,53 @@ def test_vllm_client_raises_non_retryable_on_4xx(status, monkeypatch):
     asyncio.run(go())
     # No retry happened: a single post() call.
     assert session.call_count == 1
+
+
+class _RetryingSession:
+    """Session that returns `retryable_status` for the first N calls, then
+    a 200 success. Lets us verify the retry loop retries and eventually
+    succeeds."""
+
+    def __init__(self, retryable_status: int, fail_n: int):
+        self.retryable_status = retryable_status
+        self.fail_n = fail_n
+        self.call_count = 0
+        self.closed = False
+
+    def post(self, *args, **kwargs):
+        self.call_count += 1
+        if self.call_count <= self.fail_n:
+            return _FakeResponse(status=self.retryable_status)
+        return _FakeResponse(status=200, payload={
+            "choices": [{"message": {"content": "ok-after-retry"}}]
+        })
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize("status", [429, 500])
+def test_vllm_client_retries_on_retryable_status(status, monkeypatch):
+    """Spec: 429 and 5xx are retried with exponential backoff."""
+    client = VLLMClient(base_url="http://unused", model="test")
+    session = _RetryingSession(retryable_status=status, fail_n=2)
+
+    async def fake_get_session():
+        return session
+
+    monkeypatch.setattr(client, "_get_session", fake_get_session)
+    # Patch models.asyncio.sleep (the one the retry loop calls) so the test
+    # isn't slowed by the exponential backoff. Use an awaitable no-op.
+    async def _no_sleep(_d):
+        return None
+
+    import src.models
+    monkeypatch.setattr(src.models.asyncio, "sleep", _no_sleep)
+
+    async def go():
+        return await client.complete([{"role": "user", "content": "hi"}])
+
+    result = asyncio.run(go())
+    assert result == "ok-after-retry"
+    # Two failures + one success = 3 calls total.
+    assert session.call_count == 3

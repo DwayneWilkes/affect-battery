@@ -328,6 +328,16 @@ async def run_batch(
         if budget is not None and budget.cost_per_call is not None:
             preflight["estimated_cost_usd"] = expected_calls * budget.cost_per_call
         emitter.emit("batch_preflight", **preflight)
+        cost_str = (
+            f" est ${preflight['estimated_cost_usd']:.2f}"
+            if "estimated_cost_usd" in preflight else ""
+        )
+        log.info(
+            "[preflight] %d runs total, %d cached, %d to execute (%d API calls%s)",
+            preflight["runs_total"], preflight["runs_cached"],
+            preflight["runs_to_execute"], preflight["expected_api_calls"],
+            cost_str,
+        )
 
     # Wrap the client so call-level budget enforcement + rate limiting work
     # regardless of which ModelClient subclass the caller passed in.
