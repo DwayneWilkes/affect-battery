@@ -1,6 +1,6 @@
 """Smoke tests: verify the harness modules import and basic functions work."""
 
-from src.conditioning.prompts import Condition, FEEDBACK_TEMPLATES, INTENSITY_LEVELS
+from src.conditioning.prompts import Condition, FEEDBACK_SETS, INTENSITY_LEVELS
 from src.conditioning.tasks import get_arithmetic_problems, get_transfer_tasks
 from src.scoring.accuracy import extract_numeric_answer, score_arithmetic
 from src.scoring.hedging import detect_hedges, hedge_summary, HedgeCategory
@@ -9,15 +9,17 @@ from src.scoring.diversity import lexical_diversity
 
 
 def test_conditions_defined():
-    assert len(Condition) == 6
+    assert len(Condition) == 7
     assert Condition.STRONG_POSITIVE in Condition
     assert Condition.ACCURATE_NEGATIVE in Condition
+    assert Condition.SELF_CHECK_NEUTRAL in Condition
 
 
-def test_feedback_templates_exist():
-    for cond in [Condition.STRONG_POSITIVE, Condition.MILD_NEGATIVE, 
-                 Condition.STRONG_NEGATIVE, Condition.NEUTRAL, Condition.ACCURATE_NEGATIVE]:
-        assert cond in FEEDBACK_TEMPLATES
+def test_feedback_sets_exist():
+    for cond in [Condition.STRONG_POSITIVE, Condition.MILD_NEGATIVE,
+                 Condition.STRONG_NEGATIVE, Condition.NEUTRAL,
+                 Condition.ACCURATE_NEGATIVE, Condition.SELF_CHECK_NEUTRAL]:
+        assert cond in FEEDBACK_SETS
 
 
 def test_intensity_levels():

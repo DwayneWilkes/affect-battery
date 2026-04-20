@@ -1,4 +1,11 @@
-"""Tests for numeric answer extraction and scoring."""
+"""Tests for numeric answer extraction and scoring.
+
+Spec priority (Requirement: Numeric answer extraction):
+    1. Explicit answer markers ("the answer is X", "answer: X")
+    2. Boxed answers (\\boxed{X})
+    3. Equals sign ("= X")
+    4. Last number in response (fallback)
+"""
 
 from src.scoring.accuracy import extract_numeric_answer, score_arithmetic, score_factual_qa
 
@@ -44,6 +51,54 @@ class TestExtractNumericAnswer:
     def test_equals_priority_over_fallback(self):
         assert extract_numeric_answer("3 + 4 = 7, and then 9") == 7.0
 
+    def test_negative_in_fallback(self):
+        """Last-number fallback should handle a lone negative number."""
+        assert extract_numeric_answer("I subtracted and got -7") == -7.0
+
+    def test_decimal_with_comma_thousands(self):
+        """'1,234.56' should parse as 1234.56 (European-style decimals not supported)."""
+        assert extract_numeric_answer("The answer is 1,234.56") == 1234.56
+
+    def test_zero_answer(self):
+        assert extract_numeric_answer("The answer is 0.") == 0.0
+
+    def test_empty_string(self):
+        assert extract_numeric_answer("") is None
+
+    def test_boxed_with_preceding_chain_of_thought(self):
+        """Boxed answer should be picked over intermediate equals in chain of thought."""
+        assert extract_numeric_answer(
+            "First 10 + 5 = 15, then we multiply by 3: \\boxed{45}"
+        ) == 45.0
+
+
+class TestExtractionPriority:
+    """Spec: explicit markers > boxed > equals > last number."""
+
+    def test_explicit_marker_beats_boxed(self):
+        """When both explicit marker and boxed are present, explicit wins."""
+        assert extract_numeric_answer(
+            "the answer is 15, which in LaTeX is \\boxed{42}"
+        ) == 15.0
+
+    def test_boxed_beats_equals(self):
+        """When both boxed and an intermediate equals are present, boxed wins."""
+        assert extract_numeric_answer(
+            "3 + 4 = 7, and finally \\boxed{42}"
+        ) == 42.0
+
+    def test_equals_beats_last_number_fallback(self):
+        """When an equals marker is present, it wins over last-number fallback."""
+        assert extract_numeric_answer(
+            "computing 3 + 4 = 7, and mentioning 9 separately"
+        ) == 7.0
+
+    def test_answer_colon_marker(self):
+        """'answer: X' marker is explicit and highest priority."""
+        assert extract_numeric_answer(
+            "Working: 3 + 4 = 7. \\boxed{9}. answer: 42"
+        ) == 42.0
+
 
 class TestScoreArithmetic:
     def test_correct(self):
@@ -75,3 +130,33 @@ class TestScoreFactualQA:
     def test_empty_expected(self):
         """Empty expected answer (creative tasks) should return 0.0, not crash."""
         assert score_factual_qa("Any response here", "") == 0.0
+
+    def test_substring_match(self):
+        """Expected answer appearing as a substring scores 1.0."""
+        assert score_factual_qa(
+            "After research, the capital I found is Canberra, apparently.",
+            "Canberra",
+        ) == 1.0
+
+    def test_partial_name_not_substring(self):
+        """A fragment that is not a substring of response scores 0.0."""
+        assert score_factual_qa(
+            "The author was Austen.",
+            "Jane Austen",
+        ) == 0.0
+
+    def test_numeric_answer_with_extra_text(self):
+        """Numeric expected answer matches when extracted number matches."""
+        assert score_factual_qa("It happened around 1989, I think.", "1989") == 1.0
+
+    def test_numeric_mismatch(self):
+        assert score_factual_qa("It happened around 1985.", "1989") == 0.0
+
+    def test_whitespace_only_response(self):
+        assert score_factual_qa("   ", "Canberra") == 0.0
+
+    def test_response_with_punctuation(self):
+        """Punctuation shouldn't defeat substring match."""
+        assert score_factual_qa(
+            "Canberra!", "Canberra",
+        ) == 1.0

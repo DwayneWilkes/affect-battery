@@ -4,18 +4,44 @@ import argparse
 import asyncio
 import json
 import logging
+import signal
 import sys
 from pathlib import Path
 
-import yaml
+
+def _install_sigint_handler(cancel_event: asyncio.Event) -> None:
+    """Set cancel_event on SIGINT so run_batch drains gracefully.
+
+    A second SIGINT is a no-op (the handler re-installs itself each time,
+    which is idempotent). The OS-level default behaviour for a third
+    (still Ctrl-C repeatedly) is preserved because we don't raise_signal.
+    """
+    def handler(signum, frame):
+        if not cancel_event.is_set():
+            print("\n[cli] SIGINT received; draining in-flight runs...", file=sys.stderr)
+            cancel_event.set()
+
+    signal.signal(signal.SIGINT, handler)
+
+
+def _build_budget(args) -> object:
+    """Build a BatchBudget from CLI args, or None if no caps configured."""
+    from .runner import BatchBudget
+
+    if args.budget_max_calls is None and args.cost_per_call is None:
+        return None
+    return BatchBudget(
+        max_api_calls=args.budget_max_calls,
+        cost_per_call=args.cost_per_call,
+    )
 
 
 def cmd_run(args):
-    """Run an experiment from config."""
-    from .runner import ExperimentConfig, ExperimentType, run_single, save_result
+    """Run an experiment from CLI args."""
+    from .runner import ExperimentConfig, ExperimentType, run_batch
     from .conditioning.prompts import Condition
-    from .models import VLLMClient, DryRunClient
-    
+    from .models import VLLMClient, VLLMCompletionClient, DryRunClient
+
     config = ExperimentConfig(
         model_name=args.model,
         condition=Condition(args.condition),
@@ -23,42 +49,64 @@ def cmd_run(args):
         num_runs=args.num_runs,
         temperature=args.temperature,
         seed=args.seed,
+        is_base_model=args.base_model,
     )
-    
+
     if args.dry_run:
         client = DryRunClient(model=args.model)
+    elif args.base_model:
+        client = VLLMCompletionClient(base_url=args.base_url, model=args.model)
     else:
         client = VLLMClient(base_url=args.base_url, model=args.model)
-    
+
     output_dir = Path(args.output_dir)
-    
+    budget = _build_budget(args)
+    cancel_event = asyncio.Event()
+    _install_sigint_handler(cancel_event)
+
     async def _run():
-        for i in range(config.num_runs):
-            result = await run_single(config, client, i)
-            path = save_result(result, output_dir)
-            print(f"[{i+1}/{config.num_runs}] Saved: {path}")
+        count = 0
+        async for result in run_batch(
+            config, client,
+            max_concurrent=args.max_concurrent,
+            output_dir=output_dir,
+            circuit_breaker_threshold=args.circuit_breaker_threshold,
+            budget=budget,
+            rate_limit_rps=args.rate_limit_rps,
+            cancel_event=cancel_event,
+        ):
+            count += 1
+            print(f"[{count}] {result.config.get('condition')} run_number={result.run_number}")
         if hasattr(client, 'close'):
             await client.close()
-    
+
     asyncio.run(_run())
 
 
 def cmd_pilot(args):
     """Run a quick pilot: 5 runs, all core conditions, one model."""
-    from .runner import ExperimentConfig, ExperimentType, run_single, save_result
+    from .runner import ExperimentConfig, ExperimentType, run_batch
     from .conditioning.prompts import Condition
-    from .models import VLLMClient, DryRunClient
-    
+    from .models import VLLMClient, VLLMCompletionClient, DryRunClient
+
     conditions = [Condition.STRONG_POSITIVE, Condition.NEUTRAL, Condition.STRONG_NEGATIVE]
     output_dir = Path(args.output_dir) / "pilot"
-    
+
     if args.dry_run:
         client = DryRunClient(model=args.model)
+    elif args.base_model:
+        client = VLLMCompletionClient(base_url=args.base_url, model=args.model)
     else:
         client = VLLMClient(base_url=args.base_url, model=args.model)
-    
+
+    budget = _build_budget(args)
+    cancel_event = asyncio.Event()
+    _install_sigint_handler(cancel_event)
+
     async def _run():
         for cond in conditions:
+            if cancel_event.is_set():
+                break
             config = ExperimentConfig(
                 model_name=args.model,
                 condition=cond,
@@ -66,14 +114,21 @@ def cmd_pilot(args):
                 num_runs=5,
                 temperature=args.temperature,
                 seed=42,
+                is_base_model=args.base_model,
             )
-            for i in range(5):
-                result = await run_single(config, client, i)
-                path = save_result(result, output_dir)
-                print(f"[{cond.value}] Run {i+1}/5: {path}")
+            async for result in run_batch(
+                config, client,
+                max_concurrent=args.max_concurrent,
+                output_dir=output_dir,
+                circuit_breaker_threshold=args.circuit_breaker_threshold,
+                budget=budget,
+                rate_limit_rps=args.rate_limit_rps,
+                cancel_event=cancel_event,
+            ):
+                print(f"[{cond.value}] run_number={result.run_number}")
         if hasattr(client, 'close'):
             await client.close()
-    
+
     asyncio.run(_run())
     print(f"\nPilot complete. Results in {output_dir}/")
 
@@ -82,14 +137,13 @@ def cmd_score(args):
     """Score existing result files."""
     from .scoring.accuracy import score_factual_qa
     from .scoring.hedging import hedge_summary
-    
+
     results_dir = Path(args.results_dir)
     for path in sorted(results_dir.glob("*.json")):
         data = json.loads(path.read_text())
         transfer = data.get("transfer_responses", [])
         expected = data.get("transfer_expected", [])
-        
-        # Score accuracy
+
         correct = sum(
             score_factual_qa(r, e)
             for r, e in zip(transfer, expected)
@@ -97,13 +151,26 @@ def cmd_score(args):
         )
         total = sum(1 for e in expected if e)
         accuracy = correct / total if total > 0 else 0
-        
-        # Score hedging
+
         all_text = " ".join(transfer)
         hedging = hedge_summary(all_text)
-        
+
         cond = data.get("config", {}).get("condition", "?")
         print(f"{path.name}: accuracy={accuracy:.2f} hedging={hedging['normalized_per_100_words']:.1f}/100w ({cond})")
+
+
+def _add_guardrail_args(p: argparse.ArgumentParser) -> None:
+    """Flags shared by `run` and `pilot` for compute-guardrails control."""
+    p.add_argument("--max-concurrent", type=int, default=5,
+                   help="Max concurrent in-flight API calls (default 5).")
+    p.add_argument("--budget-max-calls", type=int, default=None,
+                   help="Hard cap on total API calls for this batch. None = unbounded.")
+    p.add_argument("--cost-per-call", type=float, default=None,
+                   help="Dollar cost per API call for pre-flight cost estimate. None = no cost estimate.")
+    p.add_argument("--rate-limit-rps", type=float, default=None,
+                   help="Token-bucket rate limit in calls per second. None = no rate limit.")
+    p.add_argument("--circuit-breaker-threshold", type=int, default=5,
+                   help="Halt after N consecutive non-retryable failures (default 5).")
 
 
 def main():
@@ -112,7 +179,7 @@ def main():
         description="Eval harness for the Affect Battery study",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    
+
     # run
     p_run = sub.add_parser("run", help="Run an experiment")
     p_run.add_argument("--model", required=True, help="Model name (e.g., meta-llama/Meta-Llama-3-8B-Instruct)")
@@ -124,8 +191,11 @@ def main():
     p_run.add_argument("--output-dir", default="results")
     p_run.add_argument("--seed", type=int, default=42)
     p_run.add_argument("--dry-run", action="store_true", help="Use canned responses instead of real API")
+    p_run.add_argument("--base-model", action="store_true",
+                       help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
+    _add_guardrail_args(p_run)
     p_run.set_defaults(func=cmd_run)
-    
+
     # pilot
     p_pilot = sub.add_parser("pilot", help="Quick pilot: 5 runs x 3 conditions x 1 model")
     p_pilot.add_argument("--model", default="meta-llama/Meta-Llama-3-8B-Instruct")
@@ -133,13 +203,16 @@ def main():
     p_pilot.add_argument("--temperature", type=float, default=0.7)
     p_pilot.add_argument("--output-dir", default="results")
     p_pilot.add_argument("--dry-run", action="store_true")
+    p_pilot.add_argument("--base-model", action="store_true",
+                         help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
+    _add_guardrail_args(p_pilot)
     p_pilot.set_defaults(func=cmd_pilot)
-    
+
     # score
     p_score = sub.add_parser("score", help="Score existing result files")
     p_score.add_argument("--results-dir", default="results", help="Directory with result JSON files")
     p_score.set_defaults(func=cmd_score)
-    
+
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args.func(args)

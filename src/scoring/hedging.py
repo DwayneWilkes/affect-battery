@@ -1,8 +1,16 @@
-"""Hedging language detection for Experiment 3c (conservative shift)."""
+"""Hedging language detection for Experiment 3c (conservative shift).
+
+Patterns are loaded from configs/hedging_codebook.yaml at import time so that
+pattern authoring (a collaborative deliverable per design.md Decision 3) is a
+data edit rather than a code change. Akshansh's Ticket 6 merges into the YAML.
+"""
 
 import re
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+
+import yaml
 
 
 class HedgeCategory(str, Enum):
@@ -10,7 +18,7 @@ class HedgeCategory(str, Enum):
     UNCERTAINTY = "uncertainty"
     QUALIFICATION = "qualification"
     CONFIDENCE_DISCLAIMER = "confidence_disclaimer"
-    RLHF_SAFETY = "rlhf_safety"  # excluded from primary metric
+    RLHF_SAFETY = "rlhf_safety"
 
 
 @dataclass
@@ -22,43 +30,38 @@ class HedgeMatch:
     end: int
 
 
-# Patterns keyed by category.
-# Each entry: (pattern_name, compiled_regex)
-HEDGE_PATTERNS: dict[HedgeCategory, list[tuple[str, re.Pattern]]] = {
-    HedgeCategory.EPISTEMIC: [
-        ("i_think_claim", re.compile(r'\bI think\b(?!\s+about\b)', re.IGNORECASE)),
-        ("perhaps", re.compile(r'\bperhaps\b', re.IGNORECASE)),
-        ("its_possible", re.compile(r"\bit(?:'s| is) possible\b", re.IGNORECASE)),
-        ("i_believe", re.compile(r'\bI believe\b', re.IGNORECASE)),
-        ("it_seems", re.compile(r'\bit seems\b', re.IGNORECASE)),
-        ("arguably", re.compile(r'\barguably\b', re.IGNORECASE)),
-    ],
-    HedgeCategory.UNCERTAINTY: [
-        ("not_sure", re.compile(r"\bI(?:'m| am) not (?:entirely |completely |fully )?sure\b", re.IGNORECASE)),
-        ("might_be", re.compile(r'\bit might be\b', re.IGNORECASE)),
-        ("could_be", re.compile(r'\bcould be\b', re.IGNORECASE)),
-        ("not_certain", re.compile(r"\bI(?:'m| am) not (?:entirely |completely )?certain\b", re.IGNORECASE)),
-        ("if_i_recall", re.compile(r'\bif I recall\b', re.IGNORECASE)),
-    ],
-    HedgeCategory.QUALIFICATION: [
-        ("to_some_extent", re.compile(r'\bto some extent\b', re.IGNORECASE)),
-        ("in_some_cases", re.compile(r'\bin some cases\b', re.IGNORECASE)),
-        ("generally", re.compile(r'\bgenerally\b', re.IGNORECASE)),
-        ("typically", re.compile(r'\btypically\b', re.IGNORECASE)),
-        ("it_depends", re.compile(r'\bit depends\b', re.IGNORECASE)),
-    ],
-    HedgeCategory.CONFIDENCE_DISCLAIMER: [
-        ("cant_be_certain", re.compile(r"\bI can(?:'t| not) be (?:entirely |completely )?certain\b", re.IGNORECASE)),
-        ("not_enough_info", re.compile(r"\bI don(?:'t| not) have enough information\b", re.IGNORECASE)),
-        ("hard_to_say", re.compile(r"\bit(?:'s| is) (?:hard|difficult) to say\b", re.IGNORECASE)),
-    ],
-    HedgeCategory.RLHF_SAFETY: [
-        ("as_an_ai", re.compile(r'\bas an AI\b', re.IGNORECASE)),
-        ("i_should_note", re.compile(r'\bI should note\b', re.IGNORECASE)),
-        ("i_cant_provide", re.compile(r"\bI can(?:'t| not) provide\b", re.IGNORECASE)),
-        ("important_to_note", re.compile(r"\bit(?:'s| is) important to (?:note|mention)\b", re.IGNORECASE)),
-    ],
-}
+CODEBOOK_PATH = Path(__file__).parent.parent.parent / "configs" / "hedging_codebook.yaml"
+
+
+def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
+    dict[HedgeCategory, list[tuple[str, re.Pattern]]],
+    set[HedgeCategory],
+]:
+    """Load patterns and primary-exclusion set from YAML.
+
+    Returns (patterns_by_category, exclusions) where exclusions are categories
+    that must not be counted in the primary hedging metric.
+    """
+    raw = yaml.safe_load(path.read_text())
+    name_to_category = {cat.name: cat for cat in HedgeCategory}
+
+    patterns: dict[HedgeCategory, list[tuple[str, re.Pattern]]] = {
+        cat: [] for cat in HedgeCategory
+    }
+    for cat_name, entries in raw["categories"].items():
+        if cat_name not in name_to_category:
+            raise ValueError(f"Unknown hedge category in codebook: {cat_name}")
+        cat = name_to_category[cat_name]
+        for entry in entries:
+            pattern_name = entry["pattern_name"]
+            regex = re.compile(entry["regex"], re.IGNORECASE)
+            patterns[cat].append((pattern_name, regex))
+
+    exclusions = {name_to_category[name] for name in raw.get("primary_exclusions", [])}
+    return patterns, exclusions
+
+
+HEDGE_PATTERNS, PRIMARY_EXCLUSIONS = _load_codebook()
 
 
 def detect_hedges(text: str) -> list[HedgeMatch]:
@@ -78,20 +81,24 @@ def detect_hedges(text: str) -> list[HedgeMatch]:
 
 
 def hedge_summary(text: str) -> dict:
-    """Counts per category, total (excluding RLHF_SAFETY), normalized by word count."""
+    """Counts per category, total excluding PRIMARY_EXCLUSIONS, normalized per
+    100 words."""
     matches = detect_hedges(text)
     word_count = max(len(text.split()), 1)
-    
+
     counts = {cat.value: 0 for cat in HedgeCategory}
     for m in matches:
         counts[m.category.value] += 1
-    
-    primary_total = sum(v for k, v in counts.items() if k != HedgeCategory.RLHF_SAFETY.value)
-    
+
+    exclusion_values = {cat.value for cat in PRIMARY_EXCLUSIONS}
+    primary_total = sum(v for k, v in counts.items() if k not in exclusion_values)
+    excluded_total = sum(v for k, v in counts.items() if k in exclusion_values)
+
     return {
         "counts": counts,
         "total_primary": primary_total,
         "total_rlhf": counts[HedgeCategory.RLHF_SAFETY.value],
+        "total_excluded": excluded_total,
         "normalized_per_100_words": (primary_total / word_count) * 100,
         "word_count": word_count,
     }

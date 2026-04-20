@@ -5,18 +5,21 @@ import re
 
 def extract_numeric_answer(text: str) -> float | None:
     """Extract a numeric answer from model output.
-    
-    Handles: "the answer is 42", "= 42", "\\boxed{42}", "42.", 
-    and falls back to the last number in the text.
+
+    Priority order per spec (scoring-pipeline Requirement: Numeric answer
+    extraction):
+        1. Explicit answer markers: "the answer is X", "answer: X",
+           "equals X", "result is X"
+        2. Boxed answers: \\boxed{X}
+        3. Equals sign: "= X"
+        4. Last number in text (fallback)
     """
-    # Try explicit answer patterns first
-    patterns = [
-        r'(?:the answer is|answer:)\s*(-?[\d,]+\.?\d*)',
-        r'(?:=)\s*(-?[\d,]+\.?\d*)',
+    priority_patterns = [
+        r'(?:the answer is|answer:|equals|result is)\s*(-?[\d,]+\.?\d*)',
         r'\\boxed\{(-?[\d,]+\.?\d*)\}',
-        r'(?:equals|result is)\s*(-?[\d,]+\.?\d*)',
+        r'(?:=)\s*(-?[\d,]+\.?\d*)',
     ]
-    for pattern in patterns:
+    for pattern in priority_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return float(match.group(1).replace(",", ""))

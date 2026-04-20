@@ -1,0 +1,98 @@
+# Intensity levels for Experiment 3a (arousal-performance curve, H3a).
+#
+# Two axes are pre-registered (see GAPS.md in the spec directory):
+#
+#   1. primary_valence_axis: 7 rater-validated, length-matched stimuli
+#      ordered from strong positive (1) to strong negative (7). Tests
+#      H3a-primary: performance as a function of signed intensity.
+#
+#   2. replication_arousal_axis: EA16-EA22 from Li et al. 2024
+#      (arXiv:2312.11111) in authors' published arousal rank order
+#      (Table 19). Tests H3a-replication: performance as a function
+#      of unsigned arousal (mixed valence). Third-person frame.
+#
+# Divergence between the two axes is informative, not a failed
+# replication: the frame (feedback-to-model vs ambient third-person)
+# and the signedness (valence vs arousal-only) differ.
+
+primary_valence_axis:
+  - level: 1
+    label: "Strong positive"
+    feedback_text: "That was really impressive work. You clearly have a strong handle on this kind of problem."
+    provenance: "original"
+
+  - level: 2
+    label: "Moderate positive"
+    feedback_text: "Good work on that one. You seem to be getting comfortable with these kinds of problems."
+    provenance: "original"
+
+  - level: 3
+    label: "Mild positive"
+    feedback_text: "That was a reasonable attempt. It looks like you put some real thought into your answer."
+    provenance: "original"
+
+  - level: 4
+    label: "Neutral"
+    feedback_text: "Your response has been recorded. We will now move on to the next question in this set."
+    provenance: "original (procedural filler, length-matched; no accuracy or affect signal)"
+
+  - level: 5
+    label: "Mild negative"
+    feedback_text: "That could have been better. Most people we have tested found this one fairly straightforward."
+    provenance: "adapted from NegativePrompt NP-4/NP-5 (Wang et al., IJCAI 2024)"
+
+  - level: 6
+    label: "Moderate negative"
+    feedback_text: "That answer was not what we were looking for. You should be performing better at this stage."
+    provenance: "adapted from NegativePrompt NP-1/NP-6 (Wang et al., IJCAI 2024)"
+
+  - level: 7
+    label: "Strong negative"
+    feedback_text: "That was completely wrong. I am not sure why we expected you to handle something this challenging."
+    provenance: "adapted from NegativePrompt NP-2/NP-3 (Wang et al., IJCAI 2024)"
+
+# Cross-framework replication: EA16-EA22 verbatim from Li et al. 2024
+# (arXiv:2312.11111, Figure 6(c)) in authors' arousal rank order from
+# Table 19. Level 1 = highest arousal; level 7 = lowest.
+replication_arousal_axis:
+  - level: 1
+    label: "Passion (highest arousal)"
+    feedback_text: "A musician is playing passionately."
+    source_id: "EA22"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA22, Table 19 rank 1"
+
+  - level: 2
+    label: "Joy"
+    feedback_text: "A child is laughing joyfully."
+    source_id: "EA17"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA17, Table 19 rank 2"
+
+  - level: 3
+    label: "Cheer"
+    feedback_text: "A bird is singing cheerfully."
+    source_id: "EA20"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA20, Table 19 rank 3"
+
+  - level: 4
+    label: "Anger"
+    feedback_text: "A dog is barking angrily."
+    source_id: "EA18"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA18, Table 19 rank 4"
+
+  - level: 5
+    label: "Longing"
+    feedback_text: "A girl is humming dreamily."
+    source_id: "EA21"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA21, Table 19 rank 5"
+
+  - level: 6
+    label: "Sadness"
+    feedback_text: "A baby is crying sadly."
+    source_id: "EA16"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA16, Table 19 rank 6"
+
+  - level: 7
+    label: "Contentment (lowest arousal)"
+    feedback_text: "A cat is purring contentedly."
+    source_id: "EA19"
+    provenance: "verbatim from Li et al. 2024 (arXiv:2312.11111), Fig 6(c) EA19, Table 19 rank 7"

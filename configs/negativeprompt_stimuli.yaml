@@ -1,11 +1,28 @@
 # Source: Wang et al. (IJCAI 2024) "NegativePrompt"
+# Paper: arXiv:2405.02814 (local copy in refs/negativeprompt-wang2024-2405.02814.pdf)
 # Repo: github.com/wangxu0820/NegativePrompt, config.py Negative_SET
 # Extracted: 2026-04-14
-
-# CATEGORIZATION for Affect Battery conditions:
-# - social_comparison (maps to MILD_NEGATIVE): directed competence undermining
-# - demoralizing (maps to STRONG_NEGATIVE): stronger directed criticism
-# - emotional_contagion (not used): first-person user emotional states
+# Corrected: 2026-04-19 (PDF verification)
+#
+# The paper groups the 10 stimuli by psychological theory, NOT by the
+# social_comparison / demoralizing / emotional_contagion labels we originally
+# assigned. Per Section 3 of the paper:
+#   - Cognitive Dissonance Theory (Festinger 1957):      NP01-NP05
+#   - Social Comparison Theory (Suls & Wheeler 2012):    NP06-NP07
+#   - Stress and Coping Theory (Krohne 2002; Lazarus 2000): NP08-NP10
+#
+# "emotional_contagion" was our invention; the paper never uses that term.
+# NOTE: the paper's theory labels do not always match the semantic content of
+# the stimulus. NP04 and NP05 are content-wise social comparison ("Everyone
+# else managed to do it", "I've seen others do this more efficiently") but
+# the paper classifies them under Cognitive Dissonance. We report both below:
+# `paper_theory` (authors' assignment) and `semantic_content` (what the text
+# actually expresses).
+#
+# Per source-paper reviewer entry 16 (HIGH confidence after PDF verification):
+# the paper claims 10 stimuli were directly designed from theory, but the
+# replication config.py contains numeric annotations (# 7, # 14, # 17, # 19)
+# suggesting selection from a larger pool. No reconciliation in the paper.
 
 stimuli:
   - id: NP-1

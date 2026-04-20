@@ -1,3 +1,5 @@
+# Compute guardrails via CLI flags: --budget-max-calls, --cost-per-call,
+# --rate-limit-rps, --circuit-breaker-threshold. See full_run.yaml header.
 experiment: pilot
 models:
   - name: meta-llama/Meta-Llama-3-8B-Instruct

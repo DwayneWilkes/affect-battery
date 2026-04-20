@@ -1,6 +1,15 @@
-"""Semantic and lexical diversity scoring for Experiment 3b."""
+"""Lexical and semantic diversity scoring for Experiment 3b.
 
-from collections import Counter
+Lexical diversity is type-token ratio over n-grams (n in {2,3,4}). TTR is
+length-dependent; cross-condition comparisons are valid when conditions
+have similar mean response length. Use MTLD/HDD for very different lengths.
+
+Semantic diversity is a deferred placeholder requiring sentence-transformers.
+"""
+
+import logging
+
+log = logging.getLogger(__name__)
 
 
 def _ngrams(tokens: list[str], n: int) -> list[tuple]:
@@ -31,12 +40,19 @@ def lexical_diversity(texts: list[str], n_gram_sizes: tuple[int, ...] = (2, 3, 4
     return results
 
 
+_SEMANTIC_DIVERSITY_WARNING_EMITTED = False
+
+
 def semantic_diversity(texts: list[str]) -> float:
-    """Placeholder for embedding-based semantic diversity.
-    
-    Requires sentence-transformers (optional dependency).
-    Returns cosine distance variance from centroid across texts.
-    
-    TODO: Implement with sentence-transformers when embeddings dependency is added.
-    """
+    """Deferred placeholder: returns 0.0 and warns. Full implementation
+    (cosine distance variance from centroid) needs sentence-transformers."""
+    global _SEMANTIC_DIVERSITY_WARNING_EMITTED
+    if not _SEMANTIC_DIVERSITY_WARNING_EMITTED:
+        log.warning(
+            "semantic_diversity is deferred (sentence-transformers not installed). "
+            "Returning 0.0 placeholder."
+        )
+        _SEMANTIC_DIVERSITY_WARNING_EMITTED = True
+    else:
+        log.warning("semantic_diversity placeholder called; returning 0.0.")
     return 0.0

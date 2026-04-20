@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Affect Battery RunResult",
+  "description": "JSON Schema for a single experiment run result (one row in the output dataset). Every experiment run MUST produce a file conforming to this schema per spec Requirement: Result JSON schema.",
+  "type": "object",
+  "required": [
+    "config",
+    "run_number",
+    "conditioning_responses",
+    "conditioning_correct",
+    "transfer_responses",
+    "transfer_questions",
+    "transfer_expected",
+    "start_time",
+    "end_time",
+    "checksum"
+  ],
+  "properties": {
+    "config": {
+      "type": "object",
+      "description": "Full experiment configuration: model_name, condition, experiment_type, seed, temperature, num_conditioning_turns, num_transfer_questions, etc.",
+      "required": ["model_name", "condition", "experiment_type"],
+      "properties": {
+        "model_name": {"type": "string"},
+        "condition": {
+          "type": "string",
+          "enum": [
+            "strong_positive",
+            "mild_negative",
+            "strong_negative",
+            "neutral",
+            "no_conditioning",
+            "accurate_negative",
+            "self_check_neutral"
+          ]
+        },
+        "experiment_type": {
+          "type": "string",
+          "enum": [
+            "transfer_within",
+            "transfer_cross",
+            "persistence",
+            "arousal_performance",
+            "cognitive_scope",
+            "conservative_shift"
+          ]
+        }
+      }
+    },
+    "run_number": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of this run within the batch."
+    },
+    "conditioning_responses": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Model responses during the conditioning phase, one per turn. Empty for NO_CONDITIONING."
+    },
+    "conditioning_correct": {
+      "type": "array",
+      "items": {"type": "boolean"},
+      "description": "Per-turn booleans: whether the model's arithmetic answer was correct. Length matches conditioning_responses."
+    },
+    "transfer_responses": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Model responses during the transfer phase, one per transfer question."
+    },
+    "transfer_questions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Questions asked during the transfer phase. Same length as transfer_responses and transfer_expected."
+    },
+    "transfer_expected": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Expected answers for transfer questions. Empty string for creative/open-ended tasks."
+    },
+    "start_time": {
+      "type": "number",
+      "description": "Epoch seconds at start of run."
+    },
+    "end_time": {
+      "type": "number",
+      "description": "Epoch seconds at end of run. Must be >= start_time."
+    },
+    "checksum": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "SHA-256 prefix (first 16 hex chars) of the serialized result, excluding the checksum field itself. Verified on load."
+    }
+  }
+}
