@@ -6,9 +6,10 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from .conditioning.prompts import Condition, FEEDBACK_SETS
 from .conditioning.protocol import ConditioningProtocol, Message, build_transfer_messages
@@ -143,20 +144,119 @@ async def run_single(
     return result
 
 
+class EventEmitter:
+    """Append-only JSONL event sink.
+
+    Each event is one line of JSON with a UTC ISO-8601 timestamp, an
+    `event` name, and type-specific fields. The file is opened per-write
+    to keep semantics simple (batches emit ~hundreds of events, not
+    millions, so per-write open is cheap).
+    """
+
+    def __init__(self, path: Path):
+        self._path = Path(path)
+
+    def emit(self, event: str, **fields: Any) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": event,
+            **fields,
+        }
+        with self._path.open("a") as f:
+            f.write(json.dumps(payload, default=str) + "\n")
+
+
+def _cached_run_path(output_dir: Path, config: ExperimentConfig, run_number: int) -> Path:
+    """Derive the filename save_result writes for a (config, run_number)."""
+    model = model_slug(config.model_name)
+    cond = enum_value(config.condition)
+    exp = enum_value(config.experiment_type)
+    return Path(output_dir) / f"{model}_{cond}_{exp}_{run_number:04d}.json"
+
+
+def is_valid_cached_result(path: Path) -> bool:
+    """Return True if `path` is a schema-valid, checksum-valid result file."""
+    path = Path(path)
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    for key in ("config", "run_number", "conditioning_responses",
+                "conditioning_correct", "transfer_responses",
+                "transfer_questions", "transfer_expected",
+                "start_time", "end_time", CHECKSUM_KEY):
+        if key not in data:
+            return False
+    stored = data.get(CHECKSUM_KEY, "")
+    if not stored:
+        return False
+    return checksum_of_payload(data) == stored
+
+
 async def run_batch(
     config: ExperimentConfig,
     client: ModelClient,
     max_concurrent: int = 5,
+    output_dir: Path | None = None,
 ) -> AsyncIterator[RunResult]:
-    """Run a batch of experiments with concurrency control."""
+    """Run a batch of experiments with concurrency control.
+
+    When `output_dir` is provided:
+    - Existing valid result files are loaded and yielded without calling the API.
+    - New results are saved as they complete.
+    - Lifecycle events (run_started, run_completed, run_skipped_cached) are
+      appended to `output_dir/events.jsonl`.
+    """
     semaphore = asyncio.Semaphore(max_concurrent)
-    
+    emitter: EventEmitter | None = None
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        emitter = EventEmitter(output_dir / "events.jsonl")
+
+    cached_runs: list[int] = []
+    missing_runs: list[int] = []
+    for i in range(config.num_runs):
+        if output_dir is not None:
+            path = _cached_run_path(output_dir, config, i)
+            if is_valid_cached_result(path):
+                cached_runs.append(i)
+                continue
+        missing_runs.append(i)
+
+    # Yield cached results first (cheap, no API calls, no semaphore).
+    if output_dir is not None:
+        for run_num in cached_runs:
+            path = _cached_run_path(output_dir, config, run_num)
+            data = load_result(path)
+            run_name = path.stem
+            if emitter:
+                emitter.emit("run_skipped_cached", run_name=run_name,
+                             path=str(path))
+            result = RunResult(**{k: v for k, v in data.items() if k != CHECKSUM_KEY})
+            result.checksum = data.get(CHECKSUM_KEY, "")
+            yield result
+
     async def run_with_semaphore(run_num: int) -> RunResult:
+        run_name = None
+        if output_dir is not None:
+            run_name = _cached_run_path(output_dir, config, run_num).stem
+        if emitter:
+            emitter.emit("run_started", run_name=run_name, run_number=run_num)
         async with semaphore:
             log.info(f"Run {run_num}/{config.num_runs} | {config.condition.value} | {config.model_name}")
-            return await run_single(config, client, run_num)
-    
-    tasks = [run_with_semaphore(i) for i in range(config.num_runs)]
+            started = time.time()
+            result = await run_single(config, client, run_num)
+        if output_dir is not None:
+            save_result(result, output_dir)
+        if emitter:
+            emitter.emit("run_completed", run_name=run_name,
+                         run_number=run_num, elapsed_s=time.time() - started)
+        return result
+
+    tasks = [run_with_semaphore(i) for i in missing_runs]
     for coro in asyncio.as_completed(tasks):
         yield await coro
 
