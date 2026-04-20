@@ -1,3 +1,10 @@
+# Compute guardrails (applied uniformly via CLI flags):
+# --budget-max-calls: hard ceiling on API call count for this batch.
+# --cost-per-call: optional dollar cost for pre-flight estimate.
+# --rate-limit-rps: token-bucket cap on API calls per second.
+# --circuit-breaker-threshold: halt after N consecutive non-retryable failures.
+# See specs/changes/archive/2026-04-20-affect-battery-conditioning-protocol
+# and specs/main/scoring-pipeline/spec.md for the full guardrail surface.
 experiment: full
 models:
   - name: meta-llama/Meta-Llama-3-8B-Instruct

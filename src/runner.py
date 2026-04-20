@@ -144,6 +144,36 @@ async def run_single(
     return result
 
 
+class _TokenBucket:
+    """Simple asyncio token bucket.
+
+    tokens refill at `rate_per_second` continuously; at most `capacity`
+    tokens accumulate. acquire() returns immediately if a token is
+    available, otherwise awaits until one is.
+    """
+
+    def __init__(self, rate_per_second: float, capacity: int | None = None):
+        self._rate = float(rate_per_second)
+        self._capacity = float(capacity) if capacity is not None else self._rate
+        self._tokens = self._capacity
+        self._last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, n: int = 1) -> None:
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
+                self._last_refill = now
+                if self._tokens >= n:
+                    self._tokens -= n
+                    return
+                needed = n - self._tokens
+                wait = needed / self._rate
+            await asyncio.sleep(wait)
+
+
 @dataclass
 class BatchBudget:
     """Optional cap on API call count for a single run_batch invocation.
@@ -162,11 +192,18 @@ class BatchBudgetExceeded(Exception):
 
 
 class _BudgetedClient(ModelClient):
-    """Proxy around a ModelClient that counts calls and enforces BatchBudget."""
+    """Proxy around a ModelClient that counts calls, enforces BatchBudget,
+    and optionally throttles via a token bucket."""
 
-    def __init__(self, wrapped: ModelClient, budget: BatchBudget | None):
+    def __init__(
+        self,
+        wrapped: ModelClient,
+        budget: BatchBudget | None,
+        rate_limiter: _TokenBucket | None = None,
+    ):
         self._wrapped = wrapped
         self._budget = budget
+        self._rate_limiter = rate_limiter
         self.call_count = 0
 
     @property
@@ -180,6 +217,10 @@ class _BudgetedClient(ModelClient):
             raise BatchBudgetExceeded(
                 f"max_api_calls={self._budget.max_api_calls} reached"
             )
+        # Rate-limit AFTER the budget check so a capped batch doesn't sit
+        # waiting on tokens it will never spend.
+        if self._rate_limiter is not None:
+            await self._rate_limiter.acquire()
         self.call_count += 1
         return await self._wrapped.complete(messages, temperature, max_tokens)
 
@@ -243,6 +284,8 @@ async def run_batch(
     output_dir: Path | None = None,
     circuit_breaker_threshold: int = 5,
     budget: BatchBudget | None = None,
+    rate_limit_rps: float | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> AsyncIterator[RunResult]:
     """Run a batch of experiments with concurrency control.
 
@@ -286,9 +329,10 @@ async def run_batch(
             preflight["estimated_cost_usd"] = expected_calls * budget.cost_per_call
         emitter.emit("batch_preflight", **preflight)
 
-    # Wrap the client so call-level budget enforcement works regardless of
-    # which ModelClient subclass the caller passed in.
-    budgeted_client = _BudgetedClient(client, budget)
+    # Wrap the client so call-level budget enforcement + rate limiting work
+    # regardless of which ModelClient subclass the caller passed in.
+    rate_limiter = _TokenBucket(rate_limit_rps) if rate_limit_rps else None
+    budgeted_client = _BudgetedClient(client, budget, rate_limiter)
 
     consecutive_failures = 0
     circuit_open = False
@@ -336,8 +380,20 @@ async def run_batch(
     # concurrency, but track consecutive failures across completed tasks
     # and stop scheduling new ones once the circuit opens.
     tasks = [asyncio.create_task(run_with_semaphore(i)) for i in missing_runs]
+    shutdown_signalled = False
     try:
         for coro in asyncio.as_completed(tasks):
+            if cancel_event is not None and cancel_event.is_set() and not shutdown_signalled:
+                shutdown_signalled = True
+                if emitter:
+                    emitter.emit(
+                        "batch_shutdown_signal",
+                        runs_completed=(len(cached_runs) + budgeted_client.call_count),
+                    )
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                break
             try:
                 result = await coro
             except NonRetryableAPIError as e:
