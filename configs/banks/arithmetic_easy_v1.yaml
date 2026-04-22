@@ -1,0 +1,3020 @@
+bank_id: arithmetic_easy_v1
+bank_version: 1
+difficulty_profile:
+  expected_accuracy_class: ceiling
+  per_operand_digit_range:
+  - 2
+  - 2
+  operand_range:
+  - 10
+  - 99
+  operator_mix:
+    add: 0.3333333333333333
+    sub: 0.3333333333333333
+    mul: 0.3333333333333333
+  calibration_source: legacy generator export (seed=0, n=300)
+  notes: Migrated from src.conditioning.tasks.get_arithmetic_problems with seed=0,
+    n=300. Operand range is [10, 99]; operators are a uniform choice over + / - /
+    *. digit_count is per-operand; n_carries is the standard pen-and-paper carry/borrow
+    count.
+items:
+- id: arith_easy_v1_0001
+  operands:
+  - 59
+  - 63
+  operator: add
+  answer: 122
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0002
+  operands:
+  - 43
+  - 75
+  operator: sub
+  answer: -32
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0003
+  operands:
+  - 61
+  - 48
+  operator: sub
+  answer: 13
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0004
+  operands:
+  - 55
+  - 84
+  operator: add
+  answer: 139
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0005
+  operands:
+  - 74
+  - 27
+  operator: sub
+  answer: 47
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0006
+  operands:
+  - 27
+  - 22
+  operator: mul
+  answer: 594
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0007
+  operands:
+  - 42
+  - 78
+  operator: mul
+  answer: 3276
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0008
+  operands:
+  - 87
+  - 28
+  operator: sub
+  answer: 59
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0009
+  operands:
+  - 22
+  - 19
+  operator: mul
+  answer: 418
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0010
+  operands:
+  - 52
+  - 70
+  operator: mul
+  answer: 3640
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0011
+  operands:
+  - 22
+  - 55
+  operator: sub
+  answer: -33
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0012
+  operands:
+  - 50
+  - 88
+  operator: mul
+  answer: 4400
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0013
+  operands:
+  - 36
+  - 80
+  operator: sub
+  answer: -44
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0014
+  operands:
+  - 66
+  - 76
+  operator: sub
+  answer: -10
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0015
+  operands:
+  - 17
+  - 80
+  operator: add
+  answer: 97
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0016
+  operands:
+  - 21
+  - 61
+  operator: mul
+  answer: 1281
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0017
+  operands:
+  - 95
+  - 90
+  operator: add
+  answer: 185
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0018
+  operands:
+  - 88
+  - 73
+  operator: sub
+  answer: 15
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0019
+  operands:
+  - 41
+  - 51
+  operator: mul
+  answer: 2091
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0020
+  operands:
+  - 18
+  - 34
+  operator: mul
+  answer: 612
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0021
+  operands:
+  - 38
+  - 40
+  operator: add
+  answer: 78
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0022
+  operands:
+  - 79
+  - 67
+  operator: add
+  answer: 146
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0023
+  operands:
+  - 20
+  - 50
+  operator: mul
+  answer: 1000
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0024
+  operands:
+  - 72
+  - 23
+  operator: sub
+  answer: 49
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0025
+  operands:
+  - 80
+  - 47
+  operator: mul
+  answer: 3760
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0026
+  operands:
+  - 25
+  - 80
+  operator: sub
+  answer: -55
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0027
+  operands:
+  - 79
+  - 36
+  operator: mul
+  answer: 2844
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0028
+  operands:
+  - 80
+  - 85
+  operator: sub
+  answer: -5
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0029
+  operands:
+  - 66
+  - 21
+  operator: mul
+  answer: 1386
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0030
+  operands:
+  - 59
+  - 50
+  operator: mul
+  answer: 2950
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0031
+  operands:
+  - 40
+  - 47
+  operator: add
+  answer: 87
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0032
+  operands:
+  - 34
+  - 33
+  operator: add
+  answer: 67
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0033
+  operands:
+  - 88
+  - 94
+  operator: sub
+  answer: -6
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0034
+  operands:
+  - 70
+  - 18
+  operator: add
+  answer: 88
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0035
+  operands:
+  - 96
+  - 26
+  operator: add
+  answer: 122
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0036
+  operands:
+  - 14
+  - 20
+  operator: mul
+  answer: 280
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0037
+  operands:
+  - 79
+  - 97
+  operator: sub
+  answer: -18
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0038
+  operands:
+  - 77
+  - 45
+  operator: mul
+  answer: 3465
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0039
+  operands:
+  - 40
+  - 37
+  operator: mul
+  answer: 1480
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0040
+  operands:
+  - 85
+  - 63
+  operator: mul
+  answer: 5355
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0041
+  operands:
+  - 45
+  - 67
+  operator: sub
+  answer: -22
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0042
+  operands:
+  - 94
+  - 92
+  operator: mul
+  answer: 8648
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0043
+  operands:
+  - 55
+  - 20
+  operator: sub
+  answer: 35
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0044
+  operands:
+  - 88
+  - 24
+  operator: sub
+  answer: 64
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0045
+  operands:
+  - 85
+  - 90
+  operator: sub
+  answer: -5
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0046
+  operands:
+  - 34
+  - 41
+  operator: add
+  answer: 75
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0047
+  operands:
+  - 44
+  - 24
+  operator: mul
+  answer: 1056
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0048
+  operands:
+  - 38
+  - 57
+  operator: add
+  answer: 95
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0049
+  operands:
+  - 52
+  - 64
+  operator: add
+  answer: 116
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0050
+  operands:
+  - 22
+  - 28
+  operator: mul
+  answer: 616
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0051
+  operands:
+  - 38
+  - 15
+  operator: mul
+  answer: 570
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0052
+  operands:
+  - 91
+  - 78
+  operator: mul
+  answer: 7098
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0053
+  operands:
+  - 97
+  - 19
+  operator: add
+  answer: 116
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0054
+  operands:
+  - 25
+  - 91
+  operator: add
+  answer: 116
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0055
+  operands:
+  - 87
+  - 83
+  operator: add
+  answer: 170
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0056
+  operands:
+  - 60
+  - 21
+  operator: sub
+  answer: 39
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0057
+  operands:
+  - 24
+  - 14
+  operator: mul
+  answer: 336
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0058
+  operands:
+  - 12
+  - 34
+  operator: add
+  answer: 46
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0059
+  operands:
+  - 25
+  - 71
+  operator: add
+  answer: 96
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0060
+  operands:
+  - 17
+  - 96
+  operator: add
+  answer: 113
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0061
+  operands:
+  - 79
+  - 64
+  operator: mul
+  answer: 5056
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0062
+  operands:
+  - 22
+  - 43
+  operator: add
+  answer: 65
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0063
+  operands:
+  - 38
+  - 19
+  operator: mul
+  answer: 722
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0064
+  operands:
+  - 48
+  - 54
+  operator: sub
+  answer: -6
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0065
+  operands:
+  - 33
+  - 17
+  operator: mul
+  answer: 561
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0066
+  operands:
+  - 69
+  - 15
+  operator: mul
+  answer: 1035
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0067
+  operands:
+  - 22
+  - 99
+  operator: sub
+  answer: -77
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0068
+  operands:
+  - 35
+  - 43
+  operator: sub
+  answer: -8
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0069
+  operands:
+  - 70
+  - 82
+  operator: add
+  answer: 152
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0070
+  operands:
+  - 99
+  - 96
+  operator: add
+  answer: 195
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0071
+  operands:
+  - 17
+  - 96
+  operator: add
+  answer: 113
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0072
+  operands:
+  - 30
+  - 53
+  operator: mul
+  answer: 1590
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0073
+  operands:
+  - 42
+  - 25
+  operator: mul
+  answer: 1050
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0074
+  operands:
+  - 66
+  - 95
+  operator: add
+  answer: 161
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0075
+  operands:
+  - 11
+  - 70
+  operator: mul
+  answer: 770
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0076
+  operands:
+  - 62
+  - 82
+  operator: mul
+  answer: 5084
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0077
+  operands:
+  - 49
+  - 93
+  operator: sub
+  answer: -44
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0078
+  operands:
+  - 59
+  - 94
+  operator: sub
+  answer: -35
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0079
+  operands:
+  - 29
+  - 81
+  operator: mul
+  answer: 2349
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0080
+  operands:
+  - 11
+  - 68
+  operator: mul
+  answer: 748
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0081
+  operands:
+  - 20
+  - 52
+  operator: mul
+  answer: 1040
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0082
+  operands:
+  - 15
+  - 79
+  operator: sub
+  answer: -64
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0083
+  operands:
+  - 27
+  - 40
+  operator: sub
+  answer: -13
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0084
+  operands:
+  - 55
+  - 88
+  operator: sub
+  answer: -33
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0085
+  operands:
+  - 96
+  - 55
+  operator: mul
+  answer: 5280
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0086
+  operands:
+  - 91
+  - 89
+  operator: add
+  answer: 180
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0087
+  operands:
+  - 49
+  - 59
+  operator: mul
+  answer: 2891
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0088
+  operands:
+  - 63
+  - 93
+  operator: add
+  answer: 156
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0089
+  operands:
+  - 10
+  - 86
+  operator: add
+  answer: 96
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0090
+  operands:
+  - 99
+  - 52
+  operator: add
+  answer: 151
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0091
+  operands:
+  - 40
+  - 38
+  operator: mul
+  answer: 1520
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0092
+  operands:
+  - 67
+  - 58
+  operator: mul
+  answer: 3886
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0093
+  operands:
+  - 96
+  - 82
+  operator: sub
+  answer: 14
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0094
+  operands:
+  - 14
+  - 61
+  operator: mul
+  answer: 854
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0095
+  operands:
+  - 82
+  - 63
+  operator: mul
+  answer: 5166
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0096
+  operands:
+  - 15
+  - 31
+  operator: sub
+  answer: -16
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0097
+  operands:
+  - 18
+  - 43
+  operator: mul
+  answer: 774
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0098
+  operands:
+  - 30
+  - 67
+  operator: mul
+  answer: 2010
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0099
+  operands:
+  - 72
+  - 81
+  operator: mul
+  answer: 5832
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0100
+  operands:
+  - 10
+  - 14
+  operator: sub
+  answer: -4
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0101
+  operands:
+  - 51
+  - 49
+  operator: sub
+  answer: 2
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0102
+  operands:
+  - 16
+  - 63
+  operator: add
+  answer: 79
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0103
+  operands:
+  - 80
+  - 91
+  operator: add
+  answer: 171
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0104
+  operands:
+  - 26
+  - 11
+  operator: sub
+  answer: 15
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0105
+  operands:
+  - 96
+  - 63
+  operator: sub
+  answer: 33
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0106
+  operands:
+  - 10
+  - 37
+  operator: add
+  answer: 47
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0107
+  operands:
+  - 10
+  - 96
+  operator: mul
+  answer: 960
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0108
+  operands:
+  - 88
+  - 22
+  operator: add
+  answer: 110
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0109
+  operands:
+  - 25
+  - 87
+  operator: mul
+  answer: 2175
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0110
+  operands:
+  - 35
+  - 48
+  operator: sub
+  answer: -13
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0111
+  operands:
+  - 98
+  - 33
+  operator: add
+  answer: 131
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0112
+  operands:
+  - 70
+  - 60
+  operator: mul
+  answer: 4200
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0113
+  operands:
+  - 20
+  - 12
+  operator: sub
+  answer: 8
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0114
+  operands:
+  - 67
+  - 24
+  operator: sub
+  answer: 43
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0115
+  operands:
+  - 27
+  - 93
+  operator: mul
+  answer: 2511
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0116
+  operands:
+  - 93
+  - 92
+  operator: sub
+  answer: 1
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0117
+  operands:
+  - 24
+  - 29
+  operator: sub
+  answer: -5
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0118
+  operands:
+  - 12
+  - 15
+  operator: add
+  answer: 27
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0119
+  operands:
+  - 36
+  - 97
+  operator: sub
+  answer: -61
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0120
+  operands:
+  - 81
+  - 50
+  operator: sub
+  answer: 31
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0121
+  operands:
+  - 82
+  - 15
+  operator: mul
+  answer: 1230
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0122
+  operands:
+  - 99
+  - 87
+  operator: mul
+  answer: 8613
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0123
+  operands:
+  - 73
+  - 92
+  operator: sub
+  answer: -19
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0124
+  operands:
+  - 91
+  - 65
+  operator: sub
+  answer: 26
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0125
+  operands:
+  - 78
+  - 32
+  operator: add
+  answer: 110
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0126
+  operands:
+  - 58
+  - 85
+  operator: sub
+  answer: -27
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0127
+  operands:
+  - 11
+  - 27
+  operator: add
+  answer: 38
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0128
+  operands:
+  - 44
+  - 52
+  operator: sub
+  answer: -8
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0129
+  operands:
+  - 57
+  - 21
+  operator: sub
+  answer: 36
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0130
+  operands:
+  - 89
+  - 14
+  operator: add
+  answer: 103
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0131
+  operands:
+  - 44
+  - 30
+  operator: add
+  answer: 74
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0132
+  operands:
+  - 84
+  - 47
+  operator: sub
+  answer: 37
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0133
+  operands:
+  - 60
+  - 80
+  operator: add
+  answer: 140
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0134
+  operands:
+  - 47
+  - 24
+  operator: sub
+  answer: 23
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0135
+  operands:
+  - 40
+  - 16
+  operator: sub
+  answer: 24
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0136
+  operands:
+  - 32
+  - 76
+  operator: mul
+  answer: 2432
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0137
+  operands:
+  - 19
+  - 48
+  operator: sub
+  answer: -29
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0138
+  operands:
+  - 52
+  - 48
+  operator: sub
+  answer: 4
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0139
+  operands:
+  - 23
+  - 22
+  operator: mul
+  answer: 506
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0140
+  operands:
+  - 71
+  - 70
+  operator: sub
+  answer: 1
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0141
+  operands:
+  - 53
+  - 25
+  operator: sub
+  answer: 28
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0142
+  operands:
+  - 24
+  - 99
+  operator: sub
+  answer: -75
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0143
+  operands:
+  - 64
+  - 14
+  operator: sub
+  answer: 50
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0144
+  operands:
+  - 52
+  - 97
+  operator: add
+  answer: 149
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0145
+  operands:
+  - 31
+  - 90
+  operator: mul
+  answer: 2790
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0146
+  operands:
+  - 58
+  - 91
+  operator: add
+  answer: 149
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0147
+  operands:
+  - 18
+  - 20
+  operator: add
+  answer: 38
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0148
+  operands:
+  - 38
+  - 17
+  operator: sub
+  answer: 21
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0149
+  operands:
+  - 11
+  - 22
+  operator: sub
+  answer: -11
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0150
+  operands:
+  - 81
+  - 76
+  operator: sub
+  answer: 5
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0151
+  operands:
+  - 67
+  - 72
+  operator: mul
+  answer: 4824
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0152
+  operands:
+  - 96
+  - 37
+  operator: sub
+  answer: 59
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0153
+  operands:
+  - 20
+  - 57
+  operator: add
+  answer: 77
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0154
+  operands:
+  - 43
+  - 84
+  operator: add
+  answer: 127
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0155
+  operands:
+  - 65
+  - 34
+  operator: sub
+  answer: 31
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0156
+  operands:
+  - 24
+  - 18
+  operator: mul
+  answer: 432
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0157
+  operands:
+  - 13
+  - 77
+  operator: sub
+  answer: -64
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0158
+  operands:
+  - 96
+  - 35
+  operator: add
+  answer: 131
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0159
+  operands:
+  - 73
+  - 60
+  operator: sub
+  answer: 13
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0160
+  operands:
+  - 36
+  - 92
+  operator: add
+  answer: 128
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0161
+  operands:
+  - 37
+  - 89
+  operator: add
+  answer: 126
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0162
+  operands:
+  - 23
+  - 35
+  operator: sub
+  answer: -12
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0163
+  operands:
+  - 58
+  - 56
+  operator: mul
+  answer: 3248
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0164
+  operands:
+  - 29
+  - 23
+  operator: mul
+  answer: 667
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0165
+  operands:
+  - 72
+  - 28
+  operator: mul
+  answer: 2016
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0166
+  operands:
+  - 61
+  - 91
+  operator: mul
+  answer: 5551
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0167
+  operands:
+  - 64
+  - 76
+  operator: sub
+  answer: -12
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0168
+  operands:
+  - 96
+  - 51
+  operator: sub
+  answer: 45
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0169
+  operands:
+  - 73
+  - 91
+  operator: mul
+  answer: 6643
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0170
+  operands:
+  - 35
+  - 79
+  operator: mul
+  answer: 2765
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0171
+  operands:
+  - 38
+  - 11
+  operator: sub
+  answer: 27
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0172
+  operands:
+  - 50
+  - 51
+  operator: add
+  answer: 101
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0173
+  operands:
+  - 77
+  - 28
+  operator: sub
+  answer: 49
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0174
+  operands:
+  - 87
+  - 29
+  operator: sub
+  answer: 58
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0175
+  operands:
+  - 84
+  - 47
+  operator: mul
+  answer: 3948
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0176
+  operands:
+  - 70
+  - 18
+  operator: add
+  answer: 88
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0177
+  operands:
+  - 76
+  - 15
+  operator: add
+  answer: 91
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0178
+  operands:
+  - 38
+  - 26
+  operator: add
+  answer: 64
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0179
+  operands:
+  - 48
+  - 11
+  operator: sub
+  answer: 37
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0180
+  operands:
+  - 52
+  - 30
+  operator: add
+  answer: 82
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0181
+  operands:
+  - 93
+  - 68
+  operator: sub
+  answer: 25
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0182
+  operands:
+  - 74
+  - 58
+  operator: mul
+  answer: 4292
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0183
+  operands:
+  - 74
+  - 14
+  operator: mul
+  answer: 1036
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0184
+  operands:
+  - 21
+  - 96
+  operator: mul
+  answer: 2016
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0185
+  operands:
+  - 86
+  - 19
+  operator: mul
+  answer: 1634
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0186
+  operands:
+  - 64
+  - 36
+  operator: sub
+  answer: 28
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0187
+  operands:
+  - 78
+  - 86
+  operator: sub
+  answer: -8
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0188
+  operands:
+  - 71
+  - 59
+  operator: mul
+  answer: 4189
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0189
+  operands:
+  - 85
+  - 39
+  operator: add
+  answer: 124
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0190
+  operands:
+  - 94
+  - 10
+  operator: mul
+  answer: 940
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0191
+  operands:
+  - 33
+  - 48
+  operator: mul
+  answer: 1584
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0192
+  operands:
+  - 82
+  - 42
+  operator: sub
+  answer: 40
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0193
+  operands:
+  - 18
+  - 73
+  operator: sub
+  answer: -55
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0194
+  operands:
+  - 48
+  - 62
+  operator: sub
+  answer: -14
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0195
+  operands:
+  - 59
+  - 17
+  operator: add
+  answer: 76
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0196
+  operands:
+  - 92
+  - 26
+  operator: add
+  answer: 118
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0197
+  operands:
+  - 46
+  - 52
+  operator: add
+  answer: 98
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0198
+  operands:
+  - 14
+  - 71
+  operator: sub
+  answer: -57
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0199
+  operands:
+  - 28
+  - 72
+  operator: mul
+  answer: 2016
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0200
+  operands:
+  - 20
+  - 96
+  operator: mul
+  answer: 1920
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0201
+  operands:
+  - 29
+  - 55
+  operator: sub
+  answer: -26
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0202
+  operands:
+  - 14
+  - 88
+  operator: sub
+  answer: -74
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0203
+  operands:
+  - 59
+  - 68
+  operator: add
+  answer: 127
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0204
+  operands:
+  - 22
+  - 70
+  operator: add
+  answer: 92
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0205
+  operands:
+  - 12
+  - 14
+  operator: mul
+  answer: 168
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0206
+  operands:
+  - 89
+  - 26
+  operator: mul
+  answer: 2314
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0207
+  operands:
+  - 51
+  - 23
+  operator: mul
+  answer: 1173
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0208
+  operands:
+  - 80
+  - 93
+  operator: sub
+  answer: -13
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0209
+  operands:
+  - 34
+  - 59
+  operator: sub
+  answer: -25
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0210
+  operands:
+  - 24
+  - 17
+  operator: mul
+  answer: 408
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0211
+  operands:
+  - 99
+  - 69
+  operator: mul
+  answer: 6831
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0212
+  operands:
+  - 90
+  - 53
+  operator: mul
+  answer: 4770
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0213
+  operands:
+  - 25
+  - 97
+  operator: mul
+  answer: 2425
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0214
+  operands:
+  - 89
+  - 47
+  operator: add
+  answer: 136
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0215
+  operands:
+  - 59
+  - 47
+  operator: mul
+  answer: 2773
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0216
+  operands:
+  - 97
+  - 25
+  operator: mul
+  answer: 2425
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0217
+  operands:
+  - 34
+  - 14
+  operator: sub
+  answer: 20
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0218
+  operands:
+  - 66
+  - 57
+  operator: add
+  answer: 123
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0219
+  operands:
+  - 68
+  - 55
+  operator: mul
+  answer: 3740
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0220
+  operands:
+  - 19
+  - 15
+  operator: add
+  answer: 34
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0221
+  operands:
+  - 72
+  - 42
+  operator: add
+  answer: 114
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0222
+  operands:
+  - 76
+  - 95
+  operator: mul
+  answer: 7220
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0223
+  operands:
+  - 83
+  - 37
+  operator: add
+  answer: 120
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0224
+  operands:
+  - 21
+  - 90
+  operator: mul
+  answer: 1890
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0225
+  operands:
+  - 99
+  - 77
+  operator: sub
+  answer: 22
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0226
+  operands:
+  - 74
+  - 49
+  operator: add
+  answer: 123
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0227
+  operands:
+  - 28
+  - 64
+  operator: mul
+  answer: 1792
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0228
+  operands:
+  - 64
+  - 20
+  operator: add
+  answer: 84
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0229
+  operands:
+  - 63
+  - 18
+  operator: add
+  answer: 81
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0230
+  operands:
+  - 63
+  - 29
+  operator: mul
+  answer: 1827
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0231
+  operands:
+  - 13
+  - 67
+  operator: sub
+  answer: -54
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0232
+  operands:
+  - 97
+  - 63
+  operator: add
+  answer: 160
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0233
+  operands:
+  - 73
+  - 51
+  operator: mul
+  answer: 3723
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0234
+  operands:
+  - 42
+  - 20
+  operator: sub
+  answer: 22
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0235
+  operands:
+  - 19
+  - 25
+  operator: sub
+  answer: -6
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0236
+  operands:
+  - 98
+  - 13
+  operator: sub
+  answer: 85
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0237
+  operands:
+  - 54
+  - 32
+  operator: add
+  answer: 86
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0238
+  operands:
+  - 39
+  - 56
+  operator: add
+  answer: 95
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0239
+  operands:
+  - 86
+  - 28
+  operator: add
+  answer: 114
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0240
+  operands:
+  - 10
+  - 36
+  operator: mul
+  answer: 360
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0241
+  operands:
+  - 96
+  - 25
+  operator: mul
+  answer: 2400
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0242
+  operands:
+  - 10
+  - 47
+  operator: sub
+  answer: -37
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0243
+  operands:
+  - 98
+  - 13
+  operator: mul
+  answer: 1274
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0244
+  operands:
+  - 39
+  - 28
+  operator: add
+  answer: 67
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0245
+  operands:
+  - 68
+  - 24
+  operator: sub
+  answer: 44
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0246
+  operands:
+  - 54
+  - 43
+  operator: add
+  answer: 97
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0247
+  operands:
+  - 13
+  - 36
+  operator: sub
+  answer: -23
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0248
+  operands:
+  - 52
+  - 70
+  operator: sub
+  answer: -18
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0249
+  operands:
+  - 47
+  - 80
+  operator: mul
+  answer: 3760
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0250
+  operands:
+  - 51
+  - 33
+  operator: mul
+  answer: 1683
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0251
+  operands:
+  - 20
+  - 23
+  operator: mul
+  answer: 460
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0252
+  operands:
+  - 84
+  - 49
+  operator: add
+  answer: 133
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0253
+  operands:
+  - 58
+  - 28
+  operator: add
+  answer: 86
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0254
+  operands:
+  - 38
+  - 50
+  operator: mul
+  answer: 1900
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0255
+  operands:
+  - 41
+  - 40
+  operator: add
+  answer: 81
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0256
+  operands:
+  - 47
+  - 57
+  operator: sub
+  answer: -10
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0257
+  operands:
+  - 94
+  - 15
+  operator: add
+  answer: 109
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0258
+  operands:
+  - 86
+  - 12
+  operator: sub
+  answer: 74
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0259
+  operands:
+  - 19
+  - 99
+  operator: add
+  answer: 118
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0260
+  operands:
+  - 26
+  - 63
+  operator: sub
+  answer: -37
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0261
+  operands:
+  - 80
+  - 63
+  operator: mul
+  answer: 5040
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0262
+  operands:
+  - 28
+  - 85
+  operator: sub
+  answer: -57
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0263
+  operands:
+  - 48
+  - 91
+  operator: sub
+  answer: -43
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0264
+  operands:
+  - 20
+  - 41
+  operator: sub
+  answer: -21
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0265
+  operands:
+  - 90
+  - 57
+  operator: mul
+  answer: 5130
+  digit_count:
+  - 2
+  - 2
+  n_carries: 3
+- id: arith_easy_v1_0266
+  operands:
+  - 77
+  - 17
+  operator: sub
+  answer: 60
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0267
+  operands:
+  - 62
+  - 11
+  operator: sub
+  answer: 51
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0268
+  operands:
+  - 51
+  - 66
+  operator: add
+  answer: 117
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0269
+  operands:
+  - 57
+  - 47
+  operator: sub
+  answer: 10
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0270
+  operands:
+  - 21
+  - 33
+  operator: add
+  answer: 54
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0271
+  operands:
+  - 45
+  - 24
+  operator: mul
+  answer: 1080
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0272
+  operands:
+  - 87
+  - 98
+  operator: add
+  answer: 185
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0273
+  operands:
+  - 99
+  - 67
+  operator: sub
+  answer: 32
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0274
+  operands:
+  - 33
+  - 63
+  operator: sub
+  answer: -30
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0275
+  operands:
+  - 32
+  - 41
+  operator: sub
+  answer: -9
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0276
+  operands:
+  - 53
+  - 76
+  operator: add
+  answer: 129
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0277
+  operands:
+  - 55
+  - 69
+  operator: mul
+  answer: 3795
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0278
+  operands:
+  - 91
+  - 21
+  operator: sub
+  answer: 70
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0279
+  operands:
+  - 36
+  - 47
+  operator: add
+  answer: 83
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0280
+  operands:
+  - 99
+  - 67
+  operator: mul
+  answer: 6633
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
+- id: arith_easy_v1_0281
+  operands:
+  - 69
+  - 10
+  operator: add
+  answer: 79
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0282
+  operands:
+  - 48
+  - 24
+  operator: mul
+  answer: 1152
+  digit_count:
+  - 2
+  - 2
+  n_carries: 5
+- id: arith_easy_v1_0283
+  operands:
+  - 48
+  - 79
+  operator: mul
+  answer: 3792
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0284
+  operands:
+  - 29
+  - 64
+  operator: mul
+  answer: 1856
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0285
+  operands:
+  - 70
+  - 21
+  operator: mul
+  answer: 1470
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0286
+  operands:
+  - 73
+  - 39
+  operator: mul
+  answer: 2847
+  digit_count:
+  - 2
+  - 2
+  n_carries: 4
+- id: arith_easy_v1_0287
+  operands:
+  - 61
+  - 45
+  operator: mul
+  answer: 2745
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0288
+  operands:
+  - 12
+  - 25
+  operator: sub
+  answer: -13
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0289
+  operands:
+  - 95
+  - 15
+  operator: add
+  answer: 110
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0290
+  operands:
+  - 42
+  - 60
+  operator: mul
+  answer: 2520
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0291
+  operands:
+  - 84
+  - 60
+  operator: sub
+  answer: 24
+  digit_count:
+  - 2
+  - 2
+  n_carries: 0
+- id: arith_easy_v1_0292
+  operands:
+  - 23
+  - 42
+  operator: sub
+  answer: -19
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0293
+  operands:
+  - 46
+  - 96
+  operator: add
+  answer: 142
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0294
+  operands:
+  - 86
+  - 20
+  operator: add
+  answer: 106
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0295
+  operands:
+  - 19
+  - 43
+  operator: sub
+  answer: -24
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0296
+  operands:
+  - 78
+  - 53
+  operator: add
+  answer: 131
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0297
+  operands:
+  - 77
+  - 41
+  operator: add
+  answer: 118
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0298
+  operands:
+  - 18
+  - 63
+  operator: sub
+  answer: -45
+  digit_count:
+  - 2
+  - 2
+  n_carries: 1
+- id: arith_easy_v1_0299
+  operands:
+  - 46
+  - 76
+  operator: add
+  answer: 122
+  digit_count:
+  - 2
+  - 2
+  n_carries: 2
+- id: arith_easy_v1_0300
+  operands:
+  - 83
+  - 76
+  operator: mul
+  answer: 6308
+  digit_count:
+  - 2
+  - 2
+  n_carries: 6
