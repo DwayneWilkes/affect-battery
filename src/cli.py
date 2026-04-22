@@ -8,6 +8,25 @@ import signal
 import sys
 from pathlib import Path
 
+from .conditioning.prompts import Condition
+
+
+# Pilot default conditions: all seven. SELF_CHECK_NEUTRAL is included as the
+# pre-registered length-matched control for STRONG_NEGATIVE so the pilot
+# report can distinguish valence-mediated effects from length/metacognitive-
+# mediated effects without requiring a per-invocation override. See
+# specs/main/task-difficulty-calibration/spec.md "Default pilot conditions
+# list" for the rationale.
+DEFAULT_PILOT_CONDITIONS: tuple[Condition, ...] = (
+    Condition.STRONG_POSITIVE,
+    Condition.MILD_NEGATIVE,
+    Condition.STRONG_NEGATIVE,
+    Condition.NEUTRAL,
+    Condition.NO_CONDITIONING,
+    Condition.ACCURATE_NEGATIVE,
+    Condition.SELF_CHECK_NEUTRAL,
+)
+
 
 def _install_sigint_handler(cancel_event: asyncio.Event) -> None:
     """Set cancel_event on SIGINT so run_batch drains gracefully.
@@ -84,12 +103,19 @@ def cmd_run(args):
 
 
 def cmd_pilot(args):
-    """Run a quick pilot: 5 runs, all core conditions, one model."""
+    """Run a quick pilot: 5 runs × all seven conditions × one model.
+
+    The default conditions list is `DEFAULT_PILOT_CONDITIONS` (exposed at
+    module level so the pipeline orchestrator and tests can reference it
+    without invoking the CLI). SELF_CHECK_NEUTRAL is included as the
+    pre-registered length-matched control for STRONG_NEGATIVE; see
+    specs/main/task-difficulty-calibration/spec.md "Default pilot conditions
+    list" for the rationale.
+    """
     from .runner import ExperimentConfig, ExperimentType, run_batch
-    from .conditioning.prompts import Condition
     from .models import VLLMClient, VLLMCompletionClient, DryRunClient
 
-    conditions = [Condition.STRONG_POSITIVE, Condition.NEUTRAL, Condition.STRONG_NEGATIVE]
+    conditions = list(DEFAULT_PILOT_CONDITIONS)
     output_dir = Path(args.output_dir) / "pilot"
 
     if args.dry_run:
