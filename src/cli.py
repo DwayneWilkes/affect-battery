@@ -68,6 +68,22 @@ def _resolve_bank(bank_id: str | None) -> tuple[str, str]:
         raise SystemExit(2)
 
 
+def cmd_pipeline_run(args) -> None:
+    """Run the content-addressed pipeline from a YAML config.
+
+    Stages default to the 6 canonical ones (bank_gen, calibration, gate,
+    experiment, analysis, archive). The config can list a `stages:` subset
+    to run only a prefix — useful for offline smoke-tests where the
+    pod-dependent stages (calibration, experiment) are skipped.
+    """
+    from src.pipeline.stages import run_pipeline_from_config
+
+    artifacts = run_pipeline_from_config(args.config)
+    print("Pipeline complete. Accumulated artifacts:")
+    for key, val in sorted(artifacts.items()):
+        print(f"  {key}: {val}")
+
+
 def _install_sigint_handler(cancel_event: asyncio.Event) -> None:
     """Set cancel_event on SIGINT so run_batch drains gracefully.
 
@@ -290,6 +306,22 @@ def main():
     p_score = sub.add_parser("score", help="Score existing result files")
     p_score.add_argument("--results-dir", default="results", help="Directory with result JSON files")
     p_score.set_defaults(func=cmd_score)
+
+    # pipeline (nested: pipeline run <config.yaml>)
+    p_pipe = sub.add_parser(
+        "pipeline",
+        help="Content-addressed pipeline orchestrator",
+    )
+    pipe_sub = p_pipe.add_subparsers(dest="pipeline_command", required=True)
+    p_pipe_run = pipe_sub.add_parser(
+        "run",
+        help="Run the pipeline from a YAML config",
+    )
+    p_pipe_run.add_argument(
+        "config",
+        help="Path to pipeline config YAML (stages, bank_gen params, cache_root, etc.)",
+    )
+    p_pipe_run.set_defaults(func=cmd_pipeline_run)
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
