@@ -28,6 +28,46 @@ DEFAULT_PILOT_CONDITIONS: tuple[Condition, ...] = (
 )
 
 
+DEFAULT_BANK_ID: str = "arithmetic_easy_v1"
+
+
+def _list_available_banks() -> list[str]:
+    """List available bank_ids by scanning configs/banks/*.yaml."""
+    banks_dir = Path(__file__).resolve().parent.parent / "configs" / "banks"
+    if not banks_dir.exists():
+        return []
+    return sorted(p.stem for p in banks_dir.glob("*.yaml"))
+
+
+def _resolve_bank(bank_id: str | None) -> tuple[str, str]:
+    """Validate `bank_id` against configs/banks/*.yaml listing and return
+    (bank_id, stimulus_bank_hash). An unknown bank_id exits non-zero with
+    a message listing known bank ids.
+
+    When bank_id is None (caller didn't pass --bank), falls back to
+    DEFAULT_BANK_ID for backward compatibility with pre-Group-5 invocations.
+    """
+    resolved_id = bank_id or DEFAULT_BANK_ID
+    available = _list_available_banks()
+    if resolved_id not in available:
+        print(
+            f"error: unknown bank '{resolved_id}'. "
+            f"Available banks: {', '.join(available) if available else '(none found)'}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    try:
+        from .conditioning.banks import ArithmeticBank
+        bank = ArithmeticBank.load(resolved_id)
+        return resolved_id, bank.stimulus_bank_hash
+    except Exception as e:  # bank loader errors include BankNotFoundError
+        print(
+            f"error: failed to load bank '{resolved_id}': {e}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
 def _install_sigint_handler(cancel_event: asyncio.Event) -> None:
     """Set cancel_event on SIGINT so run_batch drains gracefully.
 
@@ -58,8 +98,9 @@ def _build_budget(args) -> object:
 def cmd_run(args):
     """Run an experiment from CLI args."""
     from .runner import ExperimentConfig, ExperimentType, run_batch
-    from .conditioning.prompts import Condition
     from .models import VLLMClient, VLLMCompletionClient, DryRunClient
+
+    bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
 
     config = ExperimentConfig(
         model_name=args.model,
@@ -69,6 +110,8 @@ def cmd_run(args):
         temperature=args.temperature,
         seed=args.seed,
         is_base_model=args.base_model,
+        stimulus_bank=bank_id,
+        stimulus_bank_hash=bank_hash,
     )
 
     if args.dry_run:
@@ -115,6 +158,7 @@ def cmd_pilot(args):
     from .runner import ExperimentConfig, ExperimentType, run_batch
     from .models import VLLMClient, VLLMCompletionClient, DryRunClient
 
+    bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
     conditions = list(DEFAULT_PILOT_CONDITIONS)
     output_dir = Path(args.output_dir) / "pilot"
 
@@ -141,6 +185,8 @@ def cmd_pilot(args):
                 temperature=args.temperature,
                 seed=42,
                 is_base_model=args.base_model,
+                stimulus_bank=bank_id,
+                stimulus_bank_hash=bank_hash,
             )
             async for result in run_batch(
                 config, client,
@@ -219,6 +265,9 @@ def main():
     p_run.add_argument("--dry-run", action="store_true", help="Use canned responses instead of real API")
     p_run.add_argument("--base-model", action="store_true",
                        help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
+    p_run.add_argument("--bank", default=None,
+                       help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
+                            f"Must exist in configs/banks/<bank>.yaml.")
     _add_guardrail_args(p_run)
     p_run.set_defaults(func=cmd_run)
 
@@ -231,6 +280,9 @@ def main():
     p_pilot.add_argument("--dry-run", action="store_true")
     p_pilot.add_argument("--base-model", action="store_true",
                          help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
+    p_pilot.add_argument("--bank", default=None,
+                         help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
+                              f"Must exist in configs/banks/<bank>.yaml.")
     _add_guardrail_args(p_pilot)
     p_pilot.set_defaults(func=cmd_pilot)
 

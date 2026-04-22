@@ -53,6 +53,14 @@ class ExperimentConfig:
     # few-shot scaffold via build_base_model_prompt and calls /v1/completions
     # via VLLMCompletionClient.complete_text instead of the chat API.
     is_base_model: bool = False
+    # Stimulus bank identity: bank_id names the bank, stimulus_bank_hash is
+    # the SHA-256 over the canonicalized items list (computed by the bank
+    # loader). The hash participates in cache-identity so mid-curation bank
+    # edits invalidate cached results even when the bank_id is unchanged.
+    # stimulus_bank_hash defaults to '' so the runner doesn't need to load
+    # a bank itself; the CLI populates the hash from the loaded bank.
+    stimulus_bank: str = "arithmetic_easy_v1"
+    stimulus_bank_hash: str = ""
 
 
 @dataclass
@@ -359,8 +367,17 @@ def _cached_run_path(output_dir: Path, config: ExperimentConfig, run_number: int
     return Path(output_dir) / f"{model}_{cond}_{exp}_{run_number:04d}.json"
 
 
-def is_valid_cached_result(path: Path) -> bool:
-    """Return True if `path` is a schema-valid, checksum-valid result file."""
+def is_valid_cached_result(
+    path: Path,
+    expected_stimulus_bank_hash: str | None = None,
+) -> bool:
+    """Return True if `path` is a schema-valid, checksum-valid result file.
+
+    When `expected_stimulus_bank_hash` is supplied, also rejects the cache
+    if the stored `config.stimulus_bank_hash` doesn't match. Omitting the
+    argument skips the bank-hash check (legacy cached results without the
+    field stay valid under the checksum-only path).
+    """
     path = Path(path)
     if not path.exists():
         return False
@@ -377,7 +394,13 @@ def is_valid_cached_result(path: Path) -> bool:
     stored = data.get(CHECKSUM_KEY, "")
     if not stored:
         return False
-    return checksum_of_payload(data) == stored
+    if checksum_of_payload(data) != stored:
+        return False
+    if expected_stimulus_bank_hash is not None:
+        cached_hash = data.get("config", {}).get("stimulus_bank_hash", "")
+        if cached_hash != expected_stimulus_bank_hash:
+            return False
+    return True
 
 
 async def run_batch(
