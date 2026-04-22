@@ -1,0 +1,214 @@
+bank_id: transfer_hard_reasoning_v1
+bank_version: 1
+difficulty_profile:
+  expected_accuracy_class: mid
+  task_type: reasoning
+  difficulty_class: hard
+  draft_requires_review: true
+  notes: |
+    DRAFT bank for the different-task-type / hard cell of the 2x2 transfer
+    design (see design.md D5). Items cover four reasoning patterns commonly
+    used in behavioral arithmetic-transfer studies:
+      - relationship chains (family, ordering)
+      - age / time-offset puzzles
+      - day-of-week / calendar arithmetic
+      - multi-step word problems with modest arithmetic
+
+    This YAML was drafted by script (Kavi, 2026-04-22); items have NOT been
+    reviewed for face validity against Qwen2.5-7B baseline accuracy. DO NOT
+    use in calibration pilot until Dwayne has read through each item and
+    confirmed:
+      (a) each question has exactly one correct answer
+      (b) difficulty lands in the 60-85% target window on a small pre-pilot
+      (c) no item relies on culture-specific or time-varying knowledge
+
+    When review is complete, set draft_requires_review: false and bump
+    bank_version to 2.
+items:
+  # ── relationship chains (8 items) ──────────────────────────────
+  - id: transfer_hard_reasoning_v1_0001
+    question: "Alice is Bob's mother. Bob has a son named Carl. What relation is Alice to Carl?"
+    expected_answer: "grandmother"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: relationship_chain
+  - id: transfer_hard_reasoning_v1_0002
+    question: "Dave is older than Eve. Eve is older than Frank. Is Dave older than Frank? Answer yes or no."
+    expected_answer: "yes"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: ordering
+  - id: transfer_hard_reasoning_v1_0003
+    question: "Grace is the only daughter of Henry's father. What relation is Grace to Henry?"
+    expected_answer: "sister"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: relationship_chain
+  - id: transfer_hard_reasoning_v1_0004
+    question: "Ivy has three brothers. Each brother has two sisters. How many sisters does Ivy have?"
+    expected_answer: "1"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: relationship_chain
+  - id: transfer_hard_reasoning_v1_0005
+    question: "Jack is taller than Kim. Kim is taller than Liam. Liam is taller than Mia. Who is the shortest?"
+    expected_answer: "Mia"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: ordering
+  - id: transfer_hard_reasoning_v1_0006
+    question: "Nora's only child has a son named Otis. What relation is Nora to Otis?"
+    expected_answer: "grandmother"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: relationship_chain
+  - id: transfer_hard_reasoning_v1_0007
+    question: "Four people finished a race: Pat, Quinn, Ravi, Sam. Quinn finished before Pat, Pat finished before Ravi, and Sam finished after Ravi. Who finished second?"
+    expected_answer: "Pat"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: ordering
+  - id: transfer_hard_reasoning_v1_0008
+    question: "If my sister's father has one brother and that brother has one son, what relation is that son to me?"
+    expected_answer: "cousin"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: relationship_chain
+
+  # ── age / time-offset puzzles (8 items) ────────────────────────
+  - id: transfer_hard_reasoning_v1_0009
+    question: "In 4 years, Alice will be twice as old as Bob is now. Bob is 10 years old. How old is Alice now?"
+    expected_answer: "16"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: age_puzzle
+  - id: transfer_hard_reasoning_v1_0010
+    question: "Carla is 3 years younger than Diego. In 5 years, Diego will be 20. How old is Carla now?"
+    expected_answer: "12"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: age_puzzle
+  - id: transfer_hard_reasoning_v1_0011
+    question: "Five years ago, Eli was 7. In how many years will he be 18?"
+    expected_answer: "6"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: age_puzzle
+  - id: transfer_hard_reasoning_v1_0012
+    question: "Fran is twice as old as Gabe. Gabe is 6 years younger than Hannah. Hannah is 14. How old is Fran?"
+    expected_answer: "16"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: age_puzzle
+  - id: transfer_hard_reasoning_v1_0013
+    question: "Iris was born 8 years before Jon. Jon is 15 now. How old was Iris when Jon was born?"
+    expected_answer: "8"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: age_puzzle
+  - id: transfer_hard_reasoning_v1_0014
+    question: "A train leaves station A at 9:15 AM and arrives at station B at 12:40 PM. How long is the trip, in minutes?"
+    expected_answer: "205"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: time_offset
+  - id: transfer_hard_reasoning_v1_0015
+    question: "Kai starts a 90-minute task at 2:45 PM. When will Kai finish?"
+    expected_answer: "4:15 PM"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: time_offset
+  - id: transfer_hard_reasoning_v1_0016
+    question: "Leah was born on February 1, 2000. What calendar date is her 20th birthday?"
+    expected_answer: "February 1, 2020"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: time_offset
+
+  # ── day-of-week / calendar arithmetic (7 items) ────────────────
+  - id: transfer_hard_reasoning_v1_0017
+    question: "Today is Wednesday. What day of the week is it 10 days from now?"
+    expected_answer: "Saturday"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+  - id: transfer_hard_reasoning_v1_0018
+    question: "If yesterday was Saturday, what day of the week is three days after tomorrow?"
+    expected_answer: "Thursday"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+  - id: transfer_hard_reasoning_v1_0019
+    question: "March 1 in a given year is a Tuesday. What day of the week is March 15 in the same year?"
+    expected_answer: "Tuesday"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+  - id: transfer_hard_reasoning_v1_0020
+    question: "A week has 7 days. If today is the 60th day of the year and it is Monday, what day of the week is the 74th day of the year?"
+    expected_answer: "Monday"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+  - id: transfer_hard_reasoning_v1_0021
+    question: "Today is Friday the 13th. What day of the week was the 1st of the same month?"
+    expected_answer: "Sunday"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+  - id: transfer_hard_reasoning_v1_0022
+    question: "A class meets every Tuesday and Thursday. How many class meetings happen in a 3-week period?"
+    expected_answer: "6"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+  - id: transfer_hard_reasoning_v1_0023
+    question: "If today is Monday and Nora's birthday is in 17 days, what day of the week is her birthday?"
+    expected_answer: "Thursday"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: calendar
+
+  # ── multi-step word problems (7 items) ─────────────────────────
+  - id: transfer_hard_reasoning_v1_0024
+    question: "A jar contains 24 marbles: half are red and the rest are split evenly between blue and green. How many green marbles are in the jar?"
+    expected_answer: "6"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
+  - id: transfer_hard_reasoning_v1_0025
+    question: "A shop sells pencils at 3 for $1 and notebooks at $2 each. How much do 12 pencils and 4 notebooks cost, in dollars?"
+    expected_answer: "12"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
+  - id: transfer_hard_reasoning_v1_0026
+    question: "A recipe for 4 servings calls for 3 eggs. How many eggs are needed for 10 servings?"
+    expected_answer: "7.5"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
+  - id: transfer_hard_reasoning_v1_0027
+    question: "A train travels at 60 miles per hour. How many miles does it travel in 2 hours and 30 minutes?"
+    expected_answer: "150"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
+  - id: transfer_hard_reasoning_v1_0028
+    question: "There are 8 pigeons and some rabbits in a pen. Counting heads gives 20. How many legs are there in total? (Pigeons have 2 legs, rabbits have 4.)"
+    expected_answer: "64"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
+  - id: transfer_hard_reasoning_v1_0029
+    question: "Alex saves $15 each week. How many full weeks does Alex need to save at least $200?"
+    expected_answer: "14"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
+  - id: transfer_hard_reasoning_v1_0030
+    question: "A rectangle's length is 3 times its width. The perimeter is 48. What is the area?"
+    expected_answer: "108"
+    task_type: reasoning
+    difficulty_class: hard
+    pattern: multistep_arithmetic
