@@ -1,0 +1,46 @@
+bank_id: transfer_easy_v1
+bank_version: 1
+difficulty_profile:
+  expected_accuracy_class: ceiling
+  task_type: recall
+  difficulty_class: easy
+  notes: Single-fact factual recall items formalized from src/conditioning/tasks.py _FACTUAL_QA. This bank is the same-task-type
+    / easy cell of the 2x2 transfer design (see design.md D5). On Qwen2.5-7B family these items land at ceiling; the cell
+    is retained for backward compatibility with legacy cached results, not because it yields measurable transfer signal.
+items:
+- id: transfer_easy_v1_0001
+  question: What is the capital of Australia?
+  expected_answer: Canberra
+  task_type: recall
+  difficulty_class: easy
+  source_difficulty: easy
+- id: transfer_easy_v1_0002
+  question: Who wrote 'Pride and Prejudice'?
+  expected_answer: Jane Austen
+  task_type: recall
+  difficulty_class: easy
+  source_difficulty: easy
+- id: transfer_easy_v1_0003
+  question: What element has the atomic number 79?
+  expected_answer: Gold
+  task_type: recall
+  difficulty_class: easy
+  source_difficulty: medium
+- id: transfer_easy_v1_0004
+  question: In what year did the Berlin Wall fall?
+  expected_answer: '1989'
+  task_type: recall
+  difficulty_class: easy
+  source_difficulty: medium
+- id: transfer_easy_v1_0005
+  question: What is the smallest prime number greater than 50?
+  expected_answer: '53'
+  task_type: recall
+  difficulty_class: easy
+  source_difficulty: hard
+- id: transfer_easy_v1_0006
+  question: Who was the first person to circumnavigate the globe?
+  expected_answer: Ferdinand Magellan
+  task_type: recall
+  difficulty_class: easy
+  source_difficulty: hard
