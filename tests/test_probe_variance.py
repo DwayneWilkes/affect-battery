@@ -91,5 +91,6 @@ class TestRunVarianceProbe:
             n_per_condition=3,
             output_dir=tmp_path,
         )
-        assert "STRONG_POSITIVE" in result.conditions
-        assert "NEUTRAL" in result.conditions
+        # Condition enum values are lowercase
+        assert "strong_positive" in result.conditions
+        assert "neutral" in result.conditions
