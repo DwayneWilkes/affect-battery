@@ -60,6 +60,19 @@ class ArithmeticItem:
     n_carries: int
 
 
+# Paper §3.2.1 cross-domain transfer task types (the only valid task_type
+# values for a TransferBank used in Exp 1 cross-domain transfer per
+# `cross-domain-transfer-tasks/spec.md`). Validated at use-time, not at
+# load-time, so legacy task-difficulty-calibration TransferBanks with
+# arithmetic / reasoning task_type still load (they're use-rejected when
+# registered for Exp 1).
+PAPER_3_2_1_TASK_TYPES = frozenset({
+    "logic-puzzle",
+    "factual-qa",
+    "reading-comprehension",
+})
+
+
 @dataclass
 class ArithmeticBank:
     bank_id: str
@@ -67,6 +80,11 @@ class ArithmeticBank:
     difficulty_profile: dict[str, Any]
     items: list[ArithmeticItem]
     stimulus_bank_hash: str
+    # bank_type discriminator + status (design.md D9). Both have safe
+    # defaults so existing arithmetic_easy_v1 / arithmetic_hard_v1 banks
+    # without these fields continue to load.
+    bank_type: str = "arithmetic"
+    status: str = "active"
 
     @classmethod
     def load(
@@ -94,6 +112,8 @@ class ArithmeticBank:
             difficulty_profile=dict(raw.get("difficulty_profile") or {}),
             items=items,
             stimulus_bank_hash=_canonical_items_hash(items_raw),
+            bank_type=str(raw.get("bank_type", "arithmetic")),
+            status=str(raw.get("status", "active")),
         )
 
 
@@ -118,6 +138,11 @@ class TransferBank:
     difficulty_profile: dict[str, Any]
     items: list[TransferItem]
     stimulus_bank_hash: str
+    # bank_type discriminator + status (design.md D9 + cross-domain-transfer-tasks
+    # spec). status="candidate" indicates an unreviewed bank that must not
+    # enter primary analysis until alignment-review passes (Task 0.3a enforces).
+    bank_type: str = "transfer"
+    status: str = "active"
 
     @classmethod
     def load(
@@ -144,4 +169,28 @@ class TransferBank:
             difficulty_profile=dict(raw.get("difficulty_profile") or {}),
             items=items,
             stimulus_bank_hash=_canonical_items_hash(items_raw),
+            bank_type=str(raw.get("bank_type", "transfer")),
+            status=str(raw.get("status", "active")),
         )
+
+    def validate_for_exp1_transfer(self) -> None:
+        """Reject task_types that don't conform to paper §3.2.1's cross-domain
+        transfer definition. Per cross-domain-transfer-tasks/spec.md scenario
+        "Arithmetic-to-arithmetic is rejected": valid task types are
+        logic-puzzle, factual-qa, reading-comprehension only.
+
+        Raises:
+            ValueError: if any item's task_type is not in PAPER_3_2_1_TASK_TYPES.
+        """
+        bad_types = sorted({
+            item.task_type
+            for item in self.items
+            if item.task_type not in PAPER_3_2_1_TASK_TYPES
+        })
+        if bad_types:
+            raise ValueError(
+                f"TransferBank {self.bank_id!r} contains task_type(s) "
+                f"{bad_types} that violate paper §3.2.1 cross-domain "
+                f"transfer definition. Valid types: "
+                f"{sorted(PAPER_3_2_1_TASK_TYPES)}."
+            )

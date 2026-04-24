@@ -21,23 +21,20 @@ from src.conditioning.banks import (
 )
 
 
-def _write_arithmetic_bank(tmp_path: Path, bank_id: str = "arith_v1") -> Path:
+def _write_arithmetic_bank(tmp_path: Path, bank_id: str = "arith_v1", status: str | None = None) -> Path:
     bank_path = tmp_path / f"{bank_id}.yaml"
+    extra = f"\n        status: {status}" if status else ""
     bank_path.write_text(textwrap.dedent(f"""
         bank_id: {bank_id}
-        bank_version: 1
+        bank_version: 1{extra}
         difficulty_profile: {{}}
         items:
           - id: a1
-            problem: "1 + 1"
-            answer: "2"
+            operands: [1, 1]
             operator: add
-            operand_a: 1
-            operand_b: 1
-            digit_count_a: 1
-            digit_count_b: 1
+            answer: 2
+            digit_count: [1, 1]
             n_carries: 0
-            requires_borrow: false
     """))
     return bank_path
 
@@ -74,24 +71,7 @@ class TestArithmeticBankDiscriminator:
         assert bank.status == "active"
 
     def test_arithmetic_bank_loads_archived_status(self, tmp_path):
-        bank_path = tmp_path / "arith_archived.yaml"
-        bank_path.write_text(textwrap.dedent("""
-            bank_id: arith_archived
-            bank_version: 1
-            status: archived
-            difficulty_profile: {}
-            items:
-              - id: a1
-                problem: "1 + 1"
-                answer: "2"
-                operator: add
-                operand_a: 1
-                operand_b: 1
-                digit_count_a: 1
-                digit_count_b: 1
-                n_carries: 0
-                requires_borrow: false
-        """))
+        _write_arithmetic_bank(tmp_path, bank_id="arith_archived", status="archived")
         bank = ArithmeticBank.load("arith_archived", banks_dir=tmp_path)
         assert bank.status == "archived"
 
