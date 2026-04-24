@@ -84,6 +84,40 @@ class TestCliExperimentFlag:
         assert args.experiment == "exp1a"
 
 
+class TestCmdRunDispatches:
+    """cmd_run MUST route through RUNNERS[args.experiment] — not the legacy
+    run_batch path directly. Verifies the fix for reviewer-flagged gap
+    where --experiment was validated but never dispatched."""
+
+    def test_cmd_run_imports_from_runners(self):
+        """Regression guard: cmd_run's import block MUST reference
+        src.runners.RUNNERS."""
+        import inspect
+        from src.cli import cmd_run
+        source = inspect.getsource(cmd_run)
+        assert "from .runners import RUNNERS" in source, (
+            "cmd_run must dispatch via RUNNERS dispatch table"
+        )
+        assert "RUNNERS[args.experiment]" in source, (
+            "cmd_run must look up runner by args.experiment"
+        )
+
+    def test_non_exp1a_raises_notimplementederror(self):
+        """Invoking --experiment exp1b (and other non-exp1a values) should
+        route to the stub which raises NotImplementedError, not silently
+        fall through to the legacy run_batch path."""
+        import asyncio
+        from src.runners import RUNNERS
+
+        async def _exhaust():
+            runner = RUNNERS["exp1b"]
+            async for _ in runner(None, None):
+                pass
+
+        with pytest.raises(NotImplementedError, match="Task 4.1"):
+            asyncio.run(_exhaust())
+
+
 class TestCliProbeSubcommand:
     """CLI `probe` subcommand with variance + base-model sub-subcommands
     (design.md Phase 1 Week-0 probes)."""

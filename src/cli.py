@@ -112,8 +112,14 @@ def _build_budget(args) -> object:
 
 
 def cmd_run(args):
-    """Run an experiment from CLI args."""
-    from .runner import ExperimentConfig, ExperimentType, run_batch
+    """Run an experiment from CLI args.
+
+    Dispatches through `src.runners.RUNNERS[args.experiment]` per design.md
+    D5 — exp1a delegates to legacy run_batch; exp1b/2/3a/3b/3c raise
+    NotImplementedError until their implementation tasks land.
+    """
+    from .runner import ExperimentConfig, ExperimentType
+    from .runners import RUNNERS
     from .models import VLLMClient, VLLMCompletionClient, DryRunClient
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
@@ -142,9 +148,11 @@ def cmd_run(args):
     cancel_event = asyncio.Event()
     _install_sigint_handler(cancel_event)
 
+    runner = RUNNERS[args.experiment]
+
     async def _run():
         count = 0
-        async for result in run_batch(
+        async for result in runner(
             config, client,
             max_concurrent=args.max_concurrent,
             output_dir=output_dir,
