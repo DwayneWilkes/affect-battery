@@ -28,12 +28,15 @@ CROSS_SESSION_SYSTEM_PROMPT = "Answer the following questions to the best of you
 
 
 class ExperimentType(str, Enum):
-    TRANSFER_WITHIN = "transfer_within"
-    TRANSFER_CROSS = "transfer_cross"
-    PERSISTENCE = "persistence"
-    AROUSAL_PERFORMANCE = "arousal_performance"
-    COGNITIVE_SCOPE = "cognitive_scope"
-    CONSERVATIVE_SHIFT = "conservative_shift"
+    # Values updated per design.md D6: use paper-section-aligned identifiers
+    # (exp1a/exp1b/exp2/exp3a/exp3b/exp3c) as the canonical discriminator.
+    # Enum names preserved for backward-compat code references.
+    TRANSFER_WITHIN = "exp1a"
+    TRANSFER_CROSS = "exp1b"
+    PERSISTENCE = "exp2"
+    AROUSAL_PERFORMANCE = "exp3a"
+    COGNITIVE_SCOPE = "exp3b"
+    CONSERVATIVE_SHIFT = "exp3c"
 
 
 @dataclass
@@ -63,19 +66,142 @@ class ExperimentConfig:
     stimulus_bank_hash: str = ""
 
 
+# ---------------------------------------------------------------------------
+# Discriminated-union result schema (design.md D6)
+# ---------------------------------------------------------------------------
+# Base RunResult carries experiment-agnostic fields (config, model, condition,
+# experiment_type, run_number, start_time, end_time, checksum). The `body`
+# field is an experiment-specific dataclass keyed on experiment_type. Cross-
+# experiment analyses read base fields + match on experiment_type to unwrap
+# the body; per-experiment analyses read result.body directly.
+
+_VALID_EXPERIMENT_TYPES = frozenset(
+    ["exp1a", "exp1b", "exp2", "exp3a", "exp3b", "exp3c"]
+)
+
+
 @dataclass
-class RunResult:
-    config: dict
-    run_number: int
+class Exp1aBody:
+    """Within-session transfer (paper §3.2.1 Exp 1a)."""
     conditioning_responses: list[str]
     conditioning_correct: list[bool]
     transfer_responses: list[str]
     transfer_questions: list[str]
     transfer_expected: list[str]
-    start_time: float
-    end_time: float
+
+
+@dataclass
+class Exp1bBody:
+    """Cross-session falsification (paper §3.2.2 Exp 1b). Phase 1 session-1
+    conditioning + transfer + Phase 2 session-2 fresh-context re-test.
+    session_1_seed / session_2_seed are recorded separately per spec."""
+    conditioning_responses: list[str]
+    conditioning_correct: list[bool]
+    transfer_responses: list[str]
+    transfer_questions: list[str]
+    transfer_expected: list[str]
+    session_1_seed: int = 0
+    session_2_seed: int = 0
+
+
+@dataclass
+class Exp2Body:
+    """Persistence / recovery dynamics (paper §3.3 Exp 2). N-value specifies
+    number of neutral turns between conditioning and recovery measurement.
+    turn_accuracies is per-turn accuracy across the N recovery turns."""
+    n_value: int
+    turn_accuracies: list[float]
+
+
+@dataclass
+class Exp3aBody:
+    """Nonlinear arousal-performance (paper §3.4.1 Exp 3a). intensity_level is
+    the pre-registered 1..7 level from the primary_valence_axis."""
+    intensity_level: int
+    transfer_responses: list[str]
+    transfer_expected: list[str]
+
+
+@dataclass
+class Exp3bBody:
+    """Cognitive scope (paper §3.4.2 Exp 3b). 10 generations per prompt per
+    condition for semantic-diversity computation."""
+    prompt_id: str
+    generations: list[str]
+    per_generation_seeds: list[int]
+
+
+@dataclass
+class Exp3cBody:
+    """Conservative shift (paper §3.4.3 Exp 3c). Factual QA with difficulty
+    stratification + confidence elicitation + refusal tracking."""
+    difficulty: str
+    question: str
+    response: str
+    expected: str
+    stated_confidence: int | None = None
+    refused: bool = False
+
+
+# Union of all body types (for type annotations / analysis dispatch)
+ExperimentBody = Exp1aBody | Exp1bBody | Exp2Body | Exp3aBody | Exp3bBody | Exp3cBody
+
+
+@dataclass
+class RunResult:
+    config: dict
+    run_number: int
+    # Base fields promoted per D6: experiment_type is the discriminator;
+    # model + condition are top-level for cross-experiment analyses that
+    # read them without unwrapping.
+    experiment_type: str = "exp1a"
+    model: str = ""
+    condition: str = ""
+    # Legacy Exp 1a fields retained at top level for backward compatibility
+    # during the D6 migration. New code SHOULD read result.body.<field>;
+    # legacy callsites keep working via __post_init__ sync (see below).
+    conditioning_responses: list[str] = field(default_factory=list)
+    conditioning_correct: list[bool] = field(default_factory=list)
+    transfer_responses: list[str] = field(default_factory=list)
+    transfer_questions: list[str] = field(default_factory=list)
+    transfer_expected: list[str] = field(default_factory=list)
+    start_time: float = 0.0
+    end_time: float = 0.0
     checksum: str = ""
-    
+    body: ExperimentBody | None = None
+
+    def __post_init__(self) -> None:
+        # Reject unknown experiment_type values (per D6 Literal contract).
+        if self.experiment_type not in _VALID_EXPERIMENT_TYPES:
+            raise ValueError(
+                f"Invalid experiment_type {self.experiment_type!r}; "
+                f"must be one of {sorted(_VALID_EXPERIMENT_TYPES)}"
+            )
+        # Bi-directional sync for Exp 1a during migration: if caller passed
+        # legacy top-level conditioning/transfer fields WITHOUT a body,
+        # synthesize an Exp1aBody. If caller passed body but not top-level
+        # fields, mirror body fields to top-level for legacy reads.
+        if self.body is None and self.experiment_type == "exp1a":
+            self.body = Exp1aBody(
+                conditioning_responses=self.conditioning_responses,
+                conditioning_correct=self.conditioning_correct,
+                transfer_responses=self.transfer_responses,
+                transfer_questions=self.transfer_questions,
+                transfer_expected=self.transfer_expected,
+            )
+        elif isinstance(self.body, Exp1aBody):
+            # Body was passed; sync top-level for legacy readers.
+            if not self.conditioning_responses:
+                self.conditioning_responses = list(self.body.conditioning_responses)
+            if not self.conditioning_correct:
+                self.conditioning_correct = list(self.body.conditioning_correct)
+            if not self.transfer_responses:
+                self.transfer_responses = list(self.body.transfer_responses)
+            if not self.transfer_questions:
+                self.transfer_questions = list(self.body.transfer_questions)
+            if not self.transfer_expected:
+                self.transfer_expected = list(self.body.transfer_expected)
+
     def compute_checksum(self) -> str:
         self.checksum = checksum_of_payload(asdict(self))
         return self.checksum
