@@ -261,7 +261,17 @@ def _add_guardrail_args(p: argparse.ArgumentParser) -> None:
                    help="Halt after N consecutive non-retryable failures (default 5).")
 
 
-def main():
+EXPERIMENT_CHOICES = ["exp1a", "exp1b", "exp2", "exp3a", "exp3b", "exp3c"]
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level CLI parser.
+
+    Extracted from main() so tests can exercise the argparse structure
+    without invoking commands. Per design.md D5: `run --experiment <name>`
+    dispatches to src.runners.RUNNERS[<name>]; `probe <kind>` runs Week-0
+    variance / base-model feasibility probes.
+    """
     parser = argparse.ArgumentParser(
         prog="affect-battery",
         description="Eval harness for the Affect Battery study",
@@ -272,7 +282,8 @@ def main():
     p_run = sub.add_parser("run", help="Run an experiment")
     p_run.add_argument("--model", required=True, help="Model name (e.g., meta-llama/Meta-Llama-3-8B-Instruct)")
     p_run.add_argument("--condition", required=True, help="Condition: strong_positive, neutral, strong_negative, etc.")
-    p_run.add_argument("--experiment", default="transfer_within", help="Experiment type")
+    p_run.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
+                       help="Experiment type (paper §3 alignment; default exp1a)")
     p_run.add_argument("--num-runs", type=int, default=50)
     p_run.add_argument("--temperature", type=float, default=0.7)
     p_run.add_argument("--base-url", default="http://localhost:8000/v1", help="vLLM API base URL")
@@ -290,6 +301,8 @@ def main():
     # pilot
     p_pilot = sub.add_parser("pilot", help="Quick pilot: 5 runs x 3 conditions x 1 model")
     p_pilot.add_argument("--model", default="meta-llama/Meta-Llama-3-8B-Instruct")
+    p_pilot.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
+                         help="Experiment type (paper §3 alignment; default exp1a)")
     p_pilot.add_argument("--base-url", default="http://localhost:8000/v1")
     p_pilot.add_argument("--temperature", type=float, default=0.7)
     p_pilot.add_argument("--output-dir", default="results")
@@ -323,9 +336,59 @@ def main():
     )
     p_pipe_run.set_defaults(func=cmd_pipeline_run)
 
+    # probe (Week-0 probes per design.md Phase 1)
+    p_probe = sub.add_parser(
+        "probe",
+        help="Week-0 probes: variance estimation + base-model feasibility",
+    )
+    probe_sub = p_probe.add_subparsers(dest="probe_kind", required=True)
+
+    p_probe_variance = probe_sub.add_parser(
+        "variance",
+        help="Variance probe for MDE grounding (Task 1.1)",
+    )
+    p_probe_variance.add_argument("--model", required=True)
+    p_probe_variance.add_argument("--base-url", default="http://localhost:8000/v1")
+    p_probe_variance.add_argument("--n", type=int, default=20,
+                                  help="Samples per condition (default 20).")
+    p_probe_variance.add_argument("--output-dir", default="results/probes")
+    p_probe_variance.add_argument("--dry-run", action="store_true")
+    p_probe_variance.set_defaults(func=cmd_probe_variance)
+
+    p_probe_base_model = probe_sub.add_parser(
+        "base-model",
+        help="Base-model feasibility probe (Task 1.2)",
+    )
+    p_probe_base_model.add_argument("--model", required=True)
+    p_probe_base_model.add_argument("--base-url", default="http://localhost:8000/v1")
+    p_probe_base_model.add_argument("--n", type=int, default=5,
+                                    help="GSM8K problems for baseline accuracy (default 5).")
+    p_probe_base_model.add_argument("--output-dir", default="results/probes")
+    p_probe_base_model.add_argument("--dry-run", action="store_true")
+    p_probe_base_model.set_defaults(func=cmd_probe_base_model)
+
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args.func(args)
+
+
+def cmd_probe_variance(args):
+    """Variance probe — Task 1.1 implements."""
+    raise NotImplementedError(
+        "Variance probe not yet implemented; see tasks.md Task 1.1"
+    )
+
+
+def cmd_probe_base_model(args):
+    """Base-model feasibility probe — Task 1.2 implements."""
+    raise NotImplementedError(
+        "Base-model probe not yet implemented; see tasks.md Task 1.2"
+    )
 
 
 if __name__ == "__main__":
