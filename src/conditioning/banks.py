@@ -131,6 +131,22 @@ class TransferItem:
     difficulty_class: str  # "easy" | "hard"
 
 
+@dataclass(frozen=True)
+class AlignmentReview:
+    """Reviewer-recorded verdict on whether a candidate transfer bank
+    conforms to paper §3.2.1's cross-domain definition. Required before
+    promoting a candidate bank to active status (cross-domain-transfer-tasks
+    spec "Alignment review for re-scoped transfer banks")."""
+    reviewer: str
+    date: str
+    verdict: str  # "pass" | "fail"
+
+
+class BankAlignmentError(ValueError):
+    """Raised when a candidate bank is upgraded without a passed
+    alignment review."""
+
+
 @dataclass
 class TransferBank:
     bank_id: str
@@ -140,9 +156,26 @@ class TransferBank:
     stimulus_bank_hash: str
     # bank_type discriminator + status (design.md D9 + cross-domain-transfer-tasks
     # spec). status="candidate" indicates an unreviewed bank that must not
-    # enter primary analysis until alignment-review passes (Task 0.3a enforces).
+    # enter primary analysis until alignment-review passes.
     bank_type: str = "transfer"
     status: str = "active"
+    alignment_review: AlignmentReview | None = None
+
+    def upgrade_to_active(self) -> None:
+        """Promote a candidate bank to active status. Raises BankAlignmentError
+        if alignment_review is missing or its verdict is not 'pass'."""
+        if (
+            self.alignment_review is None
+            or self.alignment_review.verdict != "pass"
+        ):
+            raise BankAlignmentError(
+                f"TransferBank {self.bank_id!r} cannot be upgraded to active: "
+                f"alignment review missing or not passed. "
+                f"(Current alignment_review: {self.alignment_review!r}.) "
+                f"See cross-domain-transfer-tasks spec 'Alignment review for "
+                f"re-scoped transfer banks' for the required reviewer pass."
+            )
+        self.status = "active"
 
     @classmethod
     def load(
@@ -163,6 +196,17 @@ class TransferBank:
             for it in items_raw
         ]
 
+        ar_raw = raw.get("alignment_review")
+        alignment_review = (
+            AlignmentReview(
+                reviewer=str(ar_raw["reviewer"]),
+                date=str(ar_raw["date"]),
+                verdict=str(ar_raw["verdict"]),
+            )
+            if ar_raw is not None
+            else None
+        )
+
         return cls(
             bank_id=str(raw["bank_id"]),
             bank_version=int(raw["bank_version"]),
@@ -171,6 +215,7 @@ class TransferBank:
             stimulus_bank_hash=_canonical_items_hash(items_raw),
             bank_type=str(raw.get("bank_type", "transfer")),
             status=str(raw.get("status", "active")),
+            alignment_review=alignment_review,
         )
 
     def validate_for_exp1_transfer(self) -> None:
@@ -194,3 +239,27 @@ class TransferBank:
                 f"transfer definition. Valid types: "
                 f"{sorted(PAPER_3_2_1_TASK_TYPES)}."
             )
+
+
+def is_primary_analysis_eligible(bank: "ArithmeticBank | TransferBank") -> bool:
+    """Return True if the bank may participate in primary-experiment
+    analysis (per cross-domain-transfer-tasks spec "Alignment review for
+    re-scoped transfer banks"):
+
+    - Active banks: eligible.
+    - Candidate banks: eligible only if alignment_review.verdict == "pass".
+    - Archived banks: ineligible (use --allow-archived-bank for replication).
+
+    The Phase 3+ analysis aggregators MUST filter result corpora by this
+    predicate before computing primary effect sizes. Runs from ineligible
+    banks are tagged candidate_bank=True / archived_bank=True in their
+    result config and excluded from primary aggregation.
+    """
+    if bank.status == "active":
+        return True
+    if bank.status == "archived":
+        return False
+    if bank.status == "candidate":
+        ar = getattr(bank, "alignment_review", None)
+        return ar is not None and ar.verdict == "pass"
+    return False
