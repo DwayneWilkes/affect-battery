@@ -181,3 +181,21 @@ class DryRunClient(ModelClient):
         response = self._responses[self._index % len(self._responses)]
         self._index += 1
         return response
+
+    async def complete_text(
+        self,
+        prompt: str,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        stop: list[str] | None = None,
+    ) -> str:
+        """Base-model completion path (vLLM /v1/completions analog).
+
+        Returns the same canned-response cycle as `complete()` so the
+        DryRunClient transparently supports both chat and base-model
+        runners (used by Task 1.2 base-model feasibility probe + Task
+        3.3 base-model batch runs).
+        """
+        response = self._responses[self._index % len(self._responses)]
+        self._index += 1
+        return response
