@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from statistics import mean
 
-from src.analysis._effect_size import cohens_d, run_accuracy
+from src.analysis._effect_size import cohens_d, pooled_sd, run_accuracy, welch_p
+from src.analysis.stats.tost import tost_equivalence
 from src.conditioning.prompts import Condition
 
 
@@ -28,10 +29,32 @@ def _by_condition(corpus: list[dict]) -> dict[str, list[float]]:
     return grouped
 
 
+def _se_of_d(treatment: list[float], baseline: list[float]) -> float:
+    """Approximate standard error of Cohen's d (Hedges & Olkin, 1985).
+
+    Useful for the TOST proxy where we want SE on the d scale itself.
+    Returns 0.0 when sample sizes are insufficient (which the caller
+    should treat as "test cannot be run").
+    """
+    import math
+
+    nx, ny = len(treatment), len(baseline)
+    if nx < 2 or ny < 2:
+        return 0.0
+    sd = pooled_sd(treatment, baseline)
+    if sd == 0.0:
+        return 0.0
+    d = (sum(treatment) / nx - sum(baseline) / ny) / sd
+    return math.sqrt((nx + ny) / (nx * ny) + (d * d) / (2 * (nx + ny)))
+
+
 def analyze_exp1b(
     exp1a_corpus: list[dict],
     exp1b_corpus: list[dict],
     model: str,
+    h1b_dual_tests: bool = False,
+    tost_epsilon: float = 0.10,
+    alpha: float = 0.05,
 ) -> dict:
     """Three-way comparison: session-1 (within), session-2 (cross), baseline.
 
@@ -69,19 +92,37 @@ def analyze_exp1b(
     for cond in conds:
         s1_cell = s1.get(cond, [])
         s2_cell = s2.get(cond, [])
-        comparison[cond] = {
-            "session_1_effect_size": (
-                cohens_d(s1_cell, s1_baseline) if s1_cell else None
-            ),
-            "session_2_effect_size": (
-                cohens_d(s2_cell, s2_baseline) if s2_cell else None
-            ),
+        s1_d = cohens_d(s1_cell, s1_baseline) if s1_cell else None
+        s2_d = cohens_d(s2_cell, s2_baseline) if s2_cell else None
+        cell = {
+            "session_1_effect_size": s1_d,
+            "session_2_effect_size": s2_d,
             "no_conditioning_baseline": s1_baseline_mean,
             "session_1_n_runs": len(s1_cell),
             "session_2_n_runs": len(s2_cell),
             "session_1_mean_accuracy": mean(s1_cell) if s1_cell else None,
             "session_2_mean_accuracy": mean(s2_cell) if s2_cell else None,
         }
+        if h1b_dual_tests and s2_cell:
+            # Directional one-sided p-value: H0 = session_2_effect <= 0,
+            # reject when effect is positive. We use welch_p (two-sided)
+            # halved when the observed effect is in the predicted direction;
+            # weekend-ship proxy.
+            two_sided = welch_p(s2_cell, s2_baseline)
+            observed_diff = mean(s2_cell) - s2_baseline_mean
+            directional_p = (two_sided / 2.0) if observed_diff > 0 else (1.0 - two_sided / 2.0)
+            cell["session_2_directional_p"] = directional_p
+            # TOST equivalence on the d-scale within +/- epsilon.
+            se_d = _se_of_d(s2_cell, s2_baseline)
+            tost = tost_equivalence(
+                effect=s2_d if s2_d is not None and abs(s2_d) != float("inf") else 0.0,
+                se=se_d if se_d > 0 else 1e-9,
+                epsilon=tost_epsilon,
+                alpha=alpha,
+            )
+            cell["session_2_tost_p"] = tost["p_tost"]
+            cell["session_2_equivalent"] = tost["equivalent"]
+        comparison[cond] = cell
 
     return {
         "model": model,
