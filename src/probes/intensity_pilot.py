@@ -18,6 +18,10 @@ krippendorff). DRY check from Task 6.1: not rolled by hand.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
+
 import krippendorff
 
 
@@ -81,3 +85,43 @@ def run_intensity_pilot(ratings: dict[str, list[int]]) -> dict:
         "decision": decision,
         "raters": rater_names,
     }
+
+
+def _canonical_json_bytes(payload: dict) -> bytes:
+    """Sort-keys + no-whitespace JSON encode for SHA-256 stability."""
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def emit_seed(
+    pilot_result: dict,
+    axis_id: str,
+    n_levels: int,
+    pilot_date: str,
+    output_path: Path,
+) -> Path:
+    """Write a signed JSON artifact recording pilot-pass.
+
+    Per conditioning-protocol spec "Pre-registration seed definition":
+    seed must include pilot_date, axis_id, n_levels, alpha_overall,
+    alpha_pairwise + a SHA-256 digest over the canonicalized payload.
+    The seed is the input to the OSF amendment that opens Exp 3a; downstream
+    runners (run_exp3a) re-compute the SHA from the file and compare.
+    """
+    if pilot_result.get("decision") != "proceed":
+        raise ValueError(
+            f"emit_seed only writes seeds when pilot decision is 'proceed'; "
+            f"got {pilot_result.get('decision')!r}"
+        )
+    payload = {
+        "pilot_date": pilot_date,
+        "axis_id": axis_id,
+        "n_levels": n_levels,
+        "alpha_overall": pilot_result["alpha_overall"],
+        "alpha_pairwise": pilot_result["alpha_pairwise"],
+    }
+    digest = hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+    payload["sha256"] = digest
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    return output_path
