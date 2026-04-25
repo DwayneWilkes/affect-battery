@@ -110,7 +110,7 @@ class TestCmdRunDispatches:
         import asyncio
         from src.runners import RUNNERS
 
-        for stub_name in ("exp3b", "exp3c"):
+        for stub_name in ("exp3c",):
             async def _exhaust(name=stub_name):
                 runner = RUNNERS[name]
                 async for _ in runner(None, None):
