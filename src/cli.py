@@ -150,16 +150,52 @@ def cmd_run(args):
 
     runner = RUNNERS[args.experiment]
 
-    async def _run():
-        count = 0
-        async for result in runner(
-            config, client,
+    # Per-experiment extra kwargs loaded from --runner-config YAML when the
+    # runner needs them. Per review-finding #6: exp3a/exp3b/exp3c require
+    # additional positional kwargs (intensity_levels / pilot_seed_path,
+    # prompts + n_generations, items) that aren't covered by the base
+    # ExperimentConfig. We surface them via a YAML config rather than
+    # adding a new --flag for each.
+    extra_kwargs: dict = {}
+    if args.experiment in {"exp3a", "exp3b", "exp3c"}:
+        if not args.runner_config:
+            print(
+                f"error: --experiment {args.experiment} requires "
+                f"--runner-config <path-to-yaml>",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        import yaml
+        runner_cfg = yaml.safe_load(Path(args.runner_config).read_text())
+        if args.experiment == "exp3a":
+            extra_kwargs["intensity_levels"] = runner_cfg["intensity_levels"]
+            extra_kwargs["pilot_seed_path"] = Path(runner_cfg["pilot_seed_path"])
+        elif args.experiment == "exp3b":
+            extra_kwargs["prompts"] = runner_cfg["prompts"]
+            extra_kwargs["n_generations"] = runner_cfg.get("n_generations", 10)
+        elif args.experiment == "exp3c":
+            extra_kwargs["items"] = runner_cfg["items"]
+
+    # exp1a / exp1b / exp2 delegate to run_batch and accept the standard
+    # batch kwargs. exp3a-c don't (they have their own iteration shape).
+    if args.experiment in {"exp1a", "exp1b", "exp2"}:
+        batch_kwargs = dict(
             max_concurrent=args.max_concurrent,
-            output_dir=output_dir,
             circuit_breaker_threshold=args.circuit_breaker_threshold,
             budget=budget,
             rate_limit_rps=args.rate_limit_rps,
             cancel_event=cancel_event,
+        )
+    else:
+        batch_kwargs = {}
+
+    async def _run():
+        count = 0
+        async for result in runner(
+            config, client,
+            output_dir=output_dir,
+            **extra_kwargs,
+            **batch_kwargs,
         ):
             count += 1
             print(f"[{count}] {result.config.get('condition')} run_number={result.run_number}")
@@ -167,6 +203,25 @@ def cmd_run(args):
             await client.close()
 
     asyncio.run(_run())
+
+
+def cmd_analyze(args):
+    """End-to-end analysis: load result JSONs, render per-experiment
+    reports + aggregate landing page (review-finding #11).
+
+    Detects which experiments have results under <results-dir>/<exp>/
+    and produces <results-dir>/<exp>_report.md for each, plus
+    <results-dir>/AGGREGATE_REPORT.md tying them together.
+    """
+    from src.analysis.pipeline import analyze_results_dir
+
+    rendered = analyze_results_dir(
+        results_dir=Path(args.results_dir),
+        model=args.model,
+    )
+    print(f"Rendered {len(rendered)} report(s):")
+    for exp, path in sorted(rendered.items()):
+        print(f"  {exp}: {path}")
 
 
 def cmd_pilot(args):
@@ -300,6 +355,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--dry-run", action="store_true", help="Use canned responses instead of real API")
     p_run.add_argument("--base-model", action="store_true",
                        help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
+    p_run.add_argument(
+        "--runner-config", default=None,
+        help=(
+            "YAML config with per-experiment extra kwargs. Required for "
+            "exp3a (intensity_levels + pilot_seed_path), exp3b (prompts "
+            "+ n_generations), exp3c (items). Example: "
+            "configs/exp3a_runner.yaml"
+        ),
+    )
     p_run.add_argument("--bank", default=None,
                        help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
                             f"Must exist in configs/banks/<bank>.yaml.")
@@ -343,6 +407,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to pipeline config YAML (stages, bank_gen params, cache_root, etc.)",
     )
     p_pipe_run.set_defaults(func=cmd_pipeline_run)
+
+    # analyze: end-to-end analysis + per-experiment reports + aggregate.
+    p_analyze = sub.add_parser(
+        "analyze",
+        help="Analyze result JSONs + render per-experiment + aggregate reports",
+    )
+    p_analyze.add_argument(
+        "--results-dir", default="results",
+        help="Directory containing per-experiment result subdirs (default: results)",
+    )
+    p_analyze.add_argument(
+        "--model", default="aggregate",
+        help="Label to record in the analysis output (default: 'aggregate')",
+    )
+    p_analyze.set_defaults(func=cmd_analyze)
 
     # probe (Week-0 probes per design.md Phase 1)
     p_probe = sub.add_parser(

@@ -112,6 +112,37 @@ class TestCmdRunDispatches:
         for name in ("exp1a", "exp1b", "exp2", "exp3a", "exp3b", "exp3c"):
             assert callable(RUNNERS[name]), f"{name} runner missing"
 
+    def test_cli_run_dispatches_exp3b_with_runner_config(self, tmp_path, monkeypatch):
+        """Per review-finding #6: `cli.cmd_run` must dispatch exp3a/3b/3c
+        without raising TypeError. The previous implementation passed only
+        the base run_batch kwargs (max_concurrent, budget, ...) which the
+        new runners don't accept, and supplied no intensity_levels/prompts/
+        items so the call would TypeError before any work happened."""
+        import yaml
+        from src.cli import build_parser, cmd_run
+
+        runner_cfg = tmp_path / "exp3b.yaml"
+        runner_cfg.write_text(yaml.safe_dump({
+            "prompts": [{"id": "p1", "text": "Continue."}],
+            "n_generations": 2,
+        }))
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "run",
+            "--model", "dry-run",
+            "--condition", "neutral",
+            "--experiment", "exp3b",
+            "--num-runs", "1",
+            "--seed", "42",
+            "--dry-run",
+            "--output-dir", str(tmp_path / "out"),
+            "--runner-config", str(runner_cfg),
+        ])
+        # Should complete without TypeError. We don't assert on output
+        # here — just that the dispatch wiring is correct.
+        cmd_run(args)
+
 
 class TestCliProbeSubcommand:
     """CLI `probe` subcommand with variance + base-model sub-subcommands
