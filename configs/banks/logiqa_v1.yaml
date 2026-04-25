@@ -1,0 +1,137 @@
+# LogiQA-style logic-puzzle TransferBank
+#
+# bank_type: transfer (per design.md D9)
+# task_type per item: logic-puzzle (per cross-domain-transfer-tasks spec)
+# source: "original" — items styled after LogiQA format but not directly
+#   sourced from the LogiQA dataset (which requires separate ingestion).
+#   Status: candidate. Until alignment review records verdict=pass, this
+#   bank is excluded from primary analysis aggregation per
+#   cross-domain-transfer-tasks spec "Alignment review for re-scoped
+#   transfer banks".
+#
+# Note: when LogiQA / FOLIO dataset ingestion lands, this YAML's
+# source field flips from "original" to "LogiQA"; status flips to
+# active automatically (handled by ingestion script).
+#
+# Rationale for original items: LogiQA dataset not ingested in time
+# for the weekend ship. Items below were drafted to exercise the
+# logic-puzzle task type so the Exp 1a runner has SOME transfer items
+# to operate on.
+bank_id: logiqa_v1
+bank_version: 1
+bank_type: transfer
+status: candidate
+
+difficulty_profile:
+  source: original
+  approved_by: realignment-weekend-self-approve
+  rationale: |
+    LogiQA dataset not ingested at v1 commit time; original items styled
+    after LogiQA format. Replace with real LogiQA items before primary
+    data collection. Bank status remains "candidate" until alignment
+    review records verdict=pass.
+
+items:
+  - id: logiqa_v1_0001
+    prompt: |
+      All birds can fly. Penguins are birds. Therefore, can penguins fly?
+      (Answer: yes / no / cannot determine)
+    expected_answer: cannot determine
+    task_type: logic-puzzle
+    difficulty_class: easy
+
+  - id: logiqa_v1_0002
+    prompt: |
+      Some doctors are runners. All runners are athletes. Are some
+      doctors necessarily athletes? (Answer: yes / no / cannot determine)
+    expected_answer: "yes"
+    task_type: logic-puzzle
+    difficulty_class: easy
+
+  - id: logiqa_v1_0003
+    prompt: |
+      Anna, Bo, and Carl finished a race. Anna finished before Bo.
+      Carl finished after Anna but before Bo. Who finished last?
+      (Answer: Anna, Bo, or Carl)
+    expected_answer: "Bo"
+    task_type: logic-puzzle
+    difficulty_class: medium
+
+  - id: logiqa_v1_0004
+    prompt: |
+      In a school of 100 students, 60 take math, 40 take physics, and
+      20 take both. How many students take neither? (Answer: integer)
+    expected_answer: "20"
+    task_type: logic-puzzle
+    difficulty_class: medium
+
+  - id: logiqa_v1_0005
+    prompt: |
+      No fish can sing. All goldfish are fish. Therefore, can goldfish
+      sing? (Answer: yes / no / cannot determine)
+    expected_answer: "no"
+    task_type: logic-puzzle
+    difficulty_class: easy
+
+  - id: logiqa_v1_0006
+    prompt: |
+      If today is Monday, then in 100 days it will be what day of the week?
+      (Answer: day name)
+    expected_answer: "Wednesday"
+    task_type: logic-puzzle
+    difficulty_class: medium
+
+  - id: logiqa_v1_0007
+    prompt: |
+      A says "B is lying." B says "C is lying." C says "Both A and B are
+      lying." Who is telling the truth? (Answer: A, B, C, or none)
+    expected_answer: "B"
+    task_type: logic-puzzle
+    difficulty_class: hard
+
+  - id: logiqa_v1_0008
+    prompt: |
+      Five houses in a row are painted different colors. The blue house
+      is to the left of the red house. The green house is immediately
+      right of the white house. The yellow house is at one end. If the
+      red house is at position 4, where is the white house?
+      (Answer: integer 1-5)
+    expected_answer: "2"
+    task_type: logic-puzzle
+    difficulty_class: hard
+
+  - id: logiqa_v1_0009
+    prompt: |
+      A bag has 3 red balls and 2 blue balls. You draw 2 without
+      replacement. What is the probability both are red?
+      (Answer: simplified fraction or decimal)
+    expected_answer: "3/10"
+    task_type: logic-puzzle
+    difficulty_class: medium
+
+  - id: logiqa_v1_0010
+    prompt: |
+      Some artists are not painters. All painters are creative.
+      Therefore, are some artists necessarily not creative?
+      (Answer: yes / no / cannot determine)
+    expected_answer: cannot determine
+    task_type: logic-puzzle
+    difficulty_class: hard
+
+  - id: logiqa_v1_0011
+    prompt: |
+      If "All A are B" and "Some B are C," can we conclude "Some A are C"?
+      (Answer: yes / no / cannot determine)
+    expected_answer: cannot determine
+    task_type: logic-puzzle
+    difficulty_class: medium
+
+  - id: logiqa_v1_0012
+    prompt: |
+      Three friends — Pat, Quinn, and Sam — each have a different favorite
+      color (red, blue, or green). Pat does not like blue. Quinn does not
+      like red. If Sam's favorite is red, what is Pat's favorite?
+      (Answer: red, blue, or green)
+    expected_answer: green
+    task_type: logic-puzzle
+    difficulty_class: medium
