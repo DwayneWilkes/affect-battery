@@ -91,3 +91,42 @@ def compute_ngram_ratio(generations: list[str], n: int) -> float:
     if not all_ngrams:
         return 0.0
     return len(set(all_ngrams)) / len(all_ngrams)
+
+
+def analyze_exp3b_corpus(
+    corpus: list[dict],
+    model: str,
+    embedder: Callable[[list[str]], list[list[float]]] | None = None,
+    ngram_n: int = 2,
+) -> dict:
+    """Cross-condition aggregation pipeline for Exp 3b (review-finding A2).
+
+    Group result-JSONs by condition, flatten generations across prompts
+    within each condition, compute embedding_variance + ngram_ratio.
+    Embedder is injectable for tests; production uses the pinned mpnet.
+    """
+    by_cond_gens: dict[str, list[str]] = {}
+    for run in corpus:
+        cond = run.get("condition")
+        if cond is None:
+            continue
+        gens = (run.get("body") or {}).get("generations", [])
+        by_cond_gens.setdefault(cond, []).extend(gens)
+
+    by_condition: dict[str, dict] = {}
+    for cond, gens in by_cond_gens.items():
+        if not gens:
+            continue
+        by_condition[cond] = {
+            "n_generations": len(gens),
+            "embedding_variance": compute_embedding_variance(
+                gens, embedder=embedder,
+            ),
+            "ngram_ratio": compute_ngram_ratio(gens, n=ngram_n),
+        }
+
+    return {
+        "model": model,
+        "verdict": "complete" if by_condition else "unavailable_no_data",
+        "by_condition": by_condition,
+    }
