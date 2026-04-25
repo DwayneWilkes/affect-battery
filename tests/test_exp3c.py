@@ -58,6 +58,31 @@ async def test_exp3c_difficulty_stratified(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_exp3c_runs_conditioning_phase_first(tmp_path):
+    """Per review-finding #1: Exp 3c MUST run the 5-turn affective
+    conditioning protocol before the QA phase. We assert this by checking
+    that conditioning_responses is populated on the result."""
+    from src.models import DryRunClient
+
+    client = DryRunClient(model="dry-run", responses=["42"] * 50)
+    config = ExperimentConfig(
+        model_name="dry-run",
+        condition=Condition.STRONG_NEGATIVE,
+        experiment_type=ExperimentType.CONSERVATIVE_SHIFT,
+        num_runs=1,
+        seed=42,
+        num_conditioning_turns=5,
+    )
+    items = [
+        {"difficulty": "easy", "question": "Q1?", "expected": "A1"},
+        {"difficulty": "medium", "question": "Q2?", "expected": "A2"},
+    ]
+    async for r in run_exp3c(config, client, items=items, output_dir=tmp_path):
+        assert len(r.conditioning_responses) == 5
+        assert len(r.conditioning_correct) == 5
+
+
+@pytest.mark.asyncio
 async def test_exp3c_invalid_difficulty_rejected(tmp_path):
     from src.models import DryRunClient
 

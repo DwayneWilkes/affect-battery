@@ -1,18 +1,19 @@
 """Exp 3b — cognitive scope (paper §3.4.2).
 
 Per cognitive-scope-measurement spec "Cognitive-scope protocol" +
-tasks.md Task 7.1: 3 conditions x prompts x N_GENERATIONS open-ended
-generations per prompt at temperature=0.7. Distinct per-generation
-seeds for reproducibility. Each yielded RunResult carries an Exp3bBody
-recording (prompt_id, generations, per_generation_seeds).
+review-finding #1: each (run_num, prompt) pair runs the 5-turn affective
+conditioning protocol FIRST, then samples n_generations completions
+from the prompt with the conditioning history attached. Without the
+conditioning phase the generations are unconditioned, which would make
+every condition-stratified diversity metric meaningless.
 
-DRY check: conditioning phase reuses run_single's existing 5-turn
-protocol (via run_batch dispatch with num_transfer_questions=0). The
-new logic is the per-prompt generation-sampling loop after conditioning.
+Generations within a single (run_num, prompt) are independent and run
+concurrently via asyncio.gather (review-finding #16).
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -22,7 +23,7 @@ from src.runner import (
     ExperimentType,
     RunResult,
     save_result,
-    run_single,
+    run_conditioning_phase,
 )
 
 
@@ -34,13 +35,7 @@ async def run_exp3b(
     output_dir: Path | None = None,
     **kwargs,
 ):
-    """Run Exp 3b across `prompts` x `n_generations`.
-
-    For each prompt, runs the conditioning phase once via run_single
-    (reusing the Exp 1a path) then samples n_generations completions
-    with distinct seeds. Generations share the conditioning history but
-    each sample uses a distinct seed for reproducibility.
-    """
+    """Run Exp 3b across `prompts` x `n_generations`."""
     if config.experiment_type != ExperimentType.COGNITIVE_SCOPE:
         raise ValueError(
             f"run_exp3b requires config.experiment_type=COGNITIVE_SCOPE; "
@@ -57,20 +52,29 @@ async def run_exp3b(
 
     base_seed = config.seed or 0
     for run_num in range(config.num_runs):
+        # Phase 1: conditioning (review-finding #1). Per (run_num) so the
+        # conditioning history is consistent across all prompts in this run.
+        seed = base_seed + run_num
+        cond_messages, conditioning_responses, conditioning_correct = (
+            await run_conditioning_phase(config, client, seed)
+        )
+
         for p_idx, prompt in enumerate(prompts):
-            generations: list[str] = []
-            seeds: list[int] = []
-            for g_idx in range(n_generations):
-                # Distinct seed per (run_num, prompt, generation) for
-                # reproducibility without seed collisions across the matrix.
-                gen_seed = base_seed + run_num * 100_000 + p_idx * 1_000 + g_idx
-                seeds.append(gen_seed)
-                # Synthesize a turn-style call against the prompt.
-                response = await client.complete(
-                    [{"role": "user", "content": prompt["text"]}],
-                    temperature=config.temperature,
-                )
-                generations.append(response)
+            # Phase 2: n_generations independent completions following the
+            # conditioning history. Run concurrently via asyncio.gather
+            # (review-finding #16). Append the prompt as the next user turn.
+            generation_messages = cond_messages + [
+                {"role": "user", "content": prompt["text"]}
+            ]
+            seeds = [
+                base_seed + run_num * 100_000 + p_idx * 1_000 + g_idx
+                for g_idx in range(n_generations)
+            ]
+            tasks = [
+                client.complete(generation_messages, temperature=config.temperature)
+                for _ in range(n_generations)
+            ]
+            generations = list(await asyncio.gather(*tasks))
 
             result = RunResult(
                 config=asdict(config),
@@ -78,6 +82,8 @@ async def run_exp3b(
                 experiment_type=config.experiment_type.value,
                 model=config.model_name,
                 condition=config.condition.value,
+                conditioning_responses=conditioning_responses,
+                conditioning_correct=conditioning_correct,
                 start_time=time.time(),
                 end_time=time.time(),
                 body=Exp3bBody(

@@ -10,25 +10,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.analysis.reports._format import fmt_d, fmt_p
+
 
 HOLM_CITATION = (
     "Holm, S. (1979). 'A simple sequentially rejective multiple test "
     "procedure.' *Scandinavian Journal of Statistics*, 6(2), 65-70."
 )
-
-
-def _format_p(p: float) -> str:
-    if p < 0.001:
-        return "<0.001"
-    return f"{p:.3f}"
-
-
-def _format_d(d: float) -> str:
-    if d == float("inf"):
-        return "+inf"
-    if d == float("-inf"):
-        return "-inf"
-    return f"{d:+.2f}"
 
 
 def render_exp1a_report(analysis: dict, output_path: Path) -> Path:
@@ -62,9 +50,9 @@ def render_exp1a_report(analysis: dict, output_path: Path) -> Path:
         lines.append(
             f"| {cond} | {cells['n_runs']} | "
             f"{cells['mean_accuracy']:.3f} | {cells['baseline_mean']:.3f} | "
-            f"{_format_d(cells['cohens_d'])} | "
-            f"{_format_p(cells['p_raw'])} | "
-            f"{_format_p(cells['p_holm_corrected'])} |"
+            f"{fmt_d(cells['cohens_d'])} | "
+            f"{fmt_p(cells['p_raw'])} | "
+            f"{fmt_p(cells['p_holm_corrected'])} |"
         )
 
     lines.append("")

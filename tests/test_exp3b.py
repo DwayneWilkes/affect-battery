@@ -59,6 +59,35 @@ async def test_exp3b_ten_generations_per_prompt_per_condition(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_exp3b_runs_conditioning_phase_first(tmp_path):
+    """Per review-finding #1: Exp 3b MUST run the 5-turn affective
+    conditioning protocol before the generation phase. We assert this by
+    checking that conditioning_responses is populated on the result."""
+    from src.models import DryRunClient
+
+    client = DryRunClient(model="dry-run", responses=["42"] * 50)
+    config = ExperimentConfig(
+        model_name="dry-run",
+        condition=Condition.STRONG_NEGATIVE,
+        experiment_type=ExperimentType.COGNITIVE_SCOPE,
+        num_runs=1,
+        temperature=0.7,
+        seed=42,
+        num_conditioning_turns=5,
+    )
+
+    async for r in run_exp3b(
+        config, client,
+        prompts=[{"id": "p1", "text": "Continue the story."}],
+        n_generations=3,
+        output_dir=tmp_path,
+    ):
+        # 5 conditioning turns at config.num_conditioning_turns -> 5 responses
+        assert len(r.conditioning_responses) == 5
+        assert len(r.conditioning_correct) == 5
+
+
+@pytest.mark.asyncio
 async def test_exp3b_uses_paper_sampling_params(tmp_path):
     """temperature=0.7 + top_p=0.95 are the paper §3.4.2 sampling
     parameters — verify they're surfaced on the run config."""

@@ -23,12 +23,7 @@ SECTION_10_MOOD_AS_INFO_CAVEAT = (
 )
 
 
-def _format_value(v):
-    if v is None:
-        return "—"
-    if isinstance(v, float):
-        return f"{v:.3f}"
-    return str(v)
+from src.analysis.reports._format import fmt_value as _format_value  # noqa: E402
 
 
 def render_exp3c_report(analysis: dict, output_path: Path) -> Path:

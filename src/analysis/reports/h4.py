@@ -13,14 +13,15 @@ from __future__ import annotations
 from pathlib import Path
 
 
+from src.analysis.reports._format import fmt_value
+
+
 def _format_value(v):
-    if v is None:
-        return "—"
+    """H4 keeps its own bool->emoji rendering for the pre-registered-test
+    pass/fail cells; delegates non-bool to the shared fmt_value."""
     if isinstance(v, bool):
         return "✅" if v else "❌"
-    if isinstance(v, float):
-        return f"{v:.3f}"
-    return str(v)
+    return fmt_value(v)
 
 
 def render_h4_report(result: dict, output_path: Path) -> Path:

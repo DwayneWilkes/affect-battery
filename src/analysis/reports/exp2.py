@@ -27,14 +27,7 @@ SECTION_10_CAVEAT = (
 )
 
 
-def _format_value(v):
-    if v is None:
-        return "—"
-    if isinstance(v, float):
-        if v == float("inf"):
-            return "+inf"
-        return f"{v:+.3f}" if abs(v) >= 0.0005 else f"{v:.4f}"
-    return str(v)
+from src.analysis.reports._format import fmt_value as _format_value  # noqa: E402
 
 
 def render_exp2_report(analysis: dict, output_path: Path) -> Path:

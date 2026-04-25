@@ -317,35 +317,31 @@ async def _run_single_base(
     return result
 
 
-async def run_single(
+async def run_conditioning_phase(
     config: ExperimentConfig,
     client: ModelClient,
-    run_number: int,
-) -> RunResult:
-    """Run a single conditioning + transfer experiment."""
-    if config.is_base_model:
-        return await _run_single_base(config, client, run_number)
-    start = time.time()
-    
-    # Generate problems and transfer questions
-    seed = (config.seed or 0) + run_number
+    seed: int,
+) -> tuple[list[dict], list[str], list[bool]]:
+    """Run the 5-turn affective-conditioning phase and return
+    (messages, conditioning_responses, conditioning_correct).
+
+    Extracted from run_single (review-finding #1) so Exp 3b and Exp 3c
+    can drive the conditioning protocol before their own generation /
+    QA phase. Without this, those experiments produced unconditioned
+    output and any condition-stratified metric would have been noise.
+    """
     problems = get_arithmetic_problems(config.num_conditioning_turns, seed=seed)
-    transfer_qs = get_transfer_tasks(config.transfer_task, config.num_transfer_questions, seed=seed)
-    
-    # Phase 1: Conditioning
     protocol = ConditioningProtocol(
         condition=config.condition,
         num_conditioning_turns=config.num_conditioning_turns,
     )
-    
-    conditioning_responses = []
-    conditioning_correct = []
-    messages = [{"role": "system", "content": protocol.system_prompt}]
-    
+    conditioning_responses: list[str] = []
+    conditioning_correct: list[bool] = []
+    messages: list[dict] = [{"role": "system", "content": protocol.system_prompt}]
+
     if config.condition != Condition.NO_CONDITIONING:
         feedback_set = FEEDBACK_SETS[config.condition]
         max_turns = min(len(problems), len(feedback_set.turns))
-
         for i in range(max_turns):
             problem = problems[i]
             messages.append({"role": "user", "content": problem.question})
@@ -360,7 +356,28 @@ async def run_single(
             turn = feedback_set.turns[i]
             feedback = turn.correct if is_correct else turn.incorrect
             messages.append({"role": "user", "content": feedback})
-    
+
+    return messages, conditioning_responses, conditioning_correct
+
+
+async def run_single(
+    config: ExperimentConfig,
+    client: ModelClient,
+    run_number: int,
+) -> RunResult:
+    """Run a single conditioning + transfer experiment."""
+    if config.is_base_model:
+        return await _run_single_base(config, client, run_number)
+    start = time.time()
+
+    seed = (config.seed or 0) + run_number
+    transfer_qs = get_transfer_tasks(config.transfer_task, config.num_transfer_questions, seed=seed)
+
+    # Phase 1: Conditioning (extracted to a shared helper for Exp 3b/3c).
+    messages, conditioning_responses, conditioning_correct = await run_conditioning_phase(
+        config, client, seed
+    )
+
     # Phase 1.5: Neutral buffer turns (for persistence experiments).
     # Per-turn accuracy is captured for Exp 2's recovery-curve analysis.
     neutral_turn_accuracies: list[float] = []

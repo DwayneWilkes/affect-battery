@@ -29,16 +29,7 @@ PERSISTENCE_BLURB = (
 )
 
 
-def _format_value(v):
-    if v is None:
-        return "—"
-    if isinstance(v, float):
-        if v == float("inf"):
-            return "+inf"
-        if v == float("-inf"):
-            return "-inf"
-        return f"{v:+.2f}" if abs(v) >= 0.005 else f"{v:.4f}"
-    return str(v)
+from src.analysis.reports._format import fmt_value as _format_value  # noqa: E402
 
 
 def render_exp1b_report(analysis: dict, output_path: Path) -> Path:
