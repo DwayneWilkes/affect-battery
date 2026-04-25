@@ -184,4 +184,18 @@ stopping_rules:
       If Llama-3-8B base manipulation-check accuracy < 0.30, demote H4
       base-vs-instruct test to exploratory; primary family shrinks to 4.
 
-amendment_chain: []  # append-only per design.md D4
+amendment_chain:
+  # Append-only per design.md D4. Each entry MUST cite the rationale +
+  # the SHA-256 of the YAML at the time of amendment so the audit trail
+  # is reconstructible from the git history alone.
+  - amendment_id: 1
+    date: 2026-04-24
+    rationale: |
+      Data collection complete (synthetic dry-run pilot via DryRunClient
+      across all six paper-aligned experiments). All 643+ tests pass on
+      feat/affect-battery-proposal-realignment. Phase 0-9 ship floor
+      reached per design.md D11. This entry closes the realignment
+      pre-registration; subsequent amendments belong to follow-up
+      changes (e.g. real LogiQA ingestion, mixed-effects model upgrade).
+    content_sha: TBD_at_finalize  # filled in by prereg.finalize_v1
+    affected_sections: [hypotheses, mdes, correction_families, stopping_rules]
