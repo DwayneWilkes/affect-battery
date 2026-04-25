@@ -20,6 +20,7 @@ from pathlib import Path
 from src.analysis.exp1a import analyze_exp1a_corpus
 from src.analysis.exp1b import analyze_exp1b
 from src.analysis.exp2 import analyze_exp2_corpus
+from src.analysis.exp3a import analyze_exp3a
 from src.analysis.exp3b import analyze_exp3b_corpus
 from src.analysis.exp3c import analyze_exp3c_corpus
 from src.analysis.h4 import analyze_h4_corpus
@@ -27,6 +28,7 @@ from src.analysis.reports.aggregate import render_aggregate
 from src.analysis.reports.exp1a import render_exp1a_report
 from src.analysis.reports.exp1b import render_exp1b_report
 from src.analysis.reports.exp2 import render_exp2_report
+from src.analysis.reports.exp3a import render_exp3a_report
 from src.analysis.reports.exp3b import render_exp3b_report
 from src.analysis.reports.exp3c import render_exp3c_report
 from src.analysis.reports.h4 import render_h4_report
@@ -166,6 +168,32 @@ def analyze_results_dir(
         aggregate_payload["exp2"] = {
             "model": model, "verdict": exp2_analysis["verdict"],
         }
+
+    # ---- Exp 3a ----
+    # The Exp 3a corpus is loaded as a flat list and grouped by intensity
+    # level. analyze_exp3a expects accuracy_by_level: {level: [accs]}
+    # so we project the corpus into that shape here.
+    exp3a_corpus = _load_corpus(results_dir, "exp3a")
+    if exp3a_corpus:
+        accuracy_by_level: dict[int, list[float]] = {}
+        for run in exp3a_corpus:
+            body = run.get("body") or {}
+            level = body.get("intensity_level")
+            tc = run.get("transfer_correct") or body.get("transfer_correct") or []
+            if level is None or not tc:
+                continue
+            acc = sum(1 for c in tc if c) / len(tc)
+            accuracy_by_level.setdefault(level, []).append(acc)
+        if len(accuracy_by_level) >= 3:
+            exp3a_analysis = analyze_exp3a(accuracy_by_level)
+            exp3a_analysis["model"] = model
+            path = results_dir / "exp3a_report.md"
+            render_exp3a_report(exp3a_analysis, output_path=path)
+            rendered["exp3a"] = path
+            aggregate_payload["exp3a"] = {
+                "model": model,
+                "verdict": "complete",
+            }
 
     # ---- Exp 3b (A2) ----
     exp3b_corpus = _load_corpus(results_dir, "exp3b")

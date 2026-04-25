@@ -522,8 +522,9 @@ def cmd_probe_base_model(args):
             output_dir=Path(args.output_dir),
         )
         print(
-            f"base-model probe complete: accuracy={result.accuracy:.3f}, "
-            f"verdict={result.verdict}"
+            f"base-model probe complete: "
+            f"baseline_accuracy={result.baseline_accuracy:.3f}, "
+            f"verdict={result.feasibility_verdict}"
         )
         if hasattr(client, "close"):
             await client.close()

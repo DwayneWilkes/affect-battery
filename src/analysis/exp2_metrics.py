@@ -81,6 +81,87 @@ def recovery_auc(
     return auc
 
 
+def _interpolate(ns: list[int], curve: list[float], x: float) -> float:
+    """Linear interpolation of `curve` at point `x` over sorted `ns`.
+    Out-of-range x is clamped to the endpoints."""
+    if x <= ns[0]:
+        return curve[0]
+    if x >= ns[-1]:
+        return curve[-1]
+    for i in range(1, len(ns)):
+        if ns[i] >= x:
+            x0, y0 = ns[i - 1], curve[i - 1]
+            x1, y1 = ns[i], curve[i]
+            if x1 == x0:
+                return y1
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return curve[-1]
+
+
+def time_to_baseline_against_control(
+    conditioned: list[float],
+    n_values: list[int],
+    control_curve: list[float],
+    ratio: float = 0.95,
+) -> float:
+    """First N where the conditioned accuracy reaches `ratio * control(N)`.
+
+    Per the persistence-dynamics spec scenario "Time-to-baseline with
+    non-uniform sampling": the threshold is per-turn, not a single value;
+    we compare the conditioned curve against `ratio * control_curve(t)`
+    at each sampled t and linearly interpolate the crossing. Returns -1
+    when the conditioned curve never reaches the threshold within the
+    sampled range. Conditioned and control curves MUST share the same
+    n_values ordering.
+    """
+    cs_ns, cs = _sorted_pairs(n_values, conditioned)
+    ctrl_ns, ctrl = _sorted_pairs(n_values, control_curve)
+    if cs_ns != ctrl_ns:
+        raise ValueError("conditioned and control curves must share n_values")
+    if not cs:
+        return -1
+    threshold = [ratio * c for c in ctrl]
+    if cs[0] >= threshold[0]:
+        return float(cs_ns[0])
+    for i in range(1, len(cs)):
+        if cs[i] >= threshold[i]:
+            x0, y0 = cs_ns[i - 1], cs[i - 1] - threshold[i - 1]
+            x1, y1 = cs_ns[i], cs[i] - threshold[i]
+            if y1 == y0:
+                return float(x1)
+            # Crossing where (cs - threshold) crosses zero.
+            t = x0 + (0.0 - y0) / (y1 - y0) * (x1 - x0)
+            return float(t)
+    return -1
+
+
+def recovery_auc_against_control(
+    conditioned: list[float],
+    n_values: list[int],
+    control_curve: list[float],
+) -> float:
+    """Trapezoidal integral of (control - conditioned) over n_values.
+
+    Sign convention per persistence-dynamics spec: positive AUC means
+    conditioned curve is below control on average (measurable persistence
+    of the conditioning effect). Negative AUC is unusual (conditioned
+    above control) and the calling report SHOULD flag it.
+    """
+    cs_ns, cs = _sorted_pairs(n_values, conditioned)
+    ctrl_ns, ctrl = _sorted_pairs(n_values, control_curve)
+    if cs_ns != ctrl_ns:
+        raise ValueError("conditioned and control curves must share n_values")
+    if len(cs_ns) < 2:
+        return 0.0
+    auc = 0.0
+    for i in range(1, len(cs_ns)):
+        dx = cs_ns[i] - cs_ns[i - 1]
+        y0 = ctrl[i - 1] - cs[i - 1]
+        y1 = ctrl[i] - cs[i]
+        auc += 0.5 * (y0 + y1) * dx
+    return auc
+
+
 def asymmetry_ratio(neg_auc: float, pos_auc: float) -> float:
     """|neg_auc| / |pos_auc|.
 

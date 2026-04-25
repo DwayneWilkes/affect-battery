@@ -78,7 +78,9 @@ async def run_exp3b(
 
             result = RunResult(
                 config=asdict(config),
-                run_number=run_num,
+                # Composite run_number so each (run_num, prompt) writes a
+                # unique result file under save_result's naming scheme.
+                run_number=run_num * 10_000 + p_idx,
                 experiment_type=config.experiment_type.value,
                 model=config.model_name,
                 condition=config.condition.value,

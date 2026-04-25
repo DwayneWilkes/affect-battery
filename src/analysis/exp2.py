@@ -18,14 +18,19 @@ from statistics import mean
 
 from src.analysis.exp2_metrics import (
     asymmetry_ratio as _asymmetry_ratio,
-    recovery_auc,
-    time_to_baseline,
+    recovery_auc_against_control,
+    time_to_baseline_against_control,
 )
 from src.analysis.stats.decay import compare_decay_models
 from src.conditioning.prompts import Condition
 
 
-_BASELINE = Condition.NO_CONDITIONING.value
+# Per persistence-dynamics spec: the control for time-to-baseline / AUC
+# is the NEUTRAL conditioning arm (same Phase-1 turn count, no affective
+# valence). NO_CONDITIONING removes the conditioning phase entirely and
+# is reserved for the manipulation-check baseline.
+_CONTROL = Condition.NEUTRAL.value
+_NO_COND_BASELINE = Condition.NO_CONDITIONING.value
 
 
 def _body_n_value(run: dict) -> int | None:
@@ -56,45 +61,70 @@ def analyze_exp2_corpus(corpus: list[dict], model: str) -> dict:
         n_values_seen.add(n)
         by_cond_n.setdefault((cond, n), []).append(_mean_turn_accuracy(run))
 
-    # Baseline: mean across all no_conditioning runs (any N) — baseline
-    # accuracy is N-invariant by construction (no recovery dynamics in
-    # the absence of conditioning).
-    baseline_runs = [
+    # Build a per-N control curve from NEUTRAL conditioning runs. Per the
+    # persistence-dynamics spec the control is the same Phase-1 turn count
+    # with neutral feedback, isolating affective valence from procedural
+    # effects. The control is itself N-indexed (it has its own per-turn
+    # accuracy at each sweep step), not a single number.
+    n_values = sorted(n_values_seen)
+    control_per_n: list[tuple[int, float]] = []
+    for n in n_values:
+        accs = by_cond_n.get((_CONTROL, n), [])
+        if accs:
+            control_per_n.append((n, mean(accs)))
+
+    # No_conditioning runs serve as a separate scalar reference for the
+    # report — useful for comparing absolute accuracy levels even though
+    # the spec uses NEUTRAL as the recovery control.
+    no_cond_runs = [
         a for (cond, _), accs in by_cond_n.items()
-        if cond == _BASELINE for a in accs
+        if cond == _NO_COND_BASELINE for a in accs
     ]
-    if not baseline_runs:
+    no_cond_baseline = mean(no_cond_runs) if no_cond_runs else None
+
+    if len(control_per_n) < 2:
         return {
             "model": model,
-            "verdict": "unavailable_no_baseline",
-            "n_values": sorted(n_values_seen),
+            "verdict": "unavailable_no_control",
+            "n_values": n_values,
             "by_condition": {},
             "asymmetry_ratio": None,
-            "baseline": None,
+            "baseline": no_cond_baseline,
         }
-    baseline = mean(baseline_runs)
+    control_ns = [n for n, _ in control_per_n]
+    control_curve = [a for _, a in control_per_n]
 
-    n_values = sorted(n_values_seen)
     by_condition: dict[str, dict] = {}
     aucs: dict[str, float] = {}
-    for cond in {c for (c, _) in by_cond_n.keys()} - {_BASELINE}:
-        # Per-N mean accuracy for this condition. When a particular N has
-        # no runs for this condition, skip it (the curve is shorter).
+    for cond in {c for (c, _) in by_cond_n.keys()} - {_CONTROL, _NO_COND_BASELINE}:
+        # Build per-N mean accuracy for this condition over the same N
+        # values as the control so the curves share an N axis.
         per_n: list[tuple[int, float]] = []
-        for n in n_values:
+        for n in control_ns:
             accs = by_cond_n.get((cond, n), [])
             if accs:
                 per_n.append((n, mean(accs)))
-        if len(per_n) < 2:
+        # Need a curve aligned with the control (same N points) to compare.
+        if len(per_n) != len(control_ns):
             continue
         ns_present = [n for n, _ in per_n]
         curve = [a for _, a in per_n]
-        decay_fit = compare_decay_models(ns_present, curve, baseline=baseline)
-        ttb = time_to_baseline(curve, ns_present, baseline=baseline)
-        auc = recovery_auc(curve, ns_present, baseline=baseline)
+        # Decay fit uses scalar baseline (no_conditioning if present, else
+        # the mean of the control curve) per-curve, not against control.
+        decay_baseline = (
+            no_cond_baseline if no_cond_baseline is not None else mean(control_curve)
+        )
+        decay_fit = compare_decay_models(ns_present, curve, baseline=decay_baseline)
+        ttb = time_to_baseline_against_control(
+            curve, ns_present, control_curve=control_curve, ratio=0.95,
+        )
+        auc = recovery_auc_against_control(
+            curve, ns_present, control_curve=control_curve,
+        )
         by_condition[cond] = {
             "turn_accuracies_mean": curve,
             "n_values": ns_present,
+            "control_curve": control_curve,
             "decay_fit": decay_fit,
             "recovery_metrics": {
                 "time_to_baseline": ttb,
@@ -118,5 +148,6 @@ def analyze_exp2_corpus(corpus: list[dict], model: str) -> dict:
         "n_values": n_values,
         "by_condition": by_condition,
         "asymmetry_ratio": asym,
-        "baseline": baseline,
+        "baseline": no_cond_baseline,
+        "control_curve": control_curve,
     }

@@ -88,7 +88,7 @@ async def run_exp3c(
 
         results_per_item = await asyncio.gather(*[_ask(it) for it in items])
 
-        for item, response in results_per_item:
+        for item_idx, (item, response) in enumerate(results_per_item):
             body = Exp3cBody(
                 difficulty=item["difficulty"],
                 question=item["question"],
@@ -99,7 +99,9 @@ async def run_exp3c(
             )
             result = RunResult(
                 config=asdict(config),
-                run_number=run_num,
+                # Composite run_number so each (run_num, item) writes a
+                # unique result file under save_result's naming scheme.
+                run_number=run_num * 10_000 + item_idx,
                 experiment_type=config.experiment_type.value,
                 model=config.model_name,
                 condition=config.condition.value,
