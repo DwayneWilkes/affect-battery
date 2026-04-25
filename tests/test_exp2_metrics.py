@@ -106,3 +106,104 @@ class TestRecoveryMetrics:
         assert "neg_auc" in metrics
         assert "pos_auc" in metrics
         assert "asymmetry_ratio" in metrics
+
+
+class TestControlCurveMetrics:
+    """Per persistence-dynamics spec the control is a per-turn curve, not
+    a single number. These variants compare against control_curve(t) and
+    use the spec's sign convention (positive AUC = persistence)."""
+
+    def test_time_to_baseline_against_control_returns_minus_one_when_below(self):
+        from src.analysis.exp2_metrics import time_to_baseline_against_control
+
+        # conditioned stays well below 95% of control across the sweep
+        ns = [1, 3, 5, 10]
+        conditioned = [0.2, 0.3, 0.4, 0.5]
+        control = [0.9, 0.9, 0.9, 0.9]
+        assert time_to_baseline_against_control(conditioned, ns, control) == -1
+
+    def test_time_to_baseline_against_control_first_sample_already_above(self):
+        from src.analysis.exp2_metrics import time_to_baseline_against_control
+
+        ns = [1, 3, 5, 10]
+        conditioned = [0.95, 0.95, 0.95, 0.95]
+        control = [1.0, 1.0, 1.0, 1.0]
+        # conditioned[0] = 0.95 = ratio*control[0] (0.95*1.0); ties as crossing
+        assert time_to_baseline_against_control(conditioned, ns, control) == 1.0
+
+    def test_time_to_baseline_against_control_interpolates_crossing(self):
+        from src.analysis.exp2_metrics import time_to_baseline_against_control
+
+        # control flat at 1.0; threshold = 0.95
+        # conditioned: 0.20 at N=1, 0.50 at N=3, 0.97 at N=5
+        # crossing is between N=3 and N=5 where conditioned hits 0.95.
+        ns = [1, 3, 5, 10]
+        conditioned = [0.20, 0.50, 0.97, 1.00]
+        control = [1.0, 1.0, 1.0, 1.0]
+        t = time_to_baseline_against_control(conditioned, ns, control)
+        # Linear interp: 0.95 lies between 0.50 (N=3) and 0.97 (N=5)
+        # offset = (0.95-0.50)/(0.97-0.50) * (5-3) ≈ 1.915
+        assert 4.5 < t < 5.0
+
+    def test_time_to_baseline_against_control_mismatched_lengths_raise(self):
+        from src.analysis.exp2_metrics import time_to_baseline_against_control
+
+        # n_values length disagrees with control_curve length — _sorted_pairs
+        # rejects this for the control side before the cross-curve check.
+        with pytest.raises(ValueError, match="same length"):
+            time_to_baseline_against_control(
+                conditioned=[0.5, 0.6],
+                n_values=[1, 3],
+                control_curve=[0.9, 0.9, 0.9],
+            )
+
+    def test_recovery_auc_against_control_positive_when_below(self):
+        from src.analysis.exp2_metrics import recovery_auc_against_control
+
+        # conditioned consistently below control => positive AUC (persistence)
+        ns = [1, 3, 5, 10]
+        conditioned = [0.50, 0.55, 0.60, 0.70]
+        control = [0.95, 0.95, 0.95, 0.95]
+        auc = recovery_auc_against_control(conditioned, ns, control)
+        assert auc > 0
+
+    def test_recovery_auc_against_control_negative_when_above(self):
+        from src.analysis.exp2_metrics import recovery_auc_against_control
+
+        ns = [1, 3, 5, 10]
+        conditioned = [1.00, 1.00, 1.00, 1.00]
+        control = [0.85, 0.85, 0.85, 0.85]
+        auc = recovery_auc_against_control(conditioned, ns, control)
+        assert auc < 0
+
+    def test_recovery_auc_against_control_short_curve_returns_zero(self):
+        from src.analysis.exp2_metrics import recovery_auc_against_control
+
+        # Single-point curves can't form a trapezoid; integral is 0.
+        assert recovery_auc_against_control([0.5], [1], [0.9]) == 0.0
+
+
+class TestSortedPairsValidation:
+    def test_mismatched_lengths_raise(self):
+        import pytest
+        from src.analysis.exp2_metrics import time_to_baseline
+
+        with pytest.raises(ValueError, match="same length"):
+            time_to_baseline([0.5, 0.6], [1, 3, 5], baseline=0.8)
+
+
+class TestInterpolateHelper:
+    """The internal _interpolate is exercised indirectly above; these
+    cover its boundary clamps directly so they're not dead code."""
+
+    def test_interpolate_clamps_below_first(self):
+        from src.analysis.exp2_metrics import _interpolate
+        assert _interpolate([1, 5], [0.2, 0.8], x=0) == 0.2
+
+    def test_interpolate_clamps_above_last(self):
+        from src.analysis.exp2_metrics import _interpolate
+        assert _interpolate([1, 5], [0.2, 0.8], x=10) == 0.8
+
+    def test_interpolate_midpoint(self):
+        from src.analysis.exp2_metrics import _interpolate
+        assert _interpolate([1, 5], [0.2, 0.8], x=3) == pytest.approx(0.5)

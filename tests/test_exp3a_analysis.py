@@ -62,3 +62,46 @@ class TestQuadraticFitInputValidation:
 
         with pytest.raises(ValueError, match="levels"):
             analyze_exp3a({1: [0.5], 2: [0.5]})  # need >= 3 distinct levels for quadratic
+
+
+class TestExp3aReportRendering:
+    def test_renders_with_pilot_block(self, tmp_path):
+        from src.analysis.reports.exp3a import render_exp3a_report
+
+        analysis = {
+            "model": "dry-run",
+            "n": 28,
+            "levels": [1, 2, 3, 4, 5, 6, 7],
+            "beta_0": 0.50,
+            "beta_1": 0.10,
+            "beta_2": -0.05,
+            "beta_2_se": 0.02,
+            "beta_2_p_one_sided": 0.005,
+            "quadratic_rss": 0.10,
+            "quadratic_aic": -50.0,
+            "quadratic_bic": -45.0,
+            "linear_rss": 0.50,
+            "linear_aic": -10.0,
+            "linear_bic": -8.0,
+            "intensity_pilot": {
+                "decision": "proceed",
+                "n_raters": 3,
+                "n_items": 35,
+                "alpha_overall": 0.85,
+                "alpha_pairwise": {
+                    "rater_1__rater_2": 0.84,
+                    "rater_1__rater_3": 0.82,
+                    "rater_2__rater_3": 0.88,
+                },
+            },
+        }
+        out = tmp_path / "exp3a_report.md"
+        render_exp3a_report(analysis, output_path=out)
+        text = out.read_text()
+        assert "Krippendorff" in text
+        assert "proceed" in text
+        # Pairwise alphas rendered
+        assert "rater_1__rater_2" in text
+        # Quadratic vs linear table present
+        assert "Quadratic" in text
+        assert "Linear" in text
