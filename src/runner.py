@@ -189,6 +189,18 @@ class RunResult:
                 transfer_questions=self.transfer_questions,
                 transfer_expected=self.transfer_expected,
             )
+        elif self.body is None and self.experiment_type == "exp1b":
+            # Phase 2 fresh-session re-test: top-level conditioning/transfer
+            # fields carry session-1 conditioning + session-2 transfer (per
+            # the cross-session branch in run_single). Seeds default to 0 and
+            # are populated by run_single when config is TRANSFER_CROSS.
+            self.body = Exp1bBody(
+                conditioning_responses=self.conditioning_responses,
+                conditioning_correct=self.conditioning_correct,
+                transfer_responses=self.transfer_responses,
+                transfer_questions=self.transfer_questions,
+                transfer_expected=self.transfer_expected,
+            )
         elif isinstance(self.body, Exp1aBody):
             # Body was passed; sync top-level for legacy readers.
             if not self.conditioning_responses:
@@ -360,6 +372,9 @@ async def run_single(
     result = RunResult(
         config=asdict(config),
         run_number=run_number,
+        experiment_type=config.experiment_type.value,
+        model=config.model_name,
+        condition=config.condition.value,
         conditioning_responses=conditioning_responses,
         conditioning_correct=conditioning_correct,
         transfer_responses=transfer_responses,
@@ -368,6 +383,13 @@ async def run_single(
         start_time=start,
         end_time=time.time(),
     )
+    # For TRANSFER_CROSS, record session_1_seed (conditioning phase) and
+    # session_2_seed (fresh-session re-test) on the Exp1bBody. Phase 2 uses
+    # `seed + 1`-derived offset so the two sessions sample distinct draws
+    # while remaining deterministic.
+    if config.experiment_type == ExperimentType.TRANSFER_CROSS and isinstance(result.body, Exp1bBody):
+        result.body.session_1_seed = seed
+        result.body.session_2_seed = seed + 10_000
     result.compute_checksum()
     return result
 
