@@ -18,60 +18,11 @@ rather than silently substituting NEUTRAL.
 
 from __future__ import annotations
 
-import math
 from statistics import mean
 
+from src.analysis._effect_size import cohens_d, run_accuracy, welch_p
 from src.analysis_corrections import apply_holm_correction
 from src.conditioning.prompts import Condition
-
-
-def _accuracy(run: dict) -> float:
-    correct = run.get("transfer_correct", [])
-    if not correct:
-        return 0.0
-    return sum(1 for c in correct if c) / len(correct)
-
-
-def _pooled_sd(xs: list[float], ys: list[float]) -> float:
-    nx, ny = len(xs), len(ys)
-    if nx < 2 or ny < 2:
-        return 0.0
-    mx, my = mean(xs), mean(ys)
-    sx2 = sum((x - mx) ** 2 for x in xs) / (nx - 1)
-    sy2 = sum((y - my) ** 2 for y in ys) / (ny - 1)
-    pooled_var = ((nx - 1) * sx2 + (ny - 1) * sy2) / (nx + ny - 2)
-    return math.sqrt(pooled_var)
-
-
-def _cohens_d(treatment: list[float], baseline: list[float]) -> float:
-    sd = _pooled_sd(treatment, baseline)
-    diff = mean(treatment) - mean(baseline)
-    if sd == 0.0:
-        if diff == 0.0:
-            return 0.0
-        return math.copysign(math.inf, diff)
-    return diff / sd
-
-
-def _welch_p(treatment: list[float], baseline: list[float]) -> float:
-    """Two-sided Welch t-test p-value (normal approximation).
-
-    Weekend-ship proxy: uses the standard-normal CDF rather than the
-    Student-t with Welch-Satterthwaite df. Acceptable for the synthetic
-    test path; primary analysis at submit-time replaces with mixed-effects.
-    """
-    nx, ny = len(treatment), len(baseline)
-    if nx < 2 or ny < 2:
-        return 1.0
-    mx, my = mean(treatment), mean(baseline)
-    sx2 = sum((x - mx) ** 2 for x in treatment) / (nx - 1)
-    sy2 = sum((y - my) ** 2 for y in baseline) / (ny - 1)
-    se = math.sqrt(sx2 / nx + sy2 / ny)
-    if se == 0.0:
-        return 0.0 if mx != my else 1.0
-    z = abs(mx - my) / se
-    # Two-sided p from standard-normal: 2 * (1 - Phi(z))
-    return 2.0 * (1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0))))
 
 
 def analyze_exp1a_corpus(corpus: list[dict], model: str) -> dict:
@@ -95,7 +46,7 @@ def analyze_exp1a_corpus(corpus: list[dict], model: str) -> dict:
             ),
         }
 
-    baseline_accs = [_accuracy(r) for r in baseline_runs]
+    baseline_accs = [run_accuracy(r) for r in baseline_runs]
     baseline_mean = mean(baseline_accs)
 
     # Group non-baseline conditions
@@ -104,10 +55,10 @@ def analyze_exp1a_corpus(corpus: list[dict], model: str) -> dict:
         cond = r["condition"]
         if cond == baseline_key:
             continue
-        by_cond.setdefault(cond, []).append(_accuracy(r))
+        by_cond.setdefault(cond, []).append(run_accuracy(r))
 
     conditions = list(by_cond.keys())
-    raw_ps = [_welch_p(by_cond[c], baseline_accs) for c in conditions]
+    raw_ps = [welch_p(by_cond[c], baseline_accs) for c in conditions]
     holm_qs = apply_holm_correction(raw_ps)
 
     per_condition: dict[str, dict] = {}
@@ -117,7 +68,7 @@ def analyze_exp1a_corpus(corpus: list[dict], model: str) -> dict:
             "n_runs": len(accs),
             "mean_accuracy": mean(accs),
             "baseline_mean": baseline_mean,
-            "cohens_d": _cohens_d(accs, baseline_accs),
+            "cohens_d": cohens_d(accs, baseline_accs),
             "p_raw": raw_p,
             "p_holm_corrected": holm_q,
         }
