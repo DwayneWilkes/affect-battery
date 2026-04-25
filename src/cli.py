@@ -132,6 +132,7 @@ def cmd_run(args):
         temperature=args.temperature,
         seed=args.seed,
         is_base_model=args.base_model,
+        neutral_turns=args.neutral_turns,
         stimulus_bank=bank_id,
         stimulus_bank_hash=bank_hash,
     )
@@ -355,6 +356,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--dry-run", action="store_true", help="Use canned responses instead of real API")
     p_run.add_argument("--base-model", action="store_true",
                        help="Use /v1/completions + few-shot scaffold (for non-instruct models).")
+    p_run.add_argument(
+        "--neutral-turns", type=int, default=0,
+        help=(
+            "Number of neutral buffer turns between conditioning and "
+            "transfer. For Exp 2 N-values sweeps, set this to the N value "
+            "of the slice (1, 3, 5, or 10). Default 0 (Exp 1a/1b)."
+        ),
+    )
     p_run.add_argument(
         "--runner-config", default=None,
         help=(
