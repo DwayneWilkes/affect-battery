@@ -13,7 +13,7 @@ import pytest
 
 class TestSchedulePaired:
     def test_each_treatment_has_paired_neutral_control(self):
-        from src.runner.schedule import schedule_exp2_with_controls
+        from src.runners.schedule import schedule_exp2_with_controls
         from src.conditioning.prompts import Condition
 
         plan = schedule_exp2_with_controls(
@@ -39,7 +39,7 @@ class TestSchedulePaired:
     def test_neutral_control_count_per_n_matches_treatment_count(self):
         """For each N, the number of neutral-control runs equals the
         max of treatment-arm runs at that N (so analyses can pair 1:1)."""
-        from src.runner.schedule import schedule_exp2_with_controls
+        from src.runners.schedule import schedule_exp2_with_controls
         from src.conditioning.prompts import Condition
 
         plan = schedule_exp2_with_controls(
@@ -53,7 +53,7 @@ class TestSchedulePaired:
         assert len(neutral) >= 4
 
     def test_invalid_inputs_raise_value_error(self):
-        from src.runner.schedule import schedule_exp2_with_controls
+        from src.runners.schedule import schedule_exp2_with_controls
         from src.conditioning.prompts import Condition
 
         with pytest.raises(ValueError, match="num_runs_per_cell"):
