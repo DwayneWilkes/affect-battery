@@ -1,6 +1,6 @@
-"""Task 4.2 Red — Exp 1b three-way comparison scoring.
+"""Exp 1b three-way comparison scoring.
 
-Per tasks.md Task 4.2 + conditioning-protocol spec
+Per conditioning-protocol spec
 "Three-way comparison required": for each model, the analysis produces
 session_1_effect_size (within-session, from Exp 1a corpus), session_2_effect_size
 (cross-session, from Exp 1b corpus), and no_conditioning_baseline side-by-side.

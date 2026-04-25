@@ -1,4 +1,4 @@
-"""Task 8.3 Red — per-model H4 decision rule (7-row table).
+"""Per-model H4 decision rule (7-row table).
 
 Per asymmetry-contrast spec "Per-model H4 decision rule": map an
 (aggregate, p_value, mde) triple to one of 7 verdict rows: supported,
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 class TestPerModelVerdict:
     def test_decision_rule_covers_all_seven_rows(self):
-        """Per review-finding #2: previously near-1 and null had overlapping
+        """Per previously near-1 and null had overlapping
         bands and no equivalence-test signal, so null was unreachable. Now
         they form a real partition driven by p_equivalence_under_alpha."""
         from src.analysis.asymmetry import per_model_verdict

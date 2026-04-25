@@ -1,4 +1,4 @@
-"""Task 7.5 Red — Exp 3b + 3c reports with §10 caveats.
+"""Exp 3b + 3c reports with §10 caveats.
 
 Per cognitive-scope-measurement spec "Every 3b report cites §10" +
 conservative-shift-measurement spec "Every 3c report cites §10":

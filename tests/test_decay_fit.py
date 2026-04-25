@@ -1,4 +1,4 @@
-"""Task 5.4 Red — Exp 2 decay-model fits + AIC/BIC comparison.
+"""Exp 2 decay-model fits + AIC/BIC comparison.
 
 Per persistence-dynamics spec "Decay model fit and comparison" +
 scoring-pipeline spec "Decay-model fitting for H2": for an Exp 2 turn-
@@ -52,7 +52,7 @@ class TestLinearFit:
 
 class TestExponentialAndLinearBothFit:
     def test_exponential_and_linear_both_fit(self):
-        """compare_decay_models returns both fits + their AIC/BIC values."""
+        """Compare_decay_models returns both fits + their AIC/BIC values."""
         from src.analysis.stats.decay import compare_decay_models
 
         n_values = [1, 3, 5, 10]

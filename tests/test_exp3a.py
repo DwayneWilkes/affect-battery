@@ -1,7 +1,7 @@
-"""Task 6.3 Red — Exp 3a runner with 7-level intensity axis.
+"""Exp 3a runner with 7-level intensity axis.
 
 Per conditioning-protocol spec "Intensity-axis pilot-as-gate for Exp 3a"
-+ tasks.md Task 6.3: Exp 3a runner reads pilot_seed JSON (from Task 6.2),
++ : Exp 3a runner reads pilot_seed JSON from the seed file,
 validates SHA matches, then iterates intensity levels x stimulus bank
 x model. Each run record carries the level on Exp3aBody.
 """

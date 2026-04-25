@@ -142,7 +142,7 @@ class TestProvenance:
 
 class TestLengthMatching:
     """Spec Requirement: length matching across emotional conditions per turn, <=20% delta.
-    NEUTRAL is exempt per GAPS.md (brevity is definitional for neutral feedback).
+    NEUTRAL is exempt  (brevity is definitional for neutral feedback).
     ACCURATE_NEGATIVE on the `correct` side is also exempt because it is defined
     to inherit NEUTRAL's 'Correct.' token (spec Requirement 1 table)."""
 

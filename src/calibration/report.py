@@ -177,7 +177,7 @@ def _gate_config_section(gate_config: GateConfig) -> str:
 
 def _confound_status_section() -> str:
     return (
-        "## Known confounds (from `GAPS.md`)\n"
+        "## Known confounds (from follow-up queue)\n"
         "\n"
         "- **G1 (RLHF-vs-exposure)**: base-vs-instruct split may reflect "
         "post-training-corpus exposure to EmotionPrompt (2023) rather than "

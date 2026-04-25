@@ -1,6 +1,6 @@
 """Tests for configs/intensity_levels.yaml loading.
 
-Enforces two ordered intensity axes for Experiment 3a (per spec + GAPS.md):
+Enforces two ordered intensity axes for Experiment 3a (per spec):
 - primary_valence_axis: rater-validated 7 levels, length-matched, signed valence
 - replication_arousal_axis: EA16-EA22 from Li et al. 2024 (arXiv:2312.11111)
   in authors' published arousal rank order (Table 19).

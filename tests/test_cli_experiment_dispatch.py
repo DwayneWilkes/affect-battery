@@ -1,7 +1,7 @@
-"""Task 0.2 Red tests — CLI `--experiment` flag dispatches to per-experiment runners.
+"""CLI `--experiment` flag dispatches to per-experiment runners.
 
 Per design.md D5 (unified `--experiment` CLI flag + per-experiment library
-modules) and tasks.md Task 0.2:
+modules) and :
 
 - `affect-battery run --experiment exp1a` routes to `src.runners.exp1a.run_exp1a`
 - Same for exp1b, exp2, exp3a, exp3b, exp3c
@@ -85,7 +85,7 @@ class TestCliExperimentFlag:
 
 
 class TestCmdRunDispatches:
-    """cmd_run MUST route through RUNNERS[args.experiment] — not the legacy
+    """Cmd_run MUST route through RUNNERS[args.experiment] — not the legacy
     run_batch path directly. Verifies the fix for reviewer-flagged gap
     where --experiment was validated but never dispatched."""
 
@@ -113,7 +113,7 @@ class TestCmdRunDispatches:
             assert callable(RUNNERS[name]), f"{name} runner missing"
 
     def test_cli_run_dispatches_exp3b_with_runner_config(self, tmp_path, monkeypatch):
-        """Per review-finding #6: `cli.cmd_run` must dispatch exp3a/3b/3c
+        """Per `cli.cmd_run` must dispatch exp3a/3b/3c
         without raising TypeError. The previous implementation passed only
         the base run_batch kwargs (max_concurrent, budget, ...) which the
         new runners don't accept, and supplied no intensity_levels/prompts/

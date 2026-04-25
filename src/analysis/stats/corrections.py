@@ -1,13 +1,10 @@
 """Family-wise correction wiring across all experiments.
 
-Per power-analysis spec "Family-wise error correction" + tasks.md Task 8.5:
-group p-values by `family_membership` (e.g. "primary", "exploratory"),
-apply Holm-Bonferroni within "primary" and BH within "exploratory",
-return a per-hypothesis dict with raw + corrected p-values.
-
-DRY check: reuses apply_holm_correction + apply_bh_correction from
-src.analysis_corrections (the existing implementation from the
-calibration epoch). This module is wiring, not new math.
+Per the power-analysis spec "Family-wise error correction": group
+p-values by `family_membership` (e.g. "primary", "exploratory"),
+apply Holm-Bonferroni within "primary" and Benjamini-Hochberg within
+"exploratory", return a per-hypothesis dict with raw + corrected
+p-values. The math primitives live in src.analysis_corrections.
 """
 
 from __future__ import annotations

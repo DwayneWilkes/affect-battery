@@ -1,6 +1,6 @@
 """Aggregate cross-experiment report.
 
-Per design.md:D11 Phase 9 + tasks.md Task 9.1: top-level
+Per design.md:D11 Phase 9: top-level
 results/AGGREGATE_REPORT.md provides one entry point summarizing all
 six experiments + the H4 cross-experiment contrast + primary-family-
 wise correction status. Each experiment section is a brief landing

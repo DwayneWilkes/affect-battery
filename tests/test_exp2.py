@@ -1,4 +1,4 @@
-"""Task 5.1 Red — Exp 2 persistence-dynamics runner.
+"""Exp 2 persistence-dynamics runner.
 
 Per persistence-dynamics spec "Persistence protocol structure" + "N-values
 sweep": Exp 2 runs Phase 1 (5-turn conditioning on 3-arm subset) + Phase 2

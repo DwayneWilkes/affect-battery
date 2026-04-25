@@ -102,7 +102,7 @@ def _check_pre_registration_not_sentinel(
             f"sweep MUST NOT run until the gate config has been tagged in "
             f"git (tag: gate-prereg-<bank_id>-<YYYY-MM-DD>) and the tag "
             f"commit SHA recorded in configs/calibration-gate.yaml. "
-            f"See task 12.7 in tasks.md."
+            f""
         )
 
 

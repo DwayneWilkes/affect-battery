@@ -1,4 +1,4 @@
-"""Exp 2 cross-N aggregation pipeline (review-finding A1).
+"""Exp 2 cross-N aggregation pipeline.
 
 `analyze_exp2_corpus(corpus, model)` takes a flat list of run-result
 dicts (loaded from results/exp2/) and produces the structured analysis

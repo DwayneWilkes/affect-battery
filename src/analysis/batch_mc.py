@@ -1,4 +1,4 @@
-"""Task 2.3 — batch manipulation-check across paper §3.1 models.
+"""batch manipulation-check across paper §3.1 models.
 
 Iterates strong-positive / strong-negative / no-conditioning conditions
 on each model in the paper §3.1 set, computes per-model MC verdict via

@@ -4,7 +4,7 @@ Spec: affect-battery-task-difficulty-calibration::conditioning-protocol::
 "Default pilot conditions list includes SELF_CHECK_NEUTRAL".
 
 Tasks 7.1 + 7.2 from
-`specs/changes/affect-battery-task-difficulty-calibration/tasks.md`:
+`specs`:
 the pilot subcommand's default conditions list MUST include all seven
 conditions (the existing six + SELF_CHECK_NEUTRAL), so the length-matched
 control runs alongside STRONG_NEGATIVE without requiring a per-invocation
@@ -48,7 +48,7 @@ class TestDefaultPilotConditionsConstant:
 
 
 class TestCmdPilotUsesSevenConditionsByDefault:
-    """cmd_pilot invoked with no --conditions override iterates the 7-condition
+    """Cmd_pilot invoked with no --conditions override iterates the 7-condition
     default. Exercised by monkey-patching the batch runner and capturing what
     conditions the CLI iterates over."""
 

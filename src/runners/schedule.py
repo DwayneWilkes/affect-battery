@@ -1,7 +1,7 @@
 """Cross-experiment scheduling primitives.
 
-Per persistence-dynamics spec "Neutral control runs alongside" + tasks.md
-Task 5.2: schedule_exp2_with_controls emits a flat plan of (condition,
+Per persistence-dynamics spec "Neutral control runs alongside",
+schedule_exp2_with_controls emits a flat plan of (condition,
 N, run_idx) cells covering both treatment arms and paired NEUTRAL
 controls at each N. The plan is consumed by Exp 2 batch driver(s) so
 controls run alongside treatment, not as a separate post-hoc run.

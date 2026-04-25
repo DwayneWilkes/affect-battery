@@ -20,7 +20,7 @@ normal-approximation regime. Hand-rolled here because statsmodels isn't
 a project dependency and the math is ~6 lines.
 
 Spec: affect-battery-task-difficulty-calibration::scoring-pipeline::
-"Minimum-detectable-effect reporting". Task 9.2.
+"Minimum-detectable-effect reporting". .
 """
 
 from __future__ import annotations

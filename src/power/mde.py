@@ -1,4 +1,4 @@
-"""MDE update logic (Task 1.3).
+"""MDE update logic.
 
 Per power-analysis spec "Per-hypothesis MDE coverage with grounded
 defaults" + design.md D3:

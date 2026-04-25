@@ -1,4 +1,4 @@
-"""Task 7.4 Red — hedging codebook with 4 paper §3.4.3 patterns flagged.
+"""Hedging codebook with 4 paper §3.4.3 patterns flagged.
 
 Per scoring-pipeline spec MODIFIED "Hedging language codebook with five
 categories": the codebook MUST contain 4 patterns flagged

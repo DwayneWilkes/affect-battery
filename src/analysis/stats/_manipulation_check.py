@@ -8,7 +8,7 @@ ceiling-effect inference that couldn't be verified. Absent NO_CONDITIONING
 data now yields an explicit UNAVAILABLE verdict rather than a silent fallback.
 
 Threshold is a constructor-level argument (default 2pp absolute accuracy
-delta) so Akshansh's Ticket 2 deliverable can drop in without code changes.
+delta) so the future codebook deliverable can drop in without code changes.
 """
 
 from dataclasses import dataclass, field

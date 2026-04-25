@@ -1,6 +1,6 @@
-"""Task 3.3 Red — Exp 1a batch executor across paper §3.1 models.
+"""Exp 1a batch executor across paper §3.1 models.
 
-Per tasks.md Task 3.3 + base-model-comparison spec: driver iterates
+Per base-model-comparison spec: driver iterates
 {Llama-3-8B-Instruct, Mistral-7B-Instruct, Gemma-2-9B-IT, Llama-3-8B
 base} × 6 conditions × n. Base-model branch uses few-shot scaffold
 inference path; instruct branches use chat path.

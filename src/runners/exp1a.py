@@ -1,7 +1,7 @@
 """Exp 1a — within-session cross-domain transfer (paper §3.2.1).
 
 Currently a direct re-export of the general-purpose `run_batch` async
-generator. Task 3.2 specializes this for the paper §3.2.1 6-arm
+generator.  specializes this for the paper §3.2.1 6-arm
 condition set + cross-domain TransferBank; until then, run_batch's
 existing behavior IS Exp 1a.
 """

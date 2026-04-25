@@ -19,7 +19,7 @@ def canonical_json_bytes(payload: dict) -> bytes:
     src/probes/intensity_pilot.emit_seed (producer) and
     src/runners/exp3a._validate_pilot_seed (verifier). Keeping the
     serialization in one place is correctness-load-bearing: any drift
-    causes valid seeds to be rejected (review-finding #14).
+    between the two would cause valid seeds to be rejected.
     """
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 

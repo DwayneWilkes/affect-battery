@@ -1,9 +1,7 @@
 """Shared effect-size + accuracy primitives for per-experiment analyses.
 
-Extracted from `src/analysis/exp1a.py` for reuse by `src/analysis/exp1b.py`
-(Task 4.2 DRY check: effect-size computation shared with Exp 1a). Future
-per-experiment analyses (Exp 2, Exp 3a-c) should import from here rather
-than re-implementing.
+Cohen's d, pooled SD, Welch's t-test p-value, and per-run accuracy
+helpers used across Exp 1a, Exp 1b, and the H4 aggregation.
 """
 
 from __future__ import annotations
@@ -45,12 +43,8 @@ def cohens_d(treatment: list[float], baseline: list[float]) -> float:
 
 
 def welch_p(treatment: list[float], baseline: list[float]) -> float:
-    """Two-sided Welch's t-test p-value via scipy.stats.ttest_ind.
-
-    Per review-finding #10: the previous implementation used a standard-
-    normal CDF approximation rather than Welch's t with Welch-Satterthwaite
-    df, which is mildly anti-conservative for the small n we use in tests.
-    This now delegates to scipy.stats.ttest_ind(equal_var=False).
+    """Two-sided Welch's t-test p-value via scipy.stats.ttest_ind with
+    equal_var=False (Welch-Satterthwaite df).
 
     Returns 1.0 when either group has fewer than 2 samples (test cannot
     be computed); 0.0 when both means differ but SE is zero (perfect

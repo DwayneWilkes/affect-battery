@@ -1,7 +1,7 @@
 """Tasks 3.4 + 3.5 Red — Exp 1a H1 analysis + report.
 
 Per power-analysis spec H1 + scoring-pipeline spec per-experiment views.
-Simplified for the weekend ship: Cohen's d per condition vs
+Cohen's d per condition vs
 no-conditioning baseline + Holm-Bonferroni correction across the
 primary family. Full lme4/pymer4 mixed-effects fit is a follow-up
 task (logged in commit message).

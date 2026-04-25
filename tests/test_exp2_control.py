@@ -1,4 +1,4 @@
-"""Task 5.2 Red — neutral-conditioning control runs.
+"""Neutral-conditioning control runs.
 
 Per persistence-dynamics spec "Neutral control runs alongside": for each
 strong-positive and strong-negative run at a given N, a paired neutral-

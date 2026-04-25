@@ -1,4 +1,4 @@
-"""Task 0.3a Red — candidate-bank alignment-review gate (review AI-1).
+"""Candidate-bank alignment-review gate .
 
 Per cross-domain-transfer-tasks/spec.md "Alignment review for re-scoped
 transfer banks":

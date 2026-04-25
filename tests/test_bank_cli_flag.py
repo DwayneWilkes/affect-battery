@@ -5,7 +5,7 @@ Spec: affect-battery-task-difficulty-calibration::conditioning-protocol::
 task-difficulty-calibration::"Stimulus bank schema" (cache-identity clause).
 
 Tasks 5.1-5.7 from
-`specs/changes/affect-battery-task-difficulty-calibration/tasks.md`.
+`specs`.
 """
 
 import asyncio
@@ -88,7 +88,7 @@ class TestStimulusBankInSavedResults:
 
 
 class TestIsValidCachedResultRejectsBankMismatch:
-    """is_valid_cached_result MUST reject a cached file whose
+    """Is_valid_cached_result MUST reject a cached file whose
     stimulus_bank_hash doesn't match the currently-loaded bank.
     This is the guard against silently mixing banks in aggregated analysis."""
 

@@ -193,7 +193,7 @@ class DryRunClient(ModelClient):
 
         Returns the same canned-response cycle as `complete()` so the
         DryRunClient transparently supports both chat and base-model
-        runners (used by Task 1.2 base-model feasibility probe + Task
+        runners (used by  base-model feasibility probe + Task
         3.3 base-model batch runs).
         """
         response = self._responses[self._index % len(self._responses)]

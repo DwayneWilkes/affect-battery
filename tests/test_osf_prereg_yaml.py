@@ -1,4 +1,4 @@
-"""Task 0.4 Red — OSF pre-registration YAML skeleton.
+"""OSF pre-registration YAML skeleton.
 
 Per power-analysis/spec.md "OSF pre-registration top-level gate" +
 design.md D10 (single versioned YAML for OSF pre-registration):

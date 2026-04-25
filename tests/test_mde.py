@@ -4,7 +4,7 @@ Spec: affect-battery-task-difficulty-calibration::scoring-pipeline::
 "Minimum-detectable-effect reporting".
 
 Tasks 9.1 + 9.2 from
-`specs/changes/affect-battery-task-difficulty-calibration/tasks.md`:
+`specs`:
 `compute_mde(baseline_acc, n, alpha=0.05, power=0.80)` returns the
 smallest manipulation-check delta (as a fraction 0.0-1.0) detectable
 under a two-sided binomial proportion test at the given α and power.

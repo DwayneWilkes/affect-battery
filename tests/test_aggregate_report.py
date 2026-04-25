@@ -1,4 +1,4 @@
-"""Task 9.1 Red — aggregate cross-experiment report.
+"""Aggregate cross-experiment report.
 
 Per design.md:D11 Phase 9: top-level results/AGGREGATE_REPORT.md
 contains sections for each of Exp 1a, 1b, 2, 3a, 3b, 3c plus H4

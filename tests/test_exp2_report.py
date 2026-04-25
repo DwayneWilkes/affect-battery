@@ -1,4 +1,4 @@
-"""Task 5.5 Red — Exp 2 report with §10 decay-shape caveat.
+"""Exp 2 report with §10 decay-shape caveat.
 
 Per persistence-dynamics spec "Decay-shape interpretation is hedged":
 when decay-shape comparison results are presented, the accompanying

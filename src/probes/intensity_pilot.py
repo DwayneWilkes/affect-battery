@@ -1,4 +1,4 @@
-"""Intensity-axis pilot protocol (Task 6.1).
+"""Intensity-axis pilot protocol.
 
 Per conditioning-protocol spec "Two intensity axes for Experiment 3a" +
 "Intensity-axis pilot-as-gate for Exp 3a": collect ratings from 3 raters
@@ -13,7 +13,7 @@ Decision rule (per spec):
   (refine prompts and re-run pilot)
 
 Krippendorff implementation: krippendorff library (pip install
-krippendorff). DRY check from Task 6.1: not rolled by hand.
+krippendorff). DRY check not rolled by hand.
 """
 
 from __future__ import annotations

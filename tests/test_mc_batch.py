@@ -1,9 +1,8 @@
-"""Tasks 2.3 + 2.4 Red — manipulation-check batch + exclusion filter.
+"""Manipulation-check batch + exclusion filter.
 
-Per scoring-pipeline spec (main) "Manipulation check gate" + the
-realignment requirement that paper §3.1 models all run MC before
-primary data collection. Failing MC excludes the model from primary
-analysis (Task 2.4).
+Per scoring-pipeline spec "Manipulation check gate": every paper §3.1
+model runs the manipulation check before primary data collection.
+Failing MC excludes the model from primary analysis.
 """
 
 import pytest
@@ -36,7 +35,7 @@ class TestRunBatchManipulationCheck:
 
 
 class TestPrimaryAnalysisExclusion:
-    """Task 2.4 — exclude MC-failed models from primary corpus."""
+    """ — exclude MC-failed models from primary corpus."""
 
     def test_passing_model_is_eligible(self):
         from src.analysis.exclusion import is_model_eligible_for_primary

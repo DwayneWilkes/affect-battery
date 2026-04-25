@@ -4,7 +4,7 @@ The `ModelBackedProbe` wraps a `ModelClient` so the calibrator can measure
 accuracy at a given (operator, digit_level). `run_calibration` orchestrates
 per-operator calibration and writes the resulting bank YAML.
 
-Spec: affect-battery-task-difficulty-calibration. Task 1.1e.
+Spec: affect-battery-task-difficulty-calibration. e.
 """
 
 from __future__ import annotations

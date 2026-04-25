@@ -6,14 +6,15 @@ transfer accuracy, Cohen's d vs the NO_CONDITIONING baseline, and a raw
 two-sample p-value, then apply Holm-Bonferroni correction across the
 non-baseline family within Exp 1a.
 
-Cohen's d uses pooled SD over the per-run accuracy series. The raw p-value
-is from a two-sample Welch t-test approximation; for the weekend ship this
-is a quick proxy that does NOT assume equal variance — full lme4/pymer4
-mixed-effects fit is logged in GAPS.md.
+Cohen's d uses pooled SD over the per-run accuracy series. The raw
+p-value is from a two-sample Welch t-test (unequal variances). A
+mixed-effects fit (lme4 / pymer4) is the planned upgrade for primary
+analysis; the Welch test is a one-line drop-in for cross-validation.
 
-UNAVAILABLE verdict: when the no_conditioning baseline is absent we cannot
-compute deltas, so the function returns verdict='unavailable_no_baseline'
-rather than silently substituting NEUTRAL.
+UNAVAILABLE verdict: when the no_conditioning baseline is absent we
+cannot compute deltas, so the function returns
+verdict='unavailable_no_baseline' rather than silently substituting
+NEUTRAL.
 """
 
 from __future__ import annotations

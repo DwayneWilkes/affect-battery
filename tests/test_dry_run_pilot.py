@@ -136,7 +136,7 @@ def test_pilot_checksums_verify(pilot_output_dir):
 
 
 def test_pilot_feedback_text_appears_in_transcript(pilot_output_dir):
-    """Task 9.5 partial: confirm that the expected per-turn feedback text
+    """ partial: confirm that the expected per-turn feedback text
     from FEEDBACK_SETS appears in the conditioning-phase message history."""
     # Use STRONG_POSITIVE because its 5 turns are all unique -- easy to check
     # that at least the turn-0 and turn-2 text appear in the transcript.

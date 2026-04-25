@@ -1,6 +1,6 @@
 """A4 + A5 Red — H4 aggregation + manipulation-check from Exp 1a corpus.
 
-Per asymmetry-contrast spec + review-findings A4/A5: stitch per-model
+Per asymmetry-contrast spec + stitch per-model
 H4 aggregation from Exp 1a corpus (Cohen's d for strong_positive vs
 strong_negative against no_conditioning baseline), apply manipulation-
 check to determine model exclusion, then run the base-vs-instruct

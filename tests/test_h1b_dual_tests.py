@@ -1,4 +1,4 @@
-"""Task 4.3 Red — H1b TOST equivalence + directional test pair.
+"""H1b TOST equivalence + directional test pair.
 
 Per power-analysis spec "H1b null-equivalence test (TOST)": for the
 session-2 effect, the analysis runs BOTH a one-sided directional test
@@ -41,7 +41,7 @@ class TestTostEquivalence:
 
 class TestExp1bH1bDualTests:
     def test_tost_and_directional_both_run(self):
-        """analyze_exp1b with h1b_dual_tests=True returns BOTH a one-sided
+        """Analyze_exp1b with h1b_dual_tests=True returns BOTH a one-sided
         directional p-value AND a TOST equivalence p-value at epsilon=+/-0.10."""
         from src.analysis.exp1b import analyze_exp1b
 

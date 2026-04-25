@@ -22,7 +22,7 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Task 1.3 — MDE update from variance probe
+#  — MDE update from variance probe
 # ---------------------------------------------------------------------------
 
 
@@ -63,7 +63,7 @@ class TestUpdateMdeFromProbe:
 
 
 # ---------------------------------------------------------------------------
-# Task 1.4 — base-feasibility decision record
+#  — base-feasibility decision record
 # ---------------------------------------------------------------------------
 
 
@@ -98,7 +98,7 @@ class TestBaseFeasibilityDecision:
 
 
 # ---------------------------------------------------------------------------
-# Task 1.5 — budget-contingency decision record
+#  — budget-contingency decision record
 # ---------------------------------------------------------------------------
 
 

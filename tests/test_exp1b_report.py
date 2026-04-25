@@ -1,4 +1,4 @@
-"""Task 4.4 Red — Exp 1b report with null-confirms-context-attention framing.
+"""Exp 1b report with null-confirms-context-attention framing.
 
 Per conditioning-protocol spec "Null result is reported as confirming
 context-attention": when session-2 effect is null (within +/- 0.10 by

@@ -4,7 +4,7 @@ Per power-analysis spec "Week-1 pilot feeds a simulation-based power
 analysis" + design.md D3 variance-probe-override:
 
 Runs strong-positive vs neutral conditions on arithmetic. Computes
-variance + observed effect size to inform MDE table updates (Task 1.3).
+variance + observed effect size to inform MDE table updates.
 Output JSON consumed by `src.power.mde.update_from_probe`.
 """
 
@@ -112,7 +112,7 @@ async def run_variance_probe(
         notes=(
             "Variance probe over conditioning accuracy across "
             f"{n_per_condition} runs × 2 conditions on {model_name}. "
-            "Output consumed by src.power.mde.update_from_probe (Task 1.3)."
+            "Output consumed by src.power.mde.update_from_probe."
         ),
     )
 

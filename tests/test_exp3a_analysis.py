@@ -1,7 +1,7 @@
-"""Task 6.4 Red — Exp 3a quadratic fit + β₂ test.
+"""Exp 3a quadratic fit + β₂ test.
 
 Per scoring-pipeline spec "Quadratic-model fit for H3a" + power-analysis
-spec H3a formula: fit accuracy ~ intensity_level + I(intensity_level^2).
+spec H3a: fit accuracy ~ intensity_level + I(intensity_level^2).
 β₂ < 0 (one-sided test) is the H3a-confirming inverted-U signature.
 Report β₂ p-value + AIC/BIC vs the linear-only model so the consumer
 can compare shapes.

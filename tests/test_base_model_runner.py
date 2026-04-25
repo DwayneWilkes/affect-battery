@@ -113,7 +113,7 @@ class TestBaseModelPath:
         assert fs.turns[1].correct in prompt_turn_2
 
     def test_stop_tokens_used(self):
-        """complete_text should be called with a stop list containing
+        """Complete_text should be called with a stop list containing
         'Human:' so the base model doesn't hallucinate the next turn."""
         cfg = _config()
         client = _ScriptedCompletionClient(responses=[" 0"] * 10)

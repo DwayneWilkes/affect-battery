@@ -1,7 +1,7 @@
-"""Task 7.1 Red — Exp 3b runner (open-ended generation).
+"""Exp 3b runner (open-ended generation).
 
 Per cognitive-scope-measurement spec "Cognitive-scope protocol" +
-tasks.md Task 7.1: Exp 3b runs 3 conditions x prompts x 10 generations
+: Exp 3b runs 3 conditions x prompts x 10 generations
 per prompt at temperature=0.7, top_p=0.95. Each generation receives a
 distinct seed for reproducibility. The result body is Exp3bBody with
 prompt_id, generations, per_generation_seeds.
@@ -60,7 +60,7 @@ async def test_exp3b_ten_generations_per_prompt_per_condition(tmp_path):
 
 @pytest.mark.asyncio
 async def test_exp3b_runs_conditioning_phase_first(tmp_path):
-    """Per review-finding #1: Exp 3b MUST run the 5-turn affective
+    """Per Exp 3b MUST run the 5-turn affective
     conditioning protocol before the generation phase. We assert this by
     checking that conditioning_responses is populated on the result."""
     from src.models import DryRunClient
@@ -89,7 +89,7 @@ async def test_exp3b_runs_conditioning_phase_first(tmp_path):
 
 @pytest.mark.asyncio
 async def test_exp3b_uses_paper_sampling_params(tmp_path):
-    """temperature=0.7 + top_p=0.95 are the paper §3.4.2 sampling
+    """Temperature=0.7 + top_p=0.95 are the paper §3.4.2 sampling
     parameters — verify they're surfaced on the run config."""
     from src.models import DryRunClient
 

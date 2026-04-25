@@ -1,14 +1,14 @@
 """Exp 2 — persistence / recovery dynamics (paper §3.3).
 
 Per persistence-dynamics spec "Persistence protocol structure" + "N-values
-sweep" + tasks.md Task 5.1: Exp 2 extends Exp 1a's conditioning phase with
+sweep": Exp 2 extends Exp 1a's conditioning phase with
 N neutral turns on diverse tasks. The neutral_turns count is the recovery
 phase length; per-turn accuracy across those turns is captured on Exp2Body
 for downstream recovery-metric computation.
 
 Implementation reuses run_batch + run_single's existing neutral_turns
 loop. The PERSISTENCE branch in run_single now also records per-turn
-accuracies and attaches Exp2Body. DRY check (Task 5.1): conditioning
+accuracies and attaches Exp2Body. DRY check: conditioning
 phase reuses Exp 1a's protocol verbatim — no parallel implementation.
 """
 

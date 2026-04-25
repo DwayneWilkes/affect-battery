@@ -106,7 +106,7 @@ class TestStructuralEquivalence:
 
 
 class TestDryRunParseability:
-    """Task 3.3: verify the generated template is parseable by downstream
+    """: verify the generated template is parseable by downstream
     consumers. A trivial parseability check: the template exposes the math
     problems and reserves a slot for completion."""
 

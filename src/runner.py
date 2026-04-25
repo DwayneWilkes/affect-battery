@@ -181,11 +181,10 @@ class RunResult:
         # legacy top-level conditioning/transfer fields WITHOUT a body,
         # synthesize an Exp1aBody. If caller passed body but not top-level
         # fields, mirror body fields to top-level for legacy reads.
-        # Per review-finding #5: defensively COPY lists when synthesizing a
-        # body or mirroring body->top-level. The previous version aliased
-        # references so mutations on top-level fields silently affected the
-        # body and vice-versa. Also raise when caller passes BOTH a body
-        # and inconsistent legacy fields rather than silently accepting.
+        # Defensively copy lists when synthesizing a body or mirroring
+        # body->top-level so mutations on top-level fields don't alias
+        # the body. Reject inputs where caller passes BOTH a body and
+        # legacy top-level fields whose values disagree.
         if self.body is None and self.experiment_type == "exp1a":
             self.body = Exp1aBody(
                 conditioning_responses=list(self.conditioning_responses),
@@ -325,10 +324,10 @@ async def run_conditioning_phase(
     """Run the 5-turn affective-conditioning phase and return
     (messages, conditioning_responses, conditioning_correct).
 
-    Extracted from run_single (review-finding #1) so Exp 3b and Exp 3c
-    can drive the conditioning protocol before their own generation /
-    QA phase. Without this, those experiments produced unconditioned
-    output and any condition-stratified metric would have been noise.
+    Shared by run_single (Exp 1a/1b) and the Exp 3b/3c runners so the
+    affective conditioning protocol is identical across experiments.
+    Condition-stratified metrics in 3b/3c require this protocol to fire
+    before the generation/QA phase.
     """
     problems = get_arithmetic_problems(config.num_conditioning_turns, seed=seed)
     protocol = ConditioningProtocol(
@@ -520,7 +519,7 @@ class _BudgetedClient(ModelClient):
         """Proxy for base-model path. Applies the same budget + rate-limit
         gates as complete()."""
         await self._check_and_gate()
-        return await self._wrapped.complete_text(  # type: ignore[attr-defined]
+        return await self._wrapped.complete_text(# type: ignore[attr-defined]
             prompt, temperature=temperature, max_tokens=max_tokens, stop=stop,
         )
 

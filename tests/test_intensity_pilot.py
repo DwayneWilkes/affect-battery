@@ -1,4 +1,4 @@
-"""Task 6.1 Red — intensity-axis pilot protocol (Krippendorff validation).
+"""Intensity-axis pilot protocol (Krippendorff validation).
 
 Per conditioning-protocol spec "Two intensity axes for Experiment 3a" +
 "Intensity-axis pilot-as-gate for Exp 3a": run a pilot collecting

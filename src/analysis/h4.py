@@ -1,7 +1,7 @@
-"""H4 aggregation pipeline + manipulation-check stitching (A4 + A5).
+"""H4 aggregation pipeline + manipulation-check stitching.
 
-`analyze_h4_corpus(corpus, base_model, instruct_model)` does the cross-
-experiment H4 work that previously had no production caller:
+`analyze_h4_corpus(corpus, base_model, instruct_model)` performs the
+cross-experiment H4 work:
 
 1. Group Exp 1a runs by (model, condition).
 2. For each model, compute manipulation_check (paper §3.2.1 + spec).
@@ -12,9 +12,6 @@ experiment H4 work that previously had no production caller:
 5. Run contrast_base_vs_instruct on the (base_model, instruct_model)
    aggregates.
 6. Return the dict shape that render_h4_report expects.
-
-The manipulation-check call is the production caller for `manipulation_check`
-that review-finding A5 flagged as missing.
 """
 
 from __future__ import annotations

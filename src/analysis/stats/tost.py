@@ -6,9 +6,9 @@ upper-bound test (effect < +epsilon) and the lower-bound test
 (effect > -epsilon) reject at level alpha. The combined p-value is
 max(p_lower, p_upper).
 
-Distribution: standard-normal CDF approximation (weekend-ship; matches
+Distribution: standard-normal CDF approximation (matches
 the welch_p proxy in src/analysis/_effect_size.py). Replace with full
-Student-t at submit-time per GAPS.md.
+Student-t at submit-time .
 
 References
 ----------
@@ -31,7 +31,7 @@ def tost_equivalence(
     alpha: float = 0.05,
 ) -> dict:
     """Two one-sided tests for equivalence of `effect` to zero within
-    +/- epsilon.
+   /- epsilon.
 
     Parameters
     ----------

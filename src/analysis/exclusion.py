@@ -1,4 +1,4 @@
-"""Task 2.4 — model-level exclusion from primary analysis.
+"""model-level exclusion from primary analysis.
 
 Per scoring-pipeline spec (main) "Manipulation check gate": models
 whose MC fails are excluded from primary effect-size aggregation.

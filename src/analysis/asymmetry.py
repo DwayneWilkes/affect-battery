@@ -5,9 +5,9 @@ Per asymmetry-contrast spec:
 - "Paired asymmetry computation": apply per (model, paired-arm).
 - "Aggregation rule": geometric mean for ratios, arithmetic mean for
   differences.
-- "Per-model H4 decision rule": 7-row decision table (Task 8.3).
+- "Per-model H4 decision rule": 7-row decision table.
 - "Base-vs-instruct asymmetry contrast": delta_ratio = ratio_instruct /
-  ratio_base; both pre-registered tests run (Task 8.2).
+  ratio_base; both pre-registered tests run.
 """
 
 from __future__ import annotations
@@ -83,9 +83,8 @@ def per_model_verdict(
       below-MDE     -> p > alpha, ratio > 1, observed magnitude < MDE
       inconclusive  -> none of the above; the data simply can't decide
 
-    The previous version had near-1 and null with overlapping bands and
-    no equivalence-test signal, so the null branch was unreachable
-    (review-finding #2). Now they form a real partition:
+    null and near-1 partition by the presence of a passing equivalence
+    test:
       - null requires `p_equivalence_under_alpha=True` (TOST-style); the
         caller passes this when an equivalence test on |ratio-1| has
         rejected H0_non-equivalence.
@@ -147,8 +146,8 @@ def contrast_base_vs_instruct(
     delta_ratio = (
         (r_inst / r_base) if (r_base and r_inst and r_base > 0) else None
     )
-    # Per review-finding #8: don't falsy-coalesce; a real 0.0 must remain
-    # distinguishable from missing data so the (b) test reflects truth.
+    # Distinguish a real 0.0 from missing data: falsy-coalescing here
+    # would erase a legitimate "tied" outcome of the (b) test.
     diff_base_raw = base_agg.get("difference_mean")
     diff_inst_raw = instruct_agg.get("difference_mean")
     test_b = (

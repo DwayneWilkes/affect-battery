@@ -1,8 +1,7 @@
 """Cumulative-distribution-function helpers shared across stats modules.
 
-Per review-finding #13: `normal_cdf` was duplicated across _effect_size,
-tost, and exp3a. Extracted here so any future test that needs a normal
-or t-tail uses one canonical implementation.
+`normal_cdf` and `student_t_cdf` are imported by tost.py and exp3a.py
+so any test needing a normal or t-tail uses one canonical implementation.
 """
 
 from __future__ import annotations

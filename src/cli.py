@@ -151,12 +151,10 @@ def cmd_run(args):
 
     runner = RUNNERS[args.experiment]
 
-    # Per-experiment extra kwargs loaded from --runner-config YAML when the
-    # runner needs them. Per review-finding #6: exp3a/exp3b/exp3c require
-    # additional positional kwargs (intensity_levels / pilot_seed_path,
-    # prompts + n_generations, items) that aren't covered by the base
-    # ExperimentConfig. We surface them via a YAML config rather than
-    # adding a new --flag for each.
+    # Per-experiment extra kwargs loaded from --runner-config YAML when
+    # the runner needs them. exp3a/exp3b/exp3c require additional kwargs
+    # (intensity_levels / pilot_seed_path, prompts + n_generations,
+    # items) that aren't covered by the base ExperimentConfig.
     extra_kwargs: dict = {}
     if args.experiment in {"exp3a", "exp3b", "exp3c"}:
         if not args.runner_config:
@@ -208,7 +206,7 @@ def cmd_run(args):
 
 def cmd_analyze(args):
     """End-to-end analysis: load result JSONs, render per-experiment
-    reports + aggregate landing page (review-finding #11).
+    reports + aggregate landing page.
 
     Detects which experiments have results under <results-dir>/<exp>/
     and produces <results-dir>/<exp>_report.md for each, plus
@@ -441,7 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_probe_variance = probe_sub.add_parser(
         "variance",
-        help="Variance probe for MDE grounding (Task 1.1)",
+        help="Variance probe for MDE grounding",
     )
     p_probe_variance.add_argument("--model", required=True)
     p_probe_variance.add_argument("--base-url", default="http://localhost:8000/v1")
@@ -453,7 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_probe_base_model = probe_sub.add_parser(
         "base-model",
-        help="Base-model feasibility probe (Task 1.2)",
+        help="Base-model feasibility probe",
     )
     p_probe_base_model.add_argument("--model", required=True)
     p_probe_base_model.add_argument("--base-url", default="http://localhost:8000/v1")
@@ -474,17 +472,63 @@ def main():
 
 
 def cmd_probe_variance(args):
-    """Variance probe — Task 1.1 implements."""
-    raise NotImplementedError(
-        "Variance probe not yet implemented; see tasks.md Task 1.1"
+    """Variance probe: per-condition arithmetic accuracy + observed
+    effect size, used to ground per-hypothesis MDEs."""
+    from .models import VLLMClient, DryRunClient
+    from .probes.variance import run_variance_probe
+
+    client = (
+        DryRunClient(model=args.model)
+        if args.dry_run
+        else VLLMClient(base_url=args.base_url, model=args.model)
     )
+
+    async def _run():
+        result = await run_variance_probe(
+            client=client,
+            model_name=args.model,
+            n_per_condition=args.n,
+            output_dir=Path(args.output_dir),
+            base_url=args.base_url,
+        )
+        print(
+            f"variance probe complete: variance_estimate="
+            f"{result.variance_estimate:.4f}, std_err={result.std_err:.4f}"
+        )
+        if hasattr(client, "close"):
+            await client.close()
+
+    asyncio.run(_run())
 
 
 def cmd_probe_base_model(args):
-    """Base-model feasibility probe — Task 1.2 implements."""
-    raise NotImplementedError(
-        "Base-model probe not yet implemented; see tasks.md Task 1.2"
+    """Base-model feasibility probe: GSM8K accuracy under NO_CONDITIONING
+    few-shot scaffold; decides whether the base model goes in the
+    primary H4 family."""
+    from .models import VLLMCompletionClient, DryRunClient
+    from .probes.base_model import run_base_model_probe
+
+    client = (
+        DryRunClient(model=args.model)
+        if args.dry_run
+        else VLLMCompletionClient(base_url=args.base_url, model=args.model)
     )
+
+    async def _run():
+        result = await run_base_model_probe(
+            client=client,
+            model_name=args.model,
+            n=args.n,
+            output_dir=Path(args.output_dir),
+        )
+        print(
+            f"base-model probe complete: accuracy={result.accuracy:.3f}, "
+            f"verdict={result.verdict}"
+        )
+        if hasattr(client, "close"):
+            await client.close()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

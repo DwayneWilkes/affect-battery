@@ -6,7 +6,7 @@ Spec: affect-battery-task-difficulty-calibration::task-difficulty-calibration::
 Group 11: generate a markdown report for the committed calibration artifact
 (`artifacts/calibration-<bank_id>-<date>.md`). The report consumes:
     - calibration pilot data (manipulation-check results + 2x2 transfer cells
-      + easy-bank regression delta)
+      easy-bank regression delta)
     - gate verdict (from src.calibration.gate)
     - gate config
 
@@ -158,7 +158,7 @@ class TestTransferTwoByTwoCoverage:
             assert cell in md, f"cell '{cell}' missing from report"
 
     def test_missing_cells_flagged(self):
-        """diff_easy and diff_hard aren't in _minimal_pilot_data —
+        """Diff_easy and diff_hard aren't in _minimal_pilot_data —
         the report must flag those cells MISSING."""
         md = generate_calibration_report(
             pilot=_minimal_pilot_data(),

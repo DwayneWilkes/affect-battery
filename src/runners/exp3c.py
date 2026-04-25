@@ -1,14 +1,14 @@
 """Exp 3c — conservative shift (paper §3.4.3).
 
 Per conservative-shift-measurement spec "Conservative-shift protocol" +
-"Question-difficulty stratification" + review-finding #1: each run
+"Question-difficulty stratification" each run
 performs the 5-turn affective conditioning protocol BEFORE asking the
 factual-QA items so the responses reflect the conditioning. Skipping
 conditioning (the prior implementation did) made hedging / refusal /
 length metrics meaningless under condition stratification.
 
 Items within a single run are dispatched concurrently via
-asyncio.gather (review-finding #16); they share the conditioning
+asyncio.gather ; they share the conditioning
 history but each lands as a separate one-shot user turn from the
 model's perspective (the conditioning_messages list is reused but
 NOT mutated across items).
@@ -73,7 +73,7 @@ async def run_exp3c(
 
     base_seed = config.seed or 0
     for run_num in range(config.num_runs):
-        # Phase 1: conditioning (review-finding #1).
+        # Phase 1: conditioning.
         seed = base_seed + run_num
         cond_messages, conditioning_responses, conditioning_correct = (
             await run_conditioning_phase(config, client, seed)

@@ -1,4 +1,4 @@
-"""Task 0.3 Red — unified bank loader with `bank_type` discriminator + `status`.
+"""Unified bank loader with `bank_type` discriminator + `status`.
 
 Per design.md D9 + cross-domain-transfer-tasks spec:
 - ArithmeticBank carries `bank_type: "arithmetic"`, default

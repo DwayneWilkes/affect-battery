@@ -1,7 +1,7 @@
 """Exp 3a analysis: quadratic fit on accuracy ~ intensity_level.
 
 Per scoring-pipeline spec "Quadratic-model fit for H3a" + power-analysis
-spec H3a formula: fit accuracy ~ beta_0 + beta_1 * L + beta_2 * L^2 across
+spec H3a: fit accuracy ~ beta_0 + beta_1 * L + beta_2 * L^2 across
 the 7 intensity levels. H3a-confirming signature: beta_2 < 0 (inverted-U).
 Report:
   beta_0, beta_1, beta_2 with one-sided p-value on beta_2 (H_a: beta_2 < 0)
@@ -10,7 +10,7 @@ Report:
 Closed-form OLS via numpy.linalg.lstsq when numpy is available; falls
 back to a hand-rolled normal-equations solver. The one-sided p-value
 uses the Welch-style standard-normal proxy from _effect_size; replace
-with proper t / mixed-effects at submit-time per GAPS.md.
+with proper t / mixed-effects at submit-time .
 """
 
 from __future__ import annotations
@@ -81,8 +81,8 @@ def analyze_exp3a(accuracy_by_level: dict[int, list[float]]) -> dict:
     se_b2 = float(se_q[2])
 
     # One-sided p-value for H_a: beta_2 < 0 using Student-t with df = n-k.
-    # Per review-finding #9: standard-normal CDF is anti-conservative for
-    # the small n we use; Student-t is the right reference distribution.
+    # Student-t is the right reference distribution at the small n we use;
+    # standard-normal would be anti-conservative.
     if se_b2 == 0.0 or not math.isfinite(se_b2):
         p_one_sided = 1.0 if b2 >= 0 else 0.0
     else:

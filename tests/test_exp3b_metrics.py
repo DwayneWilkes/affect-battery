@@ -1,4 +1,4 @@
-"""Task 7.2 Red — Exp 3b metrics (embedding variance + n-gram ratio).
+"""Exp 3b metrics (embedding variance + n-gram ratio).
 
 Per cognitive-scope-measurement spec "Metrics" + "Semantic diversity is
 primary": compute_embedding_variance averages cosine distances from each

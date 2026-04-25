@@ -1,4 +1,4 @@
-"""Task 8.1 Red — asymmetry-compute primitives.
+"""Asymmetry-compute primitives.
 
 Per asymmetry-contrast spec "Asymmetry conventions" + "Paired asymmetry
 computation" + "Aggregation rule": for each (positive, negative) effect-

@@ -1,4 +1,4 @@
-"""Base-feasibility decision record (Task 1.4).
+"""Base-feasibility decision record.
 
 Per base-model-comparison spec "Week-1 go/no-go gate for base-model
 feasibility": if Llama-3-8B base manipulation-check accuracy < threshold,

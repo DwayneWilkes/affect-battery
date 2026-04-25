@@ -1,16 +1,14 @@
 """Exp 1b three-way comparison scoring.
 
-Per tasks.md Task 4.2 + conditioning-protocol spec
-"Three-way comparison required": for each non-baseline condition the
-analysis produces three side-by-side cells:
+Per the conditioning-protocol spec "Three-way comparison required":
+for each non-baseline condition the analysis produces three side-by-
+side cells:
   - session_1_effect_size: within-session effect from Exp 1a corpus
   - session_2_effect_size: cross-session effect from Exp 1b corpus
-  - no_conditioning_baseline: shared baseline accuracy from no_conditioning
+  - no_conditioning_baseline: shared baseline accuracy
 
-This triangulation is the falsification structure: the paper §3.2.2
-expectation is session_2_effect_size near zero (context-attention
-mechanism). Effect-size primitives are reused from
-src.analysis._effect_size for DRY parity with Exp 1a analysis.
+This triangulation is the falsification structure: paper §3.2.2 predicts
+session_2_effect_size near zero under the context-attention account.
 """
 
 from __future__ import annotations
@@ -107,7 +105,7 @@ def analyze_exp1b(
             # Directional one-sided p-value: H0 = session_2_effect <= 0,
             # reject when effect is positive. We use welch_p (two-sided)
             # halved when the observed effect is in the predicted direction;
-            # weekend-ship proxy.
+            # normal-distribution approximation; replace with mixed-effects fit for primary analysis.
             two_sided = welch_p(s2_cell, s2_baseline)
             observed_diff = mean(s2_cell) - s2_baseline_mean
             directional_p = (two_sided / 2.0) if observed_diff > 0 else (1.0 - two_sided / 2.0)

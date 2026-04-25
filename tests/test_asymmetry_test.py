@@ -1,4 +1,4 @@
-"""Task 8.2 Red — base-vs-instruct asymmetry contrast.
+"""Base-vs-instruct asymmetry contrast.
 
 Per asymmetry-contrast spec "Base-vs-instruct asymmetry contrast" +
 "Both primary tests pre-registered": for the Llama-3-8B family,

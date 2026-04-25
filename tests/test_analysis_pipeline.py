@@ -1,4 +1,4 @@
-"""Test the end-to-end analysis pipeline (review-finding #11).
+"""Test the end-to-end analysis pipeline .
 
 The analyze_* and render_*_report functions exist; this regression test
 asserts they're reachable from production via analyze_results_dir() so

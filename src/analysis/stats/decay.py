@@ -1,9 +1,9 @@
 """Decay-model fits for Exp 2 recovery curves.
 
-Per persistence-dynamics spec "Decay model fit and comparison" + tasks.md
-Task 5.4: fit both an exponential model and a linear-proportional model
-to a turn-accuracy curve and report AIC + BIC for each so the consumer
-can pick the winning shape.
+Per the persistence-dynamics spec "Decay model fit and comparison":
+fit both an exponential model and a linear model to a turn-accuracy
+curve and report AIC + BIC for each so the consumer can pick the
+winning shape.
 
 Models
 ------
@@ -11,13 +11,17 @@ Exponential: acc(N) = baseline + amplitude * exp(-N / tau)
   amplitude carries sign (negative => below-baseline recovery, e.g.,
   strong-negative arm); tau > 0 is the decay timescale (in N units).
 
-Linear-proportional: acc(N) = baseline + slope * N
-  Closed-form OLS for slope; AIC/BIC from residual sum-of-squares.
+Linear: acc(N) = baseline + intercept + slope * N
+  Closed-form OLS with a free intercept so both models have an
+  unconstrained additive term — exponential gets it via amplitude,
+  linear via the intercept. Without the intercept, linear is forced
+  through the origin in residual-space and AIC/BIC comparison is
+  biased toward exponential.
 
 Both models are fit to the residual `curve - baseline`. Information
 criteria use the Gaussian-likelihood form: AIC = n*ln(RSS/n) + 2*k,
 BIC = n*ln(RSS/n) + k*ln(n), with k = number of free parameters
-(exponential: 2 [amplitude, tau], linear: 1 [slope]).
+(exponential: 2 [amplitude, tau], linear: 2 [intercept, slope]).
 """
 
 from __future__ import annotations
@@ -31,10 +35,10 @@ def _aic_bic(rss: float, n: int, k: int) -> tuple[float, float]:
     """AIC + BIC under Gaussian residuals.
 
     rss = sum of squared residuals; n = sample size; k = free params.
-    Returns (AIC, BIC). When rss == 0 (perfect fit) the log term is
+    Returns (AIC, BIC). For perfect fits (rss == 0) the log term is
     -inf; we return -inf rather than substituting a tiny floor because
-    floor-based AIC inflates the difference between near-perfect and
-    realistic-noise fits asymmetrically (review-finding #4).
+    a floor inflates the difference between near-perfect and realistic-
+    noise fits asymmetrically.
     """
     if n <= 0 or k < 0:
         raise ValueError(f"n must be > 0 and k >= 0; got n={n}, k={k}")
@@ -52,11 +56,10 @@ def fit_linear(
 ) -> dict[str, float]:
     """OLS fit of (curve - baseline) ~ intercept + slope * N.
 
-    Includes a free intercept so this competes fairly with
-    fit_exponential's free amplitude on AIC/BIC. Without the intercept
-    the line is forced through the origin in residual-space, inflating
-    RSS and biasing model selection toward exponential
-    (review-finding #3).
+    Free intercept so this competes fairly with fit_exponential's free
+    amplitude on AIC/BIC. Without the intercept the line is forced
+    through the origin in residual-space, inflating RSS and biasing
+    model selection toward exponential.
     """
     if len(n_values) != len(curve):
         raise ValueError(
@@ -118,11 +121,10 @@ def fit_exponential(
         )
         amplitude, tau = float(popt[0]), float(popt[1])
     except Exception:
-        # Heuristic-seed fallback when curve_fit diverges. We do NOT
-        # claim this is a refined fit — it's the initial guess, kept
-        # so the pipeline doesn't crash on adversarial curves. Caller
-        # should treat a fit with these exact bounds-edge values as
-        # suspect (review-finding #15).
+        # Heuristic-seed fallback when curve_fit diverges. NOT a
+        # refined fit — the initial guess is kept so the pipeline
+        # doesn't crash on adversarial curves. Callers should treat a
+        # result whose tau lands at the bounds-edge as suspect.
         amplitude, tau = amp0, tau0
 
     rss = sum((y - amplitude * math.exp(-x / tau)) ** 2 for x, y in zip(xs, ys))

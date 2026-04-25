@@ -1,14 +1,14 @@
 """Exp 3b — cognitive scope (paper §3.4.2).
 
 Per cognitive-scope-measurement spec "Cognitive-scope protocol" +
-review-finding #1: each (run_num, prompt) pair runs the 5-turn affective
+each (run_num, prompt) pair runs the 5-turn affective
 conditioning protocol FIRST, then samples n_generations completions
 from the prompt with the conditioning history attached. Without the
 conditioning phase the generations are unconditioned, which would make
 every condition-stratified diversity metric meaningless.
 
 Generations within a single (run_num, prompt) are independent and run
-concurrently via asyncio.gather (review-finding #16).
+concurrently via asyncio.gather.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ async def run_exp3b(
 
     base_seed = config.seed or 0
     for run_num in range(config.num_runs):
-        # Phase 1: conditioning (review-finding #1). Per (run_num) so the
+        # Phase 1: conditioning. Per (run_num) so the
         # conditioning history is consistent across all prompts in this run.
         seed = base_seed + run_num
         cond_messages, conditioning_responses, conditioning_correct = (
@@ -62,7 +62,7 @@ async def run_exp3b(
         for p_idx, prompt in enumerate(prompts):
             # Phase 2: n_generations independent completions following the
             # conditioning history. Run concurrently via asyncio.gather
-            # (review-finding #16). Append the prompt as the next user turn.
+            # . Append the prompt as the next user turn.
             generation_messages = cond_messages + [
                 {"role": "user", "content": prompt["text"]}
             ]

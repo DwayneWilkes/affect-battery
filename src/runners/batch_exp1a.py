@@ -1,4 +1,4 @@
-"""Task 3.3 — Exp 1a batch executor across paper §3.1 models.
+"""Exp 1a batch executor across paper §3.1 models.
 
 Iterates {Llama-3-8B-Instruct, Mistral-7B-Instruct, Gemma-2-9B-IT,
 Llama-3-8B base} × paper §3.2.1 6-arm condition set. Llama-3-8B base

@@ -4,7 +4,7 @@ Spec: affect-battery-task-difficulty-calibration::scoring-pipeline::
 "Baseline-correctness reporting split".
 
 Tasks 6.3 + 6.4 from
-`specs/changes/affect-battery-task-difficulty-calibration/tasks.md`:
+`specs`:
 manipulation-check delta MUST be computed against NO_CONDITIONING
 baseline, not NEUTRAL. Absent NO_CONDITIONING data MUST yield
 an UNAVAILABLE sentinel verdict rather than silently falling back

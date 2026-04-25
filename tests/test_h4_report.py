@@ -1,4 +1,4 @@
-"""Task 8.4 Red — H4 joint-outcome 2x2 report.
+"""H4 joint-outcome 2x2 report.
 
 Per asymmetry-contrast spec "Honest reporting of inconclusive outcomes"
 + "Joint-outcome table is always present": the H4 report enumerates a

@@ -13,10 +13,10 @@ reporting split"):
 - Unavailable: NO_CONDITIONING data absent for the model/bank combination
   (tested separately in test_manipulation_check_no_cond_baseline.py).
 
-Placeholder threshold per GAPS.md: 2 percentage points absolute accuracy
+Placeholder threshold : 2 percentage points absolute accuracy
 delta (anchored to the 2-4 pp absolute-effect estimate recommended by the
 independent reviewer after correcting source papers' inflated relative
-headlines). To be refined when Akshansh's Ticket 2 spec lands.
+headlines). To be refined when the future codebook spec lands.
 """
 
 import pytest
@@ -111,7 +111,7 @@ class TestResultStructure:
 
     def test_threshold_is_configurable(self):
         """The placeholder threshold is explicit and configurable so
-        Akshansh's final spec can drop in."""
+        the future codebook spec can drop in."""
         data = _accuracy_dict(pos_acc=0.85, baseline_acc=0.80, neg_acc=0.75)
         # 5pp spread
         result_loose = manipulation_check(data, model="m", min_effect_size_pp=2.0)

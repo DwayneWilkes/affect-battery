@@ -1,4 +1,4 @@
-"""Task 3.1 Red — LogiQA TransferBank as first paper-§3.2.1 transfer bank.
+"""LogiQA TransferBank as first paper-§3.2.1 transfer bank.
 
 Per cross-domain-transfer-tasks spec: every transfer bank used in Exp 1
 must conform to paper §3.2.1 cross-domain task types (logic-puzzle,

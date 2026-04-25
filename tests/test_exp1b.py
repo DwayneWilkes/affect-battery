@@ -1,6 +1,6 @@
-"""Task 4.1 Red — Exp 1b cross-session falsification runner.
+"""Exp 1b cross-session falsification runner.
 
-Per design.md D6 + tasks.md Task 4.1 + conditioning-protocol spec
+Per design.md D6 + conditioning-protocol spec
 "Cross-session session seeds are recorded separately": Exp 1b extends
 Exp 1a with a Phase-2 fresh-session re-test using the neutral cross-
 session system prompt. session_1_seed and session_2_seed are recorded
@@ -43,7 +43,7 @@ async def test_exp1b_runner_produces_exp1b_body(tmp_path):
 
 @pytest.mark.asyncio
 async def test_exp1b_session_seeds_distinct(tmp_path):
-    """session_1_seed and session_2_seed must be recorded distinctly."""
+    """Session_1_seed and session_2_seed must be recorded distinctly."""
     from src.models import DryRunClient
 
     client = DryRunClient(model="dry-run", responses=["42"])

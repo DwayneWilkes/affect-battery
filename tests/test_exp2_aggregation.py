@@ -1,6 +1,6 @@
 """A1 Red — Exp 2 cross-N aggregation.
 
-Per persistence-dynamics spec + review-finding A1: aggregate Exp 2 result
+Per persistence-dynamics spec + aggregate Exp 2 result
 JSONs across the N-values sweep into the analysis dict that
 render_exp2_report expects.
 """

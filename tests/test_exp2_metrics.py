@@ -1,4 +1,4 @@
-"""Task 5.3 Red — Exp 2 recovery metrics.
+"""Exp 2 recovery metrics.
 
 Per persistence-dynamics spec "Recovery metrics computed per run":
 - per-turn accuracy curve (already on Exp2Body.turn_accuracies)

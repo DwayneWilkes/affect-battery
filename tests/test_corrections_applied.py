@@ -1,6 +1,6 @@
-"""Task 8.5 Red — family-wise correction across all experiments.
+"""Family-wise correction across all experiments.
 
-Per power-analysis spec "Family-wise error correction" + tasks.md Task 8.5:
+Per power-analysis spec "Family-wise error correction" + :
 apply Holm-Bonferroni to the primary family (H1, H2, H3a, H4, H1b-TOST)
 and BH-FDR to the exploratory family. Both raw and corrected p-values
 appear in reports.

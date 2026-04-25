@@ -1,4 +1,4 @@
-"""Budget-contingency decision record (Task 1.5).
+"""Budget-contingency decision record.
 
 Per power-analysis spec "Budget-contingency decision record" (resolves
 review AI-2 / VA-M2):
@@ -8,7 +8,7 @@ budget ceiling, OSF amendment records ONE of three priority-ordered
 options. Silent under-powered run is NEVER permitted.
 
 Options:
-  (a) defer non-primary experiment to GAPS.md follow-up
+  (a) defer non-primary experiment to the project follow-up queue
   (b) accept lower power on H3b/H3c (secondary) + cite paper §6 all-
       conditions reporting commitment
   (c) request additional compute budget before advancing
@@ -31,7 +31,7 @@ VALID_OPTIONS = {"a", "b", "c"}
 _RATIONALES = {
     "a": (
         "Defer a non-primary experiment to a named follow-up change in "
-        "GAPS.md. Preserves primary H1/H2/H3a power. Per power-analysis "
+        "follow-up queue. Preserves primary H1/H2/H3a power. Per power-analysis "
         "spec budget-contingency option (a)."
     ),
     "b": (

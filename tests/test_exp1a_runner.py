@@ -1,6 +1,6 @@
-"""Task 3.2 Red — Exp 1a runner end-to-end produces populated Exp1aBody.
+"""Exp 1a runner end-to-end produces populated Exp1aBody.
 
-Per design.md D6 + tasks.md Task 3.2: invoking run_exp1a yields
+Per invoking run_exp1a yields
 RunResult with experiment_type='exp1a', body=Exp1aBody (not None),
 populated conditioning + transfer fields. Schema valid; checksum
 computed.

@@ -2,7 +2,7 @@
 
 Patterns are loaded from configs/hedging_codebook.yaml at import time so that
 pattern authoring (a collaborative deliverable per design.md Decision 3) is a
-data edit rather than a code change. Akshansh's Ticket 6 merges into the YAML.
+data edit rather than a code change. Patterns merge in via this YAML rather than code edits.
 """
 
 import re
@@ -33,7 +33,7 @@ class HedgeMatch:
 CODEBOOK_PATH = Path(__file__).parent.parent.parent / "configs" / "hedging_codebook.yaml"
 
 
-# Paper §3.4.3 hedging patterns (Task 7.4). The loader enforces presence;
+# Paper §3.4.3 hedging patterns. The loader enforces presence;
 # any flagged pattern missing from the YAML raises ValueError so silent
 # pattern drift is impossible.
 PAPER_REQUIRED_PATTERN_NAMES = frozenset({
@@ -55,7 +55,7 @@ def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
     that must not be counted in the primary hedging metric.
 
     Per scoring-pipeline spec MODIFIED "Hedging language codebook with five
-    categories" (Task 7.4): every pattern with `paper_pattern: true` from
+    categories": every pattern with `paper_pattern: true` from
     PAPER_REQUIRED_PATTERN_NAMES MUST be present, else ValueError.
     """
     raw = yaml.safe_load(path.read_text())
@@ -94,7 +94,7 @@ HEDGE_PATTERNS, PRIMARY_EXCLUSIONS, _PAPER_PATTERNS = _load_codebook()
 def paper_required_patterns() -> set[str]:
     """Return the set of paper §3.4.3 pattern names present in the loaded
     codebook (entries with paper_pattern: true). Cached at module init
-    via _load_codebook (review-finding #12). Returns a copy so callers
+    via _load_codebook. Returns a copy so callers
     cannot mutate the cached set."""
     return set(_PAPER_PATTERNS)
 

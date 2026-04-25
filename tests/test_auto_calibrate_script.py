@@ -1,7 +1,7 @@
 """End-to-end test for the auto-calibration pipeline:
 ModelBackedProbe + AutoCalibrator + calibrated-bank writer.
 
-Spec: affect-battery-task-difficulty-calibration. Task 1.1d.
+ d.
 """
 
 import asyncio
@@ -97,7 +97,7 @@ class TestCalibrationPipeline:
         assert acc_hard == 0.0, f"Expected 0.0 at digit_level=4, got {acc_hard}"
 
     def test_end_to_end_calibration_writes_bank_with_calibrated_specs(self, tmp_path):
-        """run_calibration orchestrates probe + calibrator + bank generator
+        """Run_calibration orchestrates probe + calibrator + bank generator
         and writes a YAML whose operator_specs reflect the search results."""
         client = ArithmeticDifficultyClient({
             "add": 3,  # model solves 3-digit add, fails 4-digit

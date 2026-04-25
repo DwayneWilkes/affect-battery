@@ -1,6 +1,6 @@
 """Exp 1b — cross-session falsification test (paper §3.2.2).
 
-Per design.md D6 + tasks.md Task 4.1 + conditioning-protocol spec
+Per design.md D6 + conditioning-protocol spec
 "Cross-session session seeds are recorded separately": Exp 1b extends
 Exp 1a with a Phase-2 fresh-session re-test. The cross-session branch in
 `run_single` resets the system prompt to CROSS_SESSION_SYSTEM_PROMPT

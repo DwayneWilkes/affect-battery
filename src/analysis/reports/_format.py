@@ -1,9 +1,8 @@
 """Formatting helpers shared across per-experiment report renderers.
 
-Per review-finding #15: every per-experiment report grew its own
-near-identical `_format_value` helper. Extracted here as parameterized
-fmt_value + fmt_p + fmt_d so future report modules import these rather
-than copy-pasting another variant.
+`fmt_value`, `fmt_p`, and `fmt_d` cover the value-formatting needs of
+every per-experiment report. New reports should import from here rather
+than redefining a local helper.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ def fmt_value(v, precision: int = 3, signed: bool = False) -> str:
     """Format a value for a markdown table cell.
 
     None -> '—'.  Floats get f'{:.{precision}f}' or signed equivalent;
-    +/- inf render as '+inf' / '-inf'.  Everything else falls through
+   /- inf render as '+inf' / '-inf'.  Everything else falls through
     to str().
     """
     if v is None:

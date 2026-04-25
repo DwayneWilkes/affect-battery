@@ -50,7 +50,7 @@ def _write_config(tmp_path: Path, **overrides) -> Path:
 
 class TestBankGenStage:
     def test_bank_gen_produces_yaml(self, tmp_path):
-        """bank_gen stage writes a bank YAML + returns bank_path in outputs."""
+        """Bank_gen stage writes a bank YAML + returns bank_path in outputs."""
         config_path = _write_config(tmp_path)
         artifacts = run_pipeline_from_config(config_path)
         assert "bank_path" in artifacts

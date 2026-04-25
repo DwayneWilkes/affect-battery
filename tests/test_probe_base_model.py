@@ -1,4 +1,4 @@
-"""Task 1.2 Red — base-model feasibility probe.
+"""Base-model feasibility probe.
 
 Per base-model-comparison spec "Week-1 go/no-go gate for base-model
 feasibility": runs Llama-3-8B base on N GSM8K problems with no

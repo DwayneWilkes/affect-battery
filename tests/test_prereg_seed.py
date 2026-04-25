@@ -1,7 +1,7 @@
-"""Task 6.2 Red — pre-registration seed emission.
+"""Pre-registration seed emission.
 
 Per conditioning-protocol spec "Pre-registration seed definition" +
-tasks.md Task 6.2: pilot-pass produces a signed JSON artifact at
+: pilot-pass produces a signed JSON artifact at
 configs/intensity_pilot_pass_<date>.json with 5 required fields +
 SHA-256 over canonicalized payload.
 """

@@ -1,4 +1,4 @@
-"""Task 1.1 Red — variance probe runner.
+"""Variance probe runner.
 
 Per power-analysis spec "Week-1 pilot feeds a simulation-based power
 analysis" + design.md D3 variance-probe-override:
@@ -7,7 +7,7 @@ The variance probe runs a small-n manipulation-check on a single
 instruct model + 2 conditions (strong-positive vs neutral) on
 arithmetic. Output JSON has fields: variance_estimate, std_err,
 observed_effect_size, n_per_condition + the cross-cutting metadata
-that a power-analysis update step (Task 1.3) consumes.
+that a power-analysis update step () consumes.
 """
 
 import json

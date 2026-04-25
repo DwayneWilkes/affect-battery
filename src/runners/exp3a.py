@@ -1,7 +1,7 @@
 """Exp 3a — nonlinear arousal-performance (paper §3.4.1).
 
 Per conditioning-protocol spec "Intensity-axis pilot-as-gate for Exp 3a"
-+ tasks.md Task 6.3: run_exp3a iterates intensity levels (typically
+run_exp3a iterates intensity levels (typically
 1..7) for the configured stimulus bank x model. Each yielded RunResult
 carries an Exp3aBody recording the intensity_level used for that run.
 

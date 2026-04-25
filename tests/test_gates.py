@@ -1,4 +1,4 @@
-"""Task 0.5 + 0.6 Red — data-collection + OSF pre-reg gates.
+""" + 0.6 Red — data-collection + OSF pre-reg gates.
 
 Per power-analysis spec "Data-collection gate" + "OSF pre-registration
 top-level gate". Both gates block experiment runners before any model

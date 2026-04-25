@@ -10,10 +10,6 @@ that ties together:
 5. Family-wise correction across the primary hypothesis family
    (H1, H1b-TOST, H2 placeholder, H3a placeholder, H4)
 6. Aggregate landing-page report tying all of the above together
-
-Closes review-finding #11 (no production caller for analyze_*) and
-review-findings A1–A6 (the cross-experiment aggregation layer that
-the per-experiment renderers expected as input).
 """
 
 from __future__ import annotations
@@ -73,7 +69,7 @@ def _extract_primary_p_values(
                 is the already-Holm-corrected min.
       H1b    -> Exp 1b session-2 directional p (smallest across conditions)
       H1b_TOST -> Exp 1b session-2 TOST p (smallest across conditions)
-      H2     -> Exp 2 — placeholder; full mixed-effects fit is in GAPS.md
+      H2     -> Exp 2 — placeholder; full mixed-effects fit is in the project follow-up queue
       H3a    -> Exp 3a — analyzed per-model; placeholder until per-model
                 aggregation lands
       H4     -> H4 contrast pre-registered test (a)
@@ -101,8 +97,8 @@ def _extract_primary_p_values(
             p["H1b_TOST"] = min(tost)
 
     # H4: the pre-registered (a) test is asymmetry_delta_ratio > 1. We don't
-    # have a frequentist p-value on this contrast at the weekend-ship layer
-    # (full bootstrap deferred per GAPS.md), so we map the test outcome to
+    # have a frequentist p-value on this contrast in the current implementation
+    # (full bootstrap deferred ), so we map the test outcome to
     # a coarse p-value: True (effect present) -> 0.04, False/None -> 1.0.
     # This keeps H4 in the family without claiming a precise inferential p.
     if h4_analysis and h4_analysis.get("verdict") == "complete":

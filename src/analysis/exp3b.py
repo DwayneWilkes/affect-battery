@@ -23,7 +23,7 @@ import math
 from typing import Callable
 
 
-# Pinned model identifier for the production embedder (Task 7.2 spec).
+# Pinned model identifier for the production embedder.
 EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
 EMBEDDING_MODEL_VERSION = "v2.0.0"
 
@@ -99,7 +99,7 @@ def analyze_exp3b_corpus(
     embedder: Callable[[list[str]], list[list[float]]] | None = None,
     ngram_n: int = 2,
 ) -> dict:
-    """Cross-condition aggregation pipeline for Exp 3b (review-finding A2).
+    """Cross-condition aggregation pipeline for Exp 3b.
 
     Group result-JSONs by condition, flatten generations across prompts
     within each condition, compute embedding_variance + ngram_ratio.

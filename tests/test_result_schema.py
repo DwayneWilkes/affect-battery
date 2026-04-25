@@ -1,4 +1,4 @@
-"""Tests for the discriminated-union RunResult schema (Task 0.1).
+"""Tests for the discriminated-union RunResult schema ().
 
 Per design.md D6: RunResult carries base fields (config, checksum,
 experiment_type, model, condition, run_number, start_time, end_time)

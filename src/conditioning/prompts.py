@@ -2,7 +2,7 @@
 
 Feedback texts are length-matched (~16-18 words each) across emotional
 conditions to control for lexical complexity confounds. NEUTRAL is
-exempt from length matching per GAPS.md (brevity is definitional for
+exempt from length matching  (brevity is definitional for
 neutral accuracy-signal feedback). Provenance documented per stimulus.
 
 The per-condition structure is FEEDBACK_SETS: each condition maps to a

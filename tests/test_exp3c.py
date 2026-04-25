@@ -1,4 +1,4 @@
-"""Task 7.3 Red — Exp 3c runner (factual QA, difficulty-stratified).
+"""Exp 3c runner (factual QA, difficulty-stratified).
 
 Per conservative-shift-measurement spec "Conservative-shift protocol" +
 "Question-difficulty stratification": Exp 3c runs factual QA across
@@ -59,7 +59,7 @@ async def test_exp3c_difficulty_stratified(tmp_path):
 
 @pytest.mark.asyncio
 async def test_exp3c_runs_conditioning_phase_first(tmp_path):
-    """Per review-finding #1: Exp 3c MUST run the 5-turn affective
+    """Per Exp 3c MUST run the 5-turn affective
     conditioning protocol before the QA phase. We assert this by checking
     that conditioning_responses is populated on the result."""
     from src.models import DryRunClient
