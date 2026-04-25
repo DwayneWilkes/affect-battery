@@ -33,6 +33,17 @@ class HedgeMatch:
 CODEBOOK_PATH = Path(__file__).parent.parent.parent / "configs" / "hedging_codebook.yaml"
 
 
+# Paper §3.4.3 hedging patterns (Task 7.4). The loader enforces presence;
+# any flagged pattern missing from the YAML raises ValueError so silent
+# pattern drift is impossible.
+PAPER_REQUIRED_PATTERN_NAMES = frozenset({
+    "i_think_claim",
+    "not_sure",
+    "could_be",
+    "cant_be_certain",
+})
+
+
 def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
     dict[HedgeCategory, list[tuple[str, re.Pattern]]],
     set[HedgeCategory],
@@ -41,6 +52,10 @@ def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
 
     Returns (patterns_by_category, exclusions) where exclusions are categories
     that must not be counted in the primary hedging metric.
+
+    Per scoring-pipeline spec MODIFIED "Hedging language codebook with five
+    categories" (Task 7.4): every pattern with `paper_pattern: true` from
+    PAPER_REQUIRED_PATTERN_NAMES MUST be present, else ValueError.
     """
     raw = yaml.safe_load(path.read_text())
     name_to_category = {cat.name: cat for cat in HedgeCategory}
@@ -48,6 +63,7 @@ def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
     patterns: dict[HedgeCategory, list[tuple[str, re.Pattern]]] = {
         cat: [] for cat in HedgeCategory
     }
+    found_paper_patterns: set[str] = set()
     for cat_name, entries in raw["categories"].items():
         if cat_name not in name_to_category:
             raise ValueError(f"Unknown hedge category in codebook: {cat_name}")
@@ -56,9 +72,32 @@ def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
             pattern_name = entry["pattern_name"]
             regex = re.compile(entry["regex"], re.IGNORECASE)
             patterns[cat].append((pattern_name, regex))
+            if entry.get("paper_pattern") is True:
+                found_paper_patterns.add(pattern_name)
+
+    missing_paper = PAPER_REQUIRED_PATTERN_NAMES - found_paper_patterns
+    if missing_paper:
+        raise ValueError(
+            f"hedging codebook missing paper §3.4.3 patterns flagged "
+            f"paper_pattern=true: {sorted(missing_paper)}. The loader "
+            f"refuses to silently drop required patterns."
+        )
 
     exclusions = {name_to_category[name] for name in raw.get("primary_exclusions", [])}
     return patterns, exclusions
+
+
+def paper_required_patterns() -> set[str]:
+    """Return the set of paper §3.4.3 pattern names actually present in the
+    loaded codebook (i.e., entries with paper_pattern: true). Used by tests
+    + audit reports."""
+    raw = yaml.safe_load(CODEBOOK_PATH.read_text())
+    found: set[str] = set()
+    for entries in raw["categories"].values():
+        for entry in entries:
+            if entry.get("paper_pattern") is True:
+                found.add(entry["pattern_name"])
+    return found
 
 
 HEDGE_PATTERNS, PRIMARY_EXCLUSIONS = _load_codebook()
