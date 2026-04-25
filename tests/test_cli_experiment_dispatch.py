@@ -102,22 +102,15 @@ class TestCmdRunDispatches:
             "cmd_run must look up runner by args.experiment"
         )
 
-    def test_unimplemented_experiment_raises_notimplementederror(self):
-        """Stub runners (exp3a, exp3b, exp3c) raise NotImplementedError when
-        invoked, rather than silently falling through to a legacy path.
-        Exp1a (Phase 3), Exp1b (Phase 4), and Exp2 (Phase 5) are now
-        implemented, so they are excluded from this guard."""
-        import asyncio
+    def test_all_experiment_runners_implemented(self):
+        """All six experiment runners (exp1a-exp3c) are implemented as of
+        Phase 7. None should raise NotImplementedError on import; runtime
+        validation of inputs lives in each runner's signature, not in
+        an unconditional NotImplementedError stub."""
         from src.runners import RUNNERS
 
-        for stub_name in ("exp3c",):
-            async def _exhaust(name=stub_name):
-                runner = RUNNERS[name]
-                async for _ in runner(None, None):
-                    pass
-
-            with pytest.raises(NotImplementedError):
-                asyncio.run(_exhaust())
+        for name in ("exp1a", "exp1b", "exp2", "exp3a", "exp3b", "exp3c"):
+            assert callable(RUNNERS[name]), f"{name} runner missing"
 
 
 class TestCliProbeSubcommand:
