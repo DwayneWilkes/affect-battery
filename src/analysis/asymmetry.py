@@ -72,36 +72,54 @@ def per_model_verdict(
     """Map an aggregate + p-value + MDE to one of 7 H4 decision-rule rows.
 
     Per asymmetry-contrast spec "Per-model H4 decision rule":
-      supported     -> ratio significantly > 1
-      below-MDE     -> ratio > 1 but observed magnitude below MDE
-      inconclusive  -> p > alpha and observed magnitude near MDE; can't decide
-      null          -> ratio ~ 1.0 (within band) and p > alpha (equivalence)
-      reverse       -> ratio significantly < 1
-      near-1        -> ratio_geomean within +/- 0.1 of 1.0 (no signal)
+      supported     -> p < alpha and ratio > 1
+      reverse       -> p < alpha and ratio < 1
       degenerate    -> ratio_geomean is None (positive arm too small)
+      null          -> p < alpha for an equivalence test (handled by caller
+                       passing p_equivalence_under_alpha=True), ratio in
+                       tight band around 1.0
+      near-1        -> p > alpha and ratio in wider band around 1.0 (no
+                       signal but no equivalence test was run / passed)
+      below-MDE     -> p > alpha, ratio > 1, observed magnitude < MDE
+      inconclusive  -> none of the above; the data simply can't decide
+
+    The previous version had near-1 and null with overlapping bands and
+    no equivalence-test signal, so the null branch was unreachable
+    (review-finding #2). Now they form a real partition:
+      - null requires `p_equivalence_under_alpha=True` (TOST-style); the
+        caller passes this when an equivalence test on |ratio-1| has
+        rejected H0_non-equivalence.
+      - near-1 is the descriptive 'no signal' fallback when no
+        equivalence test ran or it didn't pass.
     """
     ratio = aggregate.get("ratio_geomean")
     if ratio is None:
         return "degenerate"
 
-    near_one_band = 0.1
-    if abs(ratio - 1.0) <= near_one_band and (p_value is None or p_value > alpha):
-        return "near-1"
-
+    # Significant differences first.
     if p_value is not None and p_value < alpha:
         if ratio > 1.0:
             return "supported"
         if ratio < 1.0:
             return "reverse"
+        # ratio == 1.0 with significant p — treat as inconclusive
+        return "inconclusive"
 
-    # p > alpha or no test ran. Distinguish below-MDE vs inconclusive vs null.
+    # Non-significant. Equivalence test informs null vs near-1.
+    p_equivalence_under_alpha = aggregate.get("p_equivalence_under_alpha", False)
+    null_band = 0.05
+    near_one_band = 0.10
+    if p_equivalence_under_alpha and abs(ratio - 1.0) <= null_band:
+        return "null"
+    if abs(ratio - 1.0) <= near_one_band:
+        return "near-1"
+
+    # Outside the near-1 band, ratio > 1, p > alpha, but observed too small
+    # for the test to fire — below-MDE.
     if mde is not None and aggregate.get("difference_mean") is not None:
         observed = abs(aggregate["difference_mean"])
         if observed < mde and ratio > 1.0:
             return "below-MDE"
-
-    if abs(ratio - 1.0) <= 0.05:
-        return "null"
 
     return "inconclusive"
 
@@ -129,8 +147,15 @@ def contrast_base_vs_instruct(
     delta_ratio = (
         (r_inst / r_base) if (r_base and r_inst and r_base > 0) else None
     )
-    diff_base = base_agg.get("difference_mean") or 0.0
-    diff_inst = instruct_agg.get("difference_mean") or 0.0
+    # Per review-finding #8: don't falsy-coalesce; a real 0.0 must remain
+    # distinguishable from missing data so the (b) test reflects truth.
+    diff_base_raw = base_agg.get("difference_mean")
+    diff_inst_raw = instruct_agg.get("difference_mean")
+    test_b = (
+        (diff_inst_raw > diff_base_raw)
+        if (diff_base_raw is not None and diff_inst_raw is not None)
+        else None
+    )
     return {
         "base_model": base_model,
         "instruct_model": instruct_model,
@@ -140,5 +165,5 @@ def contrast_base_vs_instruct(
         "test_a_primary_delta_ratio_gt_1": (
             delta_ratio is not None and delta_ratio > 1.0
         ),
-        "test_b_secondary_diff_instruct_gt_diff_base": diff_inst > diff_base,
+        "test_b_secondary_diff_instruct_gt_diff_base": test_b,
     }

@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 # Spec Requirement (conditioning-protocol::Transfer phase message format): this
 # exact string MUST be the system prompt for cross-session transfer, identical
 # across all conditions. Keep as a module-level constant so any drift is visible.
-CROSS_SESSION_SYSTEM_PROMPT = "Answer the following questions to the best of your ability."
+CROSS_SESSION_SYSTEM_PROMPT = "Answer the questions to the best of your ability."
 
 
 class ExperimentType(str, Enum):
@@ -181,13 +181,18 @@ class RunResult:
         # legacy top-level conditioning/transfer fields WITHOUT a body,
         # synthesize an Exp1aBody. If caller passed body but not top-level
         # fields, mirror body fields to top-level for legacy reads.
+        # Per review-finding #5: defensively COPY lists when synthesizing a
+        # body or mirroring body->top-level. The previous version aliased
+        # references so mutations on top-level fields silently affected the
+        # body and vice-versa. Also raise when caller passes BOTH a body
+        # and inconsistent legacy fields rather than silently accepting.
         if self.body is None and self.experiment_type == "exp1a":
             self.body = Exp1aBody(
-                conditioning_responses=self.conditioning_responses,
-                conditioning_correct=self.conditioning_correct,
-                transfer_responses=self.transfer_responses,
-                transfer_questions=self.transfer_questions,
-                transfer_expected=self.transfer_expected,
+                conditioning_responses=list(self.conditioning_responses),
+                conditioning_correct=list(self.conditioning_correct),
+                transfer_responses=list(self.transfer_responses),
+                transfer_questions=list(self.transfer_questions),
+                transfer_expected=list(self.transfer_expected),
             )
         elif self.body is None and self.experiment_type == "exp1b":
             # Phase 2 fresh-session re-test: top-level conditioning/transfer
@@ -195,24 +200,29 @@ class RunResult:
             # the cross-session branch in run_single). Seeds default to 0 and
             # are populated by run_single when config is TRANSFER_CROSS.
             self.body = Exp1bBody(
-                conditioning_responses=self.conditioning_responses,
-                conditioning_correct=self.conditioning_correct,
-                transfer_responses=self.transfer_responses,
-                transfer_questions=self.transfer_questions,
-                transfer_expected=self.transfer_expected,
+                conditioning_responses=list(self.conditioning_responses),
+                conditioning_correct=list(self.conditioning_correct),
+                transfer_responses=list(self.transfer_responses),
+                transfer_questions=list(self.transfer_questions),
+                transfer_expected=list(self.transfer_expected),
             )
         elif isinstance(self.body, Exp1aBody):
-            # Body was passed; sync top-level for legacy readers.
-            if not self.conditioning_responses:
-                self.conditioning_responses = list(self.body.conditioning_responses)
-            if not self.conditioning_correct:
-                self.conditioning_correct = list(self.body.conditioning_correct)
-            if not self.transfer_responses:
-                self.transfer_responses = list(self.body.transfer_responses)
-            if not self.transfer_questions:
-                self.transfer_questions = list(self.body.transfer_questions)
-            if not self.transfer_expected:
-                self.transfer_expected = list(self.body.transfer_expected)
+            # Body was passed; sync top-level for legacy readers, but reject
+            # inconsistent input rather than silently coercing.
+            for field_name in (
+                "conditioning_responses", "conditioning_correct",
+                "transfer_responses", "transfer_questions",
+                "transfer_expected",
+            ):
+                top = getattr(self, field_name)
+                body_v = getattr(self.body, field_name)
+                if top and list(top) != list(body_v):
+                    raise ValueError(
+                        f"RunResult.{field_name} provided at top-level AND "
+                        f"on body, but values differ. Pass one or the other."
+                    )
+                if not top:
+                    setattr(self, field_name, list(body_v))
 
     def compute_checksum(self) -> str:
         self.checksum = checksum_of_payload(asdict(self))

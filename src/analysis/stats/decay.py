@@ -31,15 +31,17 @@ def _aic_bic(rss: float, n: int, k: int) -> tuple[float, float]:
     """AIC + BIC under Gaussian residuals.
 
     rss = sum of squared residuals; n = sample size; k = free params.
-    Returns (AIC, BIC). When rss == 0 (perfect fit), the log term is
-    nominally -inf; we substitute a small floor so callers can still
-    compare models without crashing.
+    Returns (AIC, BIC). When rss == 0 (perfect fit) the log term is
+    -inf; we return -inf rather than substituting a tiny floor because
+    floor-based AIC inflates the difference between near-perfect and
+    realistic-noise fits asymmetrically (review-finding #4).
     """
     if n <= 0 or k < 0:
         raise ValueError(f"n must be > 0 and k >= 0; got n={n}, k={k}")
-    rss_floor = max(rss, 1e-30)
-    aic = n * math.log(rss_floor / n) + 2 * k
-    bic = n * math.log(rss_floor / n) + k * math.log(n)
+    if rss <= 0.0:
+        return -math.inf, -math.inf
+    aic = n * math.log(rss / n) + 2 * k
+    bic = n * math.log(rss / n) + k * math.log(n)
     return aic, bic
 
 
@@ -48,7 +50,14 @@ def fit_linear(
     curve: list[float],
     baseline: float,
 ) -> dict[str, float]:
-    """OLS fit of (curve - baseline) ~ slope * N. Returns slope + AIC/BIC."""
+    """OLS fit of (curve - baseline) ~ intercept + slope * N.
+
+    Includes a free intercept so this competes fairly with
+    fit_exponential's free amplitude on AIC/BIC. Without the intercept
+    the line is forced through the origin in residual-space, inflating
+    RSS and biasing model selection toward exponential
+    (review-finding #3).
+    """
     if len(n_values) != len(curve):
         raise ValueError(
             f"n_values ({len(n_values)}) and curve ({len(curve)}) must "
@@ -59,12 +68,16 @@ def fit_linear(
         raise ValueError(f"need >= 2 points to fit; got {n}")
     xs = [float(x) for x in n_values]
     ys = [c - baseline for c in curve]
-    sum_xy = sum(x * y for x, y in zip(xs, ys))
-    sum_xx = sum(x * x for x in xs)
-    slope = sum_xy / sum_xx if sum_xx != 0.0 else 0.0
-    rss = sum((y - slope * x) ** 2 for x, y in zip(xs, ys))
-    aic, bic = _aic_bic(rss, n, k=1)
-    return {"slope": slope, "rss": rss, "aic": aic, "bic": bic}
+    # OLS with intercept via closed-form normal equations.
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    cov_xy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    slope = cov_xy / var_x if var_x != 0.0 else 0.0
+    intercept = mean_y - slope * mean_x
+    rss = sum((y - intercept - slope * x) ** 2 for x, y in zip(xs, ys))
+    aic, bic = _aic_bic(rss, n, k=2)  # intercept + slope = 2 free params
+    return {"slope": slope, "intercept": intercept, "rss": rss, "aic": aic, "bic": bic}
 
 
 def _exp_model(n, amplitude, tau):
@@ -105,8 +118,11 @@ def fit_exponential(
         )
         amplitude, tau = float(popt[0]), float(popt[1])
     except Exception:
-        # Fallback: log-linear seed when nonlinear fit diverges. Crude but
-        # keeps the analysis pipeline non-crashing on adversarial curves.
+        # Heuristic-seed fallback when curve_fit diverges. We do NOT
+        # claim this is a refined fit — it's the initial guess, kept
+        # so the pipeline doesn't crash on adversarial curves. Caller
+        # should treat a fit with these exact bounds-edge values as
+        # suspect (review-finding #15).
         amplitude, tau = amp0, tau0
 
     rss = sum((y - amplitude * math.exp(-x / tau)) ** 2 for x, y in zip(xs, ys))

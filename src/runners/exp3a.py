@@ -18,10 +18,7 @@ import json
 from pathlib import Path
 
 from src.runner import Exp3aBody, ExperimentType, run_batch
-
-
-def _canonical_json_bytes(payload: dict) -> bytes:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+from src.util import canonical_json_bytes
 
 
 def _validate_pilot_seed(seed_path: Path) -> dict:
@@ -29,7 +26,7 @@ def _validate_pilot_seed(seed_path: Path) -> dict:
     sha = payload.pop("sha256", None)
     if sha is None:
         raise ValueError(f"pilot-seed {seed_path} missing 'sha256' field")
-    expected = hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+    expected = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
     if expected != sha:
         raise ValueError(
             f"pilot-seed SHA mismatch: file says {sha}, recomputed {expected}; "

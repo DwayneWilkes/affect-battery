@@ -19,6 +19,7 @@ import math
 
 import numpy as np
 
+from src.analysis.stats._distributions import student_t_cdf
 from src.analysis.stats.decay import _aic_bic
 
 
@@ -44,10 +45,6 @@ def _se_of_coefficient(X: np.ndarray, rss: float, n: int, k: int) -> np.ndarray:
     except np.linalg.LinAlgError:
         return np.full(X.shape[1], math.inf)
     return np.sqrt(np.maximum(np.diag(cov), 0.0))
-
-
-def _normal_cdf(z: float) -> float:
-    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
 def analyze_exp3a(accuracy_by_level: dict[int, list[float]]) -> dict:
@@ -83,13 +80,15 @@ def analyze_exp3a(accuracy_by_level: dict[int, list[float]]) -> dict:
     se_q = _se_of_coefficient(X_quad, rss_q, n, k=3)
     se_b2 = float(se_q[2])
 
-    # One-sided p-value for H_a: beta_2 < 0 using standard-normal proxy.
+    # One-sided p-value for H_a: beta_2 < 0 using Student-t with df = n-k.
+    # Per review-finding #9: standard-normal CDF is anti-conservative for
+    # the small n we use; Student-t is the right reference distribution.
     if se_b2 == 0.0 or not math.isfinite(se_b2):
         p_one_sided = 1.0 if b2 >= 0 else 0.0
     else:
-        z = b2 / se_b2
-        # H_a: beta_2 < 0 => p = Phi(z); when z is very negative, p is small
-        p_one_sided = _normal_cdf(z)
+        t_stat = b2 / se_b2
+        df = n - 3  # 3 free params: b0, b1, b2
+        p_one_sided = student_t_cdf(t_stat, df=df)
 
     quad_aic, quad_bic = _aic_bic(rss_q, n, k=3)
 

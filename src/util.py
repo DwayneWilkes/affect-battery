@@ -12,6 +12,18 @@ CHECKSUM_KEY = "checksum"
 CHECKSUM_HEX_DIGITS = 16
 
 
+def canonical_json_bytes(payload: dict) -> bytes:
+    """Sort-keys + no-whitespace JSON encoding for SHA-256 stability.
+
+    Used for the producer/verifier pair in
+    src/probes/intensity_pilot.emit_seed (producer) and
+    src/runners/exp3a._validate_pilot_seed (verifier). Keeping the
+    serialization in one place is correctness-load-bearing: any drift
+    causes valid seeds to be rejected (review-finding #14).
+    """
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
 def enum_value(x: Any) -> Any:
     """Return `.value` on an Enum, pass strings through unchanged.
 

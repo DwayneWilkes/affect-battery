@@ -47,6 +47,7 @@ PAPER_REQUIRED_PATTERN_NAMES = frozenset({
 def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
     dict[HedgeCategory, list[tuple[str, re.Pattern]]],
     set[HedgeCategory],
+    set[str],
 ]:
     """Load patterns and primary-exclusion set from YAML.
 
@@ -84,23 +85,18 @@ def _load_codebook(path: Path = CODEBOOK_PATH) -> tuple[
         )
 
     exclusions = {name_to_category[name] for name in raw.get("primary_exclusions", [])}
-    return patterns, exclusions
+    return patterns, exclusions, found_paper_patterns
+
+
+HEDGE_PATTERNS, PRIMARY_EXCLUSIONS, _PAPER_PATTERNS = _load_codebook()
 
 
 def paper_required_patterns() -> set[str]:
-    """Return the set of paper §3.4.3 pattern names actually present in the
-    loaded codebook (i.e., entries with paper_pattern: true). Used by tests
-    + audit reports."""
-    raw = yaml.safe_load(CODEBOOK_PATH.read_text())
-    found: set[str] = set()
-    for entries in raw["categories"].values():
-        for entry in entries:
-            if entry.get("paper_pattern") is True:
-                found.add(entry["pattern_name"])
-    return found
-
-
-HEDGE_PATTERNS, PRIMARY_EXCLUSIONS = _load_codebook()
+    """Return the set of paper §3.4.3 pattern names present in the loaded
+    codebook (entries with paper_pattern: true). Cached at module init
+    via _load_codebook (review-finding #12). Returns a copy so callers
+    cannot mutate the cached set."""
+    return set(_PAPER_PATTERNS)
 
 
 def detect_hedges(text: str) -> list[HedgeMatch]:

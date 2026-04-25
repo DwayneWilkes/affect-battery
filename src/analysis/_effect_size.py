@@ -45,21 +45,28 @@ def cohens_d(treatment: list[float], baseline: list[float]) -> float:
 
 
 def welch_p(treatment: list[float], baseline: list[float]) -> float:
-    """Two-sided Welch t-test p-value (standard-normal CDF approximation).
+    """Two-sided Welch's t-test p-value via scipy.stats.ttest_ind.
 
-    Weekend-ship proxy. Replace with full mixed-effects fit at submit-time
-    (logged in GAPS.md). Returns 1.0 when either group has fewer than 2
-    samples (test cannot be computed); 0.0 when both means differ but SE
-    is zero (perfect separation).
+    Per review-finding #10: the previous implementation used a standard-
+    normal CDF approximation rather than Welch's t with Welch-Satterthwaite
+    df, which is mildly anti-conservative for the small n we use in tests.
+    This now delegates to scipy.stats.ttest_ind(equal_var=False).
+
+    Returns 1.0 when either group has fewer than 2 samples (test cannot
+    be computed); 0.0 when both means differ but SE is zero (perfect
+    separation).
     """
+    from scipy.stats import ttest_ind
+
     nx, ny = len(treatment), len(baseline)
     if nx < 2 or ny < 2:
         return 1.0
+    # Quick perfect-separation short-circuit so callers don't see scipy
+    # warnings on degenerate input.
     mx, my = mean(treatment), mean(baseline)
     sx2 = sum((x - mx) ** 2 for x in treatment) / (nx - 1)
     sy2 = sum((y - my) ** 2 for y in baseline) / (ny - 1)
-    se = math.sqrt(sx2 / nx + sy2 / ny)
-    if se == 0.0:
+    if sx2 == 0.0 and sy2 == 0.0:
         return 0.0 if mx != my else 1.0
-    z = abs(mx - my) / se
-    return 2.0 * (1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0))))
+    result = ttest_ind(treatment, baseline, equal_var=False)
+    return float(result.pvalue)

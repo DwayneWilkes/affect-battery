@@ -21,9 +21,7 @@ from __future__ import annotations
 
 import math
 
-
-def _normal_cdf(z: float) -> float:
-    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+from src.analysis.stats._distributions import normal_cdf
 
 
 def tost_equivalence(
@@ -70,8 +68,8 @@ def tost_equivalence(
     z_lower = (effect - (-epsilon)) / se   # H0_lower: effect <= -eps; reject if z_lower large positive
     z_upper = ((+epsilon) - effect) / se   # H0_upper: effect >= +eps; reject if z_upper large positive
     # One-sided p for "test rejects when z is large positive" => p = 1 - Phi(z)
-    p_lower = 1.0 - _normal_cdf(z_lower)
-    p_upper = 1.0 - _normal_cdf(z_upper)
+    p_lower = 1.0 - normal_cdf(z_lower)
+    p_upper = 1.0 - normal_cdf(z_upper)
     p_tost = max(p_lower, p_upper)
     return {
         "p_lower": p_lower,

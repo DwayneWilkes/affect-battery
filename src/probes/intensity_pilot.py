@@ -24,6 +24,8 @@ from pathlib import Path
 
 import krippendorff
 
+from src.util import canonical_json_bytes
+
 
 PROCEED_THRESHOLD = 0.8
 COLLAPSE_THRESHOLD = 0.6
@@ -87,11 +89,6 @@ def run_intensity_pilot(ratings: dict[str, list[int]]) -> dict:
     }
 
 
-def _canonical_json_bytes(payload: dict) -> bytes:
-    """Sort-keys + no-whitespace JSON encode for SHA-256 stability."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-
-
 def emit_seed(
     pilot_result: dict,
     axis_id: str,
@@ -119,7 +116,7 @@ def emit_seed(
         "alpha_overall": pilot_result["alpha_overall"],
         "alpha_pairwise": pilot_result["alpha_pairwise"],
     }
-    digest = hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+    digest = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
     payload["sha256"] = digest
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
