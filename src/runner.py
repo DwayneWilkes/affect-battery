@@ -351,12 +351,17 @@ async def run_single(
             feedback = turn.correct if is_correct else turn.incorrect
             messages.append({"role": "user", "content": feedback})
     
-    # Phase 1.5: Neutral buffer turns (for persistence experiments)
+    # Phase 1.5: Neutral buffer turns (for persistence experiments).
+    # Per-turn accuracy is captured for Exp 2's recovery-curve analysis.
+    neutral_turn_accuracies: list[float] = []
     for _ in range(config.neutral_turns):
         buffer_problems = get_arithmetic_problems(1, seed=seed + 1000 + _)
         messages.append({"role": "user", "content": buffer_problems[0].question})
         response = await client.complete(messages, temperature=config.temperature)
         messages.append({"role": "assistant", "content": response})
+        extracted = extract_numeric_answer(response)
+        is_correct = extracted is not None and abs(extracted - buffer_problems[0].answer) < 0.01
+        neutral_turn_accuracies.append(1.0 if is_correct else 0.0)
     
     # Phase 2: Transfer
     if config.experiment_type == ExperimentType.TRANSFER_CROSS:
@@ -383,6 +388,15 @@ async def run_single(
         start_time=start,
         end_time=time.time(),
     )
+    # For PERSISTENCE (Exp 2), attach an Exp2Body recording per-turn
+    # accuracy across the neutral_turns recovery phase + the n_value
+    # sweep step. Done before checksum so the body participates in
+    # reproducibility hashing.
+    if config.experiment_type == ExperimentType.PERSISTENCE:
+        result.body = Exp2Body(
+            n_value=config.neutral_turns,
+            turn_accuracies=neutral_turn_accuracies,
+        )
     # For TRANSFER_CROSS, record session_1_seed (conditioning phase) and
     # session_2_seed (fresh-session re-test) on the Exp1bBody. Phase 2 uses
     # `seed + 1`-derived offset so the two sessions sample distinct draws
