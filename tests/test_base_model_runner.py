@@ -178,15 +178,26 @@ class TestCLISelectsCompletionPath:
         class Args:
             dry_run = False
             base_model = True
+            provider = "vllm"
             model = "Qwen/Qwen2.5-7B"
             base_url = "http://localhost:8000/v1"
+            num_runs = 5
+            seed = 42
             temperature = 0.7
             output_dir = "/tmp/test"
+            bank = None
             max_concurrent = 1
             budget_max_calls = None
             cost_per_call = None
             rate_limit_rps = None
             circuit_breaker_threshold = 5
+            # Bypass the gates (test asserts client construction only).
+            pre_registration_osf_url = None
+            pre_registration_github_commit = None
+            power_report_path = None
+            power_report_sha = None
+            skip_prereg_gate = True
+            skip_power_gate = True
 
         cli.cmd_pilot(Args())
         assert captured.get("completion_client") is True

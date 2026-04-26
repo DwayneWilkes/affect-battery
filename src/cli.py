@@ -385,7 +385,8 @@ def cmd_analyze(args):
 
 
 def cmd_pilot(args):
-    """Run a quick pilot: 5 runs × all seven conditions × one model.
+    """Run a quick pilot: `args.num_runs` runs × all seven conditions ×
+    one model.
 
     The default conditions list is `DEFAULT_PILOT_CONDITIONS` (exposed at
     module level so the pipeline orchestrator and tests can reference it
@@ -393,9 +394,15 @@ def cmd_pilot(args):
     pre-registered length-matched control for STRONG_NEGATIVE; see
     specs/main/task-difficulty-calibration/spec.md "Default pilot conditions
     list" for the rationale.
+
+    Pre-registration + power-report gates fire before any real run; pass
+    --skip-prereg-gate / --skip-power-gate to bypass when running an
+    explicit pilot under an existing pre-reg.
     """
     from .runner import ExperimentConfig, ExperimentType, run_batch
-    from .models import VLLMClient, VLLMCompletionClient, DryRunClient
+
+    if not args.dry_run:
+        _check_runtime_gates(args)
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
     conditions = list(DEFAULT_PILOT_CONDITIONS)
@@ -415,9 +422,9 @@ def cmd_pilot(args):
                 model_name=args.model,
                 condition=cond,
                 experiment_type=ExperimentType.TRANSFER_WITHIN,
-                num_runs=5,
+                num_runs=args.num_runs,
                 temperature=args.temperature,
-                seed=42,
+                seed=args.seed,
                 is_base_model=args.base_model,
                 stimulus_bank=bank_id,
                 stimulus_bank_hash=bank_hash,
@@ -463,6 +470,56 @@ def cmd_score(args):
 
         cond = data.get("config", {}).get("condition", "?")
         print(f"{path.name}: accuracy={accuracy:.2f} hedging={hedging['normalized_per_100_words']:.1f}/100w ({cond})")
+
+
+def _add_prereg_gate_args(p: argparse.ArgumentParser) -> None:
+    """Pre-registration + power-report gating flags shared between
+    `run` and `pilot`. Both subcommands enforce the same gates so a
+    pilot that escalates to primary without amendment is detectable."""
+    p.add_argument(
+        "--pre-registration-osf-url", default=None,
+        help=(
+            "OSF pre-registration URL (https://osf.io/...). Either this "
+            "or --pre-registration-github-commit is required for "
+            "non-dry-run invocations. Recorded in every result file."
+        ),
+    )
+    p.add_argument(
+        "--pre-registration-github-commit", default=None,
+        help=(
+            "GitHub commit reference of the pre-registration "
+            "(owner/repo@sha). Equivalent to --pre-registration-osf-url "
+            "for projects whose methodology is fully encoded in the "
+            "repo (specs/, configs/, scripts/); a signed Git tag at "
+            "the commit provides timestamping. Recorded in every "
+            "result file."
+        ),
+    )
+    p.add_argument(
+        "--power-report-path", default=None,
+        help=(
+            "Path to the per-experiment power report JSON. Required for "
+            "non-dry-run invocations. Recorded in every result file's "
+            "config alongside --power-report-sha."
+        ),
+    )
+    p.add_argument(
+        "--power-report-sha", default=None,
+        help="SHA-256 of --power-report-path (passed for cross-check).",
+    )
+    p.add_argument(
+        "--skip-prereg-gate", action="store_true",
+        help=(
+            "Bypass the pre-registration gate. ONLY for explicit pilot "
+            "runs under a pre-registration that authorizes pilot "
+            "inclusion. Promoting pilot results to primary will emit a "
+            "pre_registration_violation audit flag at analysis time."
+        ),
+    )
+    p.add_argument(
+        "--skip-power-gate", action="store_true",
+        help="Bypass the power-report gate (paired with --skip-prereg-gate).",
+    )
 
 
 def _add_guardrail_args(p: argparse.ArgumentParser) -> None:
@@ -537,50 +594,7 @@ def build_parser() -> argparse.ArgumentParser:
             "configs/exp3a_runner.yaml"
         ),
     )
-    p_run.add_argument(
-        "--pre-registration-osf-url", default=None,
-        help=(
-            "OSF pre-registration URL (https://osf.io/...). Either this "
-            "or --pre-registration-github-commit is required for "
-            "non-dry-run invocations. Recorded in every result file."
-        ),
-    )
-    p_run.add_argument(
-        "--pre-registration-github-commit", default=None,
-        help=(
-            "GitHub commit reference of the pre-registration "
-            "(owner/repo@sha). Equivalent to --pre-registration-osf-url "
-            "for projects whose methodology is fully encoded in the "
-            "repo (specs/, configs/, scripts/); a signed Git tag at "
-            "the commit provides timestamping. Recorded in every "
-            "result file."
-        ),
-    )
-    p_run.add_argument(
-        "--power-report-path", default=None,
-        help=(
-            "Path to the per-experiment power report JSON. Required for "
-            "non-dry-run invocations. Recorded in every result file's "
-            "config alongside --power-report-sha."
-        ),
-    )
-    p_run.add_argument(
-        "--power-report-sha", default=None,
-        help="SHA-256 of --power-report-path (passed for cross-check).",
-    )
-    p_run.add_argument(
-        "--skip-prereg-gate", action="store_true",
-        help=(
-            "Bypass the pre-registration gate. ONLY for explicit pilot "
-            "runs under a pre-registration that authorizes pilot inclusion. "
-            "Promoting pilot results to primary will emit a "
-            "pre_registration_violation audit flag at analysis time."
-        ),
-    )
-    p_run.add_argument(
-        "--skip-power-gate", action="store_true",
-        help="Bypass the power-report gate (paired with --skip-prereg-gate).",
-    )
+    _add_prereg_gate_args(p_run)
     p_run.add_argument("--bank", default=None,
                        help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
                             f"Must exist in configs/banks/<bank>.yaml.")
@@ -588,7 +602,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.set_defaults(func=cmd_run)
 
     # pilot
-    p_pilot = sub.add_parser("pilot", help="Quick pilot: 5 runs x 3 conditions x 1 model")
+    p_pilot = sub.add_parser("pilot", help="Quick pilot run across all 7 conditions")
     p_pilot.add_argument("--model", default="meta-llama/Meta-Llama-3-8B-Instruct")
     p_pilot.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
                          help="Experiment type (paper §3 alignment; default exp1a)")
@@ -597,6 +611,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inference provider; see `affect-battery run --help`.",
     )
     p_pilot.add_argument("--base-url", default="http://localhost:8000/v1")
+    p_pilot.add_argument("--num-runs", type=int, default=5,
+                         help="Runs per condition (default: 5).")
+    p_pilot.add_argument("--seed", type=int, default=42)
     p_pilot.add_argument("--temperature", type=float, default=0.7)
     p_pilot.add_argument("--output-dir", default="results")
     p_pilot.add_argument("--dry-run", action="store_true")
@@ -605,6 +622,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pilot.add_argument("--bank", default=None,
                          help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
                               f"Must exist in configs/banks/<bank>.yaml.")
+    _add_prereg_gate_args(p_pilot)
     _add_guardrail_args(p_pilot)
     p_pilot.set_defaults(func=cmd_pilot)
 

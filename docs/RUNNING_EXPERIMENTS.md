@@ -20,6 +20,40 @@ End-to-end guide for going from `git pull` to a populated set of per-experiment 
 
 Phase 1-3 are gates. Phase 4 produces result JSONs. Phase 5 stitches them into reports.
 
+## Quick start: contemporary Anthropic pilot
+
+Fastest path to real results — small-N validation that the harness
+produces well-formed output on a contemporary Anthropic model:
+
+```bash
+# 1. Tag the current commit as your pre-registration (one-time setup)
+python -m scripts.create_prereg_tag \
+    --tag prereg-anthropic-pilot-$(date -u +%Y-%m-%d) \
+    --message "Anthropic pilot pre-registration"
+
+# 2. Set your API key
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# 3. Run the pilot end-to-end (runs, then auto-analyzes)
+bash scripts/pilots/run_anthropic_pilot.sh
+```
+
+Defaults: `claude-sonnet-4-6`, 5 runs × 7 conditions, ~350 API calls,
+roughly $2-3 USD on Sonnet (about 5x that on Opus). The script
+auto-discovers the most recent `prereg-*` tag, converts it to the
+`--pre-registration-github-commit` flag, pipes through to
+`affect-battery pilot`, and runs `analyze` on completion. Results land
+under `results/pilots/anthropic_pilot_<YYYY-MM-DD>/` with
+`AGGREGATE_REPORT.md` at the top level.
+
+Override the model with `--model claude-opus-4-7` for the frontier
+Opus checkpoint, or `--model claude-haiku-4-5` for the cheapest
+validation run (<$1).
+
+The pilot config schema lives at `configs/pilots/anthropic_pilot.yaml`
+for reference; the shell script reads sensible defaults inline so the
+YAML is documentation rather than required input.
+
 ## Smoke test (no GPU)
 
 Verify the harness end-to-end with a fake model:

@@ -100,15 +100,26 @@ class TestCmdPilotUsesSevenConditionsByDefault:
         class Args:
             dry_run = True
             base_model = False
+            provider = "vllm"
             model = "test-model"
             base_url = "http://unused"
+            num_runs = 5
+            seed = 42
             temperature = 0.7
             output_dir = "/tmp/pilot-default-conds-test"
+            bank = None
             max_concurrent = 1
             budget_max_calls = None
             cost_per_call = None
             rate_limit_rps = None
             circuit_breaker_threshold = 5
+            # Pre-reg gates bypassed by --dry-run; values irrelevant.
+            pre_registration_osf_url = None
+            pre_registration_github_commit = None
+            power_report_path = None
+            power_report_sha = None
+            skip_prereg_gate = False
+            skip_power_gate = False
 
         cli.cmd_pilot(Args())
 
