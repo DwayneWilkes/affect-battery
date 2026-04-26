@@ -262,6 +262,24 @@ class OpenAIClient(ModelClient):
         try:
             resp = await self._client.chat.completions.create(**params)
         except Exception as e:
+            from openai import RateLimitError  # type: ignore[import]
+            # OpenAI uses 429 for two distinct conditions:
+            #   - rate_limit_exceeded: too many RPM/TPM. SDK auto-retries
+            #     with backoff; if we get here the SDK gave up. Non-retryable
+            #     from our perspective (the budgeted_client moves on).
+            #   - insufficient_quota: account is out of credit. The SDK
+            #     does NOT retry (no point); user must top up. Surface
+            #     this distinctly so users don't conflate it with rate
+            #     limiting.
+            if isinstance(e, RateLimitError):
+                error_str = str(e).lower()
+                if "insufficient_quota" in error_str or "exceeded your current quota" in error_str:
+                    raise NonRetryableAPIError(
+                        f"OpenAI account out of credit (insufficient_quota). "
+                        f"Top up at platform.openai.com/settings/organization/billing "
+                        f"before re-running. Original: {e}",
+                        status_code=429,
+                    ) from e
             # Map auth + 4xx to NonRetryableAPIError so the batch runner's
             # circuit breaker doesn't endlessly retry on bad input.
             from openai import APIStatusError, AuthenticationError  # type: ignore[import]

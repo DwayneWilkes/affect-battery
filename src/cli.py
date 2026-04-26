@@ -1249,10 +1249,27 @@ def cmd_pilot(args):
         cost_str = f"cost_usd={post_est['total_cost_usd']:.4f}"
     except Exception:
         cost_str = "cost_usd=unknown"
+    # Include yielded-count so the orchestrator can distinguish "ran
+    # successfully" from "circuit-broke at start". Both look the same
+    # to the SDK exit code (cmd_pilot returns 0 in both cases) but the
+    # yielded count is the truth.
+    expected_results = len(conditions) * (per_cond_yield_for_est or args.num_runs)
     print(
         f"[RUN_SUMMARY] {cost_str} wall_clock_sec={elapsed:.1f} "
+        f"yielded={n_total} expected={expected_results} "
         f"experiment={args.experiment} model={args.model}"
     )
+    if n_total == 0 and expected_results > 0:
+        # Zero results yielded despite expecting some — the circuit
+        # breaker likely opened or every cell hit a NonRetryableAPIError.
+        # Make the failure mode loud at the CLI exit code so the
+        # orchestrator's success/fail count reflects reality.
+        print(
+            f"\nERROR: pilot yielded 0 of {expected_results} expected results. "
+            f"Check {output_dir}/events.jsonl for circuit_open / run_failed events.",
+            file=sys.stderr,
+        )
+        sys.exit(3)
     print(f"\nResults in {output_dir}/")
 
 

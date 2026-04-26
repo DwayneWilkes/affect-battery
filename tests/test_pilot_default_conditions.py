@@ -128,7 +128,12 @@ class TestCmdPilotUsesSevenConditionsByDefault:
             skip_prereg_gate = False
             skip_power_gate = False
 
-        cli.cmd_pilot(Args())
+        # The mock yields zero results (it just records conditions),
+        # so cmd_pilot's "yielded zero of N expected" guard fires with
+        # SystemExit(3). The test's actual assertion is about which
+        # conditions were dispatched, not about run completion.
+        with pytest.raises(SystemExit):
+            cli.cmd_pilot(Args())
 
         # Every condition the pilot runs should be in the expected 7-set, and
         # the set of conditions actually run should equal the expected 7-set.

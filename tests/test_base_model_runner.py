@@ -200,7 +200,13 @@ class TestCLISelectsCompletionPath:
             skip_prereg_gate = True
             skip_power_gate = True
 
-        cli.cmd_pilot(Args())
+        # The patched asyncio.run no-ops the actual pilot loop, so
+        # zero results yield and cmd_pilot's "yielded 0 expected N"
+        # guard fires with SystemExit(3). Test's actual assertion is
+        # about which client class was constructed, not run completion.
+        import pytest as _pytest
+        with _pytest.raises(SystemExit):
+            cli.cmd_pilot(Args())
         assert captured.get("completion_client") is True
         assert "chat_client" not in captured
 
