@@ -318,43 +318,82 @@ def _hash_transfer_bank(bank_path: str | None) -> str:
     return hashlib.sha256(Path(bank_path).read_bytes()).hexdigest()
 
 
-# Per-call cost estimates (USD), blended input + output for typical
-# affect-battery call shape (~500 input + ~100 output tokens). Values
-# calibrated against the public-API pricing each provider documents at
-# the time of authoring (2026-04). For precise budget tracking, pass
-# --cost-per-call to override.
-_PER_CALL_COST_USD: dict[str, float] = {
-    # Anthropic
-    "claude-haiku-4-5":  0.0030,
-    "claude-sonnet-4-6": 0.0150,
-    "claude-opus-4-7":   0.0800,
-    # OpenAI
-    "gpt-4o-mini":       0.0010,
-    "gpt-4o":            0.0200,
-    "gpt-4-turbo":       0.0300,
+# Anthropic API pricing in USD per million tokens, source:
+#   https://platform.claude.com/docs/en/about-claude/pricing
+# (snapshotted 2026-04-26). Input + output rates are split because
+# output tokens cost 5x input on most tiers — the old blended-rate
+# shortcut systematically over-estimated input-heavy workloads (long
+# conversation context, short answers) and under-estimated output-
+# heavy ones (open-ended generation in exp3b).
+_ANTHROPIC_PRICING_PER_MTOK: dict[str, dict[str, float]] = {
+    "claude-haiku-4-5":  {"input": 1.00,  "output": 5.00},
+    "claude-haiku-3-5":  {"input": 0.80,  "output": 4.00},
+    "claude-haiku-3":    {"input": 0.25,  "output": 1.25},
+    "claude-sonnet-4-6": {"input": 3.00,  "output": 15.00},
+    "claude-sonnet-4-5": {"input": 3.00,  "output": 15.00},
+    "claude-sonnet-4":   {"input": 3.00,  "output": 15.00},
+    "claude-opus-4-7":   {"input": 5.00,  "output": 25.00},
+    "claude-opus-4-6":   {"input": 5.00,  "output": 25.00},
+    "claude-opus-4-5":   {"input": 5.00,  "output": 25.00},
+    "claude-opus-4-1":   {"input": 15.00, "output": 75.00},
+    "claude-opus-4":     {"input": 15.00, "output": 75.00},
 }
 
 
-def _resolve_per_call_cost(model: str) -> tuple[float, str]:
-    """Return (cost_usd_per_call, source). Source is one of:
-      'exact' — model name matched a row in _PER_CALL_COST_USD
-      'tier'  — substring match on 'haiku' / 'sonnet' / 'opus'
-      'default' — no match; using a conservative 0.005 fallback
+# OpenAI rates included for completeness; not authoritative — verify
+# against https://openai.com/api/pricing/ before use.
+_OPENAI_PRICING_PER_MTOK: dict[str, dict[str, float]] = {
+    "gpt-4o":      {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini": {"input": 0.15,  "output": 0.60},
+    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+}
+
+
+# Token-count estimates per call by experiment shape. Calibrated for
+# typical affect-battery message lengths: a short system prompt, ~5
+# conditioning turns of arithmetic Q/A/feedback, then transfer
+# Q-and-A. Output token estimates account for negative-affect
+# conditions producing more hedging prose than neutral.
+#
+# These are intentionally rough — they're for budget preview, not
+# exact accounting. The largest source of error is conversation-
+# length growth across turns (later turns carry more context).
+_TOKENS_PER_CALL_BY_EXPERIMENT: dict[str, dict[str, int]] = {
+    "exp1a": {"input": 400, "output": 60},
+    "exp1b": {"input": 400, "output": 60},
+    "exp2":  {"input": 400, "output": 60},
+    "exp3a": {"input": 350, "output": 50},
+    "exp3b": {"input": 400, "output": 250},  # open-ended generation
+    "exp3c": {"input": 400, "output": 80},   # factual QA + hedging
+}
+
+
+def _resolve_token_pricing(model: str) -> tuple[float, float, str]:
+    """Return (input_per_mtok, output_per_mtok, source) for a model.
+
+    Source is one of:
+      'exact'   — model name matched a row in the pricing table
+      'tier'    — substring match on 'haiku' / 'sonnet' / 'opus' / 'gpt'
+      'default' — no match; using a conservative mid-tier fallback
     """
-    if model in _PER_CALL_COST_USD:
-        return _PER_CALL_COST_USD[model], "exact"
+    if model in _ANTHROPIC_PRICING_PER_MTOK:
+        p = _ANTHROPIC_PRICING_PER_MTOK[model]
+        return p["input"], p["output"], "exact"
+    if model in _OPENAI_PRICING_PER_MTOK:
+        p = _OPENAI_PRICING_PER_MTOK[model]
+        return p["input"], p["output"], "exact"
     lo = model.lower()
     if "haiku" in lo:
-        return 0.0030, "tier"
+        return 1.00, 5.00, "tier (haiku-4-5 rates)"
     if "sonnet" in lo:
-        return 0.0150, "tier"
+        return 3.00, 15.00, "tier (sonnet-4-6 rates)"
     if "opus" in lo:
-        return 0.0800, "tier"
+        return 5.00, 25.00, "tier (opus-4-7 rates; opus-4/4.1 are 3x higher)"
     if "gpt-4o-mini" in lo or "mini" in lo:
-        return 0.0010, "tier"
-    if "gpt-4" in lo:
-        return 0.0200, "tier"
-    return 0.0050, "default"
+        return 0.15, 0.60, "tier (gpt-4o-mini rates)"
+    if "gpt-4o" in lo or "gpt-4" in lo:
+        return 2.50, 10.00, "tier (gpt-4o rates)"
+    return 3.00, 15.00, "default (sonnet-tier fallback)"
 
 
 def _empirical_seconds_per_call(model: str, results_root: Path) -> float | None:
@@ -452,13 +491,29 @@ def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
 
     n_calls = int(round(n_results * calls_per_result))
 
-    # Cost
+    # Cost: prefer proper input + output token pricing from the
+    # pricing table. --cost-per-call overrides with a flat blended
+    # rate (useful when the user has a contract rate or wants a
+    # conservative ceiling).
+    tokens = _TOKENS_PER_CALL_BY_EXPERIMENT.get(
+        args.experiment, {"input": 400, "output": 80}
+    )
     if getattr(args, "cost_per_call", None):
         cost_per_call = float(args.cost_per_call)
-        cost_source = "user-override (--cost-per-call)"
+        total_cost_usd = n_calls * cost_per_call
+        input_cost_usd = None
+        output_cost_usd = None
+        cost_source = "user-override (--cost-per-call, blended)"
+        input_per_mtok = output_per_mtok = None
     else:
-        cost_per_call, cost_source = _resolve_per_call_cost(args.model)
-    total_cost_usd = n_calls * cost_per_call
+        input_per_mtok, output_per_mtok, cost_source = _resolve_token_pricing(args.model)
+        # Tokens per call × calls × $/MTok / 1e6
+        total_input_tokens = n_calls * tokens["input"]
+        total_output_tokens = n_calls * tokens["output"]
+        input_cost_usd = total_input_tokens * input_per_mtok / 1_000_000
+        output_cost_usd = total_output_tokens * output_per_mtok / 1_000_000
+        total_cost_usd = input_cost_usd + output_cost_usd
+        cost_per_call = total_cost_usd / n_calls if n_calls > 0 else 0.0
 
     # Wall-clock: prefer empirical from prior pilots of the same model.
     sec_per_call = _empirical_seconds_per_call(
@@ -499,6 +554,12 @@ def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
         "n_results_yielded": n_results,
         "n_api_calls": n_calls,
         "calls_per_result": round(calls_per_result, 2),
+        "tokens_per_call_input": tokens["input"],
+        "tokens_per_call_output": tokens["output"],
+        "input_per_mtok_usd": input_per_mtok,
+        "output_per_mtok_usd": output_per_mtok,
+        "input_cost_usd": input_cost_usd,
+        "output_cost_usd": output_cost_usd,
         "cost_per_call_usd": cost_per_call,
         "cost_source": cost_source,
         "total_cost_usd": total_cost_usd,
@@ -522,10 +583,39 @@ def _print_estimate(est: dict) -> None:
         f"  API calls:          {est['n_api_calls']:>6} "
         f"(~{est['calls_per_result']:.1f} calls/result)"
     )
-    print(
-        f"  cost per call:      ${est['cost_per_call_usd']:.4f} "
-        f"({est['cost_source']})"
-    )
+    # Token + cost breakdown. When --cost-per-call overrides we print
+    # the blended rate; otherwise we show the input/output split so
+    # the user can sanity-check whether the workload is input-heavy
+    # (long context, short answers) or output-heavy (open-ended gen).
+    if est["input_per_mtok_usd"] is not None:
+        in_cost = est["input_cost_usd"] or 0.0
+        out_cost = est["output_cost_usd"] or 0.0
+        print(
+            f"  tokens per call:    "
+            f"~{est['tokens_per_call_input']} input / "
+            f"{est['tokens_per_call_output']} output"
+        )
+        print(
+            f"  pricing:            "
+            f"${est['input_per_mtok_usd']:.2f}/MTok in, "
+            f"${est['output_per_mtok_usd']:.2f}/MTok out "
+            f"({est['cost_source']})"
+        )
+        print(
+            f"  cost (input):       ${in_cost:.2f} "
+            f"({in_cost / est['total_cost_usd'] * 100:.0f}% of total)"
+            if est['total_cost_usd'] > 0 else f"  cost (input):       ${in_cost:.2f}"
+        )
+        print(
+            f"  cost (output):      ${out_cost:.2f} "
+            f"({out_cost / est['total_cost_usd'] * 100:.0f}% of total)"
+            if est['total_cost_usd'] > 0 else f"  cost (output):      ${out_cost:.2f}"
+        )
+    else:
+        print(
+            f"  cost per call:      ${est['cost_per_call_usd']:.4f} "
+            f"({est['cost_source']})"
+        )
     print(f"  total cost:         ${est['total_cost_usd']:.2f}")
     print(
         f"  seconds per call:   {est['sec_per_call']:.2f}s "
