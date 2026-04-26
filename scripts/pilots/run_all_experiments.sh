@@ -106,6 +106,44 @@ FAILED=()
 # In parallel mode each subprocess writes to its own log; in
 # sequential mode all output goes to one shared log.
 LOG_DIR="$(mktemp -d)"
+# Track child PIDs so SIGINT can forward to all of them. Bash's
+# default backgrounded-job handling does NOT reliably forward
+# SIGINT — the orchestrator gets it, the children don't, and the
+# user has to kill -9 to stop them.
+declare -a CHILD_PIDS=()
+
+cleanup_on_signal() {
+  local signal_name="${1:-INT}"
+  echo "" >&2
+  echo "[orchestrator] ${signal_name} received; forwarding to ${#CHILD_PIDS[@]} child experiments..." >&2
+  for pid in "${CHILD_PIDS[@]}"; do
+    kill -INT "${pid}" 2>/dev/null || true
+  done
+  # Give them up to 10s to drain in-flight API calls cleanly.
+  local deadline=$(( $(date +%s) + 10 ))
+  while [[ $(date +%s) -lt ${deadline} ]]; do
+    local alive=0
+    for pid in "${CHILD_PIDS[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        alive=$(( alive + 1 ))
+      fi
+    done
+    if [[ ${alive} -eq 0 ]]; then break; fi
+    sleep 0.5
+  done
+  # Anyone still alive after grace gets SIGKILL.
+  for pid in "${CHILD_PIDS[@]}"; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      echo "[orchestrator] PID ${pid} didn't drain; force-killing." >&2
+      kill -KILL "${pid}" 2>/dev/null || true
+    fi
+  done
+  rm -rf "${LOG_DIR}" 2>/dev/null
+  exit 130
+}
+
+trap 'cleanup_on_signal INT' INT
+trap 'cleanup_on_signal TERM' TERM
 trap "rm -rf '${LOG_DIR}'" EXIT
 
 # Per-experiment runner. Captures stdout+stderr to a per-exp log and
@@ -144,9 +182,12 @@ if [[ -n "${PARALLEL}" ]]; then
     echo "  ▶ launching ${exp}..."
     run_one_experiment "${exp}" &
     PIDS[$exp]=$!
+    # Also track in CHILD_PIDS so cleanup_on_signal can find these
+    # without needing to declare -A access from inside the trap.
+    CHILD_PIDS+=("$!")
   done
   echo ""
-  echo "  waiting for all experiments to complete..."
+  echo "  waiting for all experiments to complete (Ctrl-C to abort)..."
   for exp in "${EXPERIMENTS[@]}"; do
     if ! wait "${PIDS[$exp]}"; then
       FAILED+=("${exp}")

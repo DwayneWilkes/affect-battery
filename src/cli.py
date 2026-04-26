@@ -86,18 +86,54 @@ def cmd_pipeline_run(args) -> None:
 
 
 def _install_sigint_handler(cancel_event: asyncio.Event) -> None:
-    """Set cancel_event on SIGINT so run_batch drains gracefully.
+    """First SIGINT: set cancel_event and cancel pending asyncio tasks
+    so the run drains gracefully (cached cells skipped, in-flight cells
+    interrupted). Second SIGINT: hard-exit with the OS default handler.
 
-    A second SIGINT is a no-op (the handler re-installs itself each time,
-    which is idempotent). The OS-level default behaviour for a third
-    (still Ctrl-C repeatedly) is preserved because we don't raise_signal.
+    Pre-fix this used `signal.signal()` only, which sets the flag but
+    doesn't interrupt active `await` calls — so during a 30s API call,
+    Ctrl-C did nothing for up to 30s. The new handler uses
+    `loop.add_signal_handler()` (asyncio-aware) and additionally
+    cancels in-flight tasks so awaits raise CancelledError immediately.
+    Must be called from within an async context (so a running loop
+    exists).
     """
-    def handler(signum, frame):
-        if not cancel_event.is_set():
-            print("\n[cli] SIGINT received; draining in-flight runs...", file=sys.stderr)
-            cancel_event.set()
+    import os
 
-    signal.signal(signal.SIGINT, handler)
+    loop = asyncio.get_running_loop()
+
+    def handler() -> None:
+        if not cancel_event.is_set():
+            print(
+                "\n[cli] SIGINT received; cancelling in-flight runs. "
+                "Press Ctrl-C again to force exit.",
+                file=sys.stderr,
+            )
+            cancel_event.set()
+            # Cancel every pending task except the one calling us.
+            current = asyncio.current_task()
+            for task in asyncio.all_tasks(loop):
+                if task is not current and not task.done():
+                    task.cancel()
+        else:
+            # Second SIGINT: restore default and re-raise so the
+            # process exits immediately.
+            print(
+                "\n[cli] Second SIGINT — force exit.", file=sys.stderr,
+            )
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            os.kill(os.getpid(), signal.SIGINT)
+
+    try:
+        loop.add_signal_handler(signal.SIGINT, handler)
+    except (NotImplementedError, RuntimeError):
+        # Windows or non-main-thread asyncio loops don't support
+        # add_signal_handler. Fall back to signal.signal() which
+        # at least sets the flag (won't interrupt awaits but better
+        # than nothing).
+        def fallback(_signum, _frame):
+            handler()
+        signal.signal(signal.SIGINT, fallback)
 
 
 def _build_budget(args) -> object:
@@ -994,7 +1030,8 @@ def cmd_run(args):
     output_dir = pilot_root / "data"
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
-    _install_sigint_handler(cancel_event)
+    # SIGINT handler installed inside _run() below so a running loop
+    # exists for loop.add_signal_handler.
 
     batch_kwargs = _build_runner_batch_kwargs(args, budget, cancel_event)
 
@@ -1014,6 +1051,7 @@ def cmd_run(args):
 
     async def _run():
         nonlocal runs_completed
+        _install_sigint_handler(cancel_event)
         with tqdm(
             total=bar_total,
             desc=f"{args.experiment}/{args.condition}",
@@ -1031,7 +1069,18 @@ def cmd_run(args):
         if hasattr(client, 'close'):
             await client.close()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # SIGINT path: handler in _install_sigint_handler cancelled
+        # in-flight tasks; CancelledError or KeyboardInterrupt bubbles
+        # up here. Exit code 130 (128 + SIGINT) is the convention.
+        print(
+            "\n[cli] Cancelled. Partial results in "
+            f"{output_dir}/ are still cache-valid for resume.",
+            file=sys.stderr,
+        )
+        sys.exit(130)
     elapsed = _time.time() - started
     completed_utc = datetime.now(timezone.utc).isoformat()
 
@@ -1125,7 +1174,8 @@ def cmd_pilot(args):
 
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
-    _install_sigint_handler(cancel_event)
+    # SIGINT handler installed inside _run() below so a running loop
+    # exists for loop.add_signal_handler (asyncio-aware).
 
     # Single non-scrolling progress bar across (conditions × num_runs).
     # The runner.py per-run INFO logger continues to fire but is
@@ -1148,6 +1198,7 @@ def cmd_pilot(args):
     per_cond_count: dict[str, int] = {}
 
     async def _run():
+        _install_sigint_handler(cancel_event)
         with tqdm(
             total=bar_total, desc="pilot", unit="run", dynamic_ncols=True,
         ) as bar:
@@ -1201,7 +1252,18 @@ def cmd_pilot(args):
         if hasattr(client, 'close'):
             await client.close()
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # SIGINT path: handler in _install_sigint_handler cancelled
+        # in-flight tasks; CancelledError or KeyboardInterrupt bubbles
+        # up here. Exit code 130 (128 + SIGINT) is the convention.
+        print(
+            "\n[cli] Cancelled. Partial results in "
+            f"{output_dir}/ are still cache-valid for resume.",
+            file=sys.stderr,
+        )
+        sys.exit(130)
     elapsed = _time.time() - started
     completed_utc = datetime.now(timezone.utc).isoformat()
 
