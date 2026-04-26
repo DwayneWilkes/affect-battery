@@ -13,7 +13,7 @@
 #   bash scripts/pilots/run_anthropic_pilot.sh --dry-run     # offline smoke test
 #   bash scripts/pilots/run_anthropic_pilot.sh --skip-prereg # pilot under existing pre-reg
 #
-# Output: results/pilots/<YYYY-MM-DD>_<model_slug>/
+# Output: results/pilots/<YYYY-MM-DD>_<model_slug>_<experiment>/
 
 set -euo pipefail
 
@@ -29,11 +29,15 @@ unset VIRTUAL_ENV
 # claude-sonnet-4-6 or --model claude-opus-4-7 once the harness is
 # verified end-to-end on Haiku.
 MODEL="claude-haiku-4-5"
+EXPERIMENT="exp1a"
 NUM_RUNS=5
 SEED=42
 DRY_RUN=""
 SKIP_PREREG=""
 PREREG_TAG=""
+RUNNER_CONFIG=""
+NEUTRAL_TURNS=0
+OVERWRITE=""
 # Default to the alias-aware TriviaQA hard subset so frontier models don't
 # saturate on the legacy 6-item hardcoded pool. Override with
 # --transfer-bank '' to use the legacy pool, or with another bank path.
@@ -42,12 +46,16 @@ TRANSFER_BANK="configs/banks/exp1a_factual_qa_hard_v1.yaml"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --model)          MODEL="$2"; shift 2 ;;
+    --experiment)     EXPERIMENT="$2"; shift 2 ;;
     --num-runs)       NUM_RUNS="$2"; shift 2 ;;
     --seed)           SEED="$2"; shift 2 ;;
     --dry-run)        DRY_RUN="--dry-run"; shift ;;
     --skip-prereg)    SKIP_PREREG="1"; shift ;;
     --prereg-tag)     PREREG_TAG="$2"; shift 2 ;;
     --transfer-bank)  TRANSFER_BANK="$2"; shift 2 ;;
+    --runner-config)  RUNNER_CONFIG="$2"; shift 2 ;;
+    --neutral-turns)  NEUTRAL_TURNS="$2"; shift 2 ;;
+    --overwrite)      OVERWRITE="--overwrite"; shift ;;
     -h|--help)
       grep '^# ' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -55,21 +63,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# exp3a/3b/3c require a per-experiment runner config (intensity_levels,
+# prompts, items). Surface the requirement up-front rather than letting
+# the CLI exit with a less-clear error mid-pilot.
+case "${EXPERIMENT}" in
+  exp3a|exp3b|exp3c)
+    if [[ -z "${RUNNER_CONFIG}" ]]; then
+      echo "error: --experiment ${EXPERIMENT} requires --runner-config <yaml>" >&2
+      echo "       (intensity_levels for exp3a, prompts for exp3b, items for exp3c)" >&2
+      exit 2
+    fi
+    ;;
+esac
+
 DATE_STAMP=$(date -u +%Y-%m-%d)
-# Segregate dry-run output so its canned responses cannot pollute the
-# real-run cache via the (config, run_number) cache key. Dry-run +
-# real-run share the same model_name in config, so without this
-# suffix the dry-run results would be picked up by the run-batch
-# cache loader during a subsequent real run.
-# Pilot directory is `<date>_<model_slug>/` so two models = two sibling
-# dirs that don't collide. Slashes in the model name (e.g.
-# 'meta-llama/Llama-3') are replaced with underscores so the path stays
-# one level deep.
+# Pilot directory is `<date>_<model_slug>_<experiment>/` so each
+# (date, model, experiment) triple lives in its own dir — no collisions
+# between pilots of different experiments or models. Slashes in the
+# model name (e.g. 'meta-llama/Llama-3') are replaced with underscores
+# so the path stays one level deep.
 MODEL_SLUG="${MODEL//\//_}"
 if [[ -n "${DRY_RUN}" ]]; then
-  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_dryrun"
+  # Segregate dry-run output so its canned responses cannot pollute the
+  # real-run cache via the (config, run_number) cache key.
+  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_${EXPERIMENT}_dryrun"
 else
-  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}"
+  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_${EXPERIMENT}"
 fi
 
 # ---- Pre-flight ----
@@ -129,10 +148,14 @@ fi
 echo ""
 echo "Running Anthropic pilot:"
 echo "  model:         ${MODEL}"
+echo "  experiment:    ${EXPERIMENT}"
 echo "  num_runs:      ${NUM_RUNS}"
 echo "  seed:          ${SEED}"
+echo "  neutral_turns: ${NEUTRAL_TURNS} (only used by exp2)"
 echo "  output_dir:    ${OUTPUT_DIR}"
 echo "  transfer_bank: ${TRANSFER_BANK:-<legacy hardcoded pool>}"
+echo "  runner_config: ${RUNNER_CONFIG:-<none, only required for exp3a/3b/3c>}"
+echo "  overwrite:     ${OVERWRITE:-no (resume-by-default)}"
 echo ""
 
 # Note: `affect-battery pilot` runs all 7 conditions × num_runs.
@@ -154,25 +177,32 @@ case "${MODEL}" in
   *)         COST_PER_CALL="0.015" ;;  # conservative default
 esac
 
-# Forward --transfer-bank only when set; an empty string means "fall
-# back to the hardcoded factual_qa pool", and the CLI argparser would
-# reject the empty value. So we conditionally append.
+# Forward optional flags only when set; the CLI argparser would reject
+# empty string values, so we build flag strings conditionally.
 TRANSFER_BANK_FLAG=""
 if [[ -n "${TRANSFER_BANK}" ]]; then
   TRANSFER_BANK_FLAG="--transfer-bank ${TRANSFER_BANK}"
+fi
+RUNNER_CONFIG_FLAG=""
+if [[ -n "${RUNNER_CONFIG}" ]]; then
+  RUNNER_CONFIG_FLAG="--runner-config ${RUNNER_CONFIG}"
 fi
 
 uv run affect-battery pilot \
   --provider anthropic \
   --model "${MODEL}" \
+  --experiment "${EXPERIMENT}" \
   --num-runs "${NUM_RUNS}" \
   --seed "${SEED}" \
+  --neutral-turns "${NEUTRAL_TURNS}" \
   --output-dir "${OUTPUT_DIR}" \
   --max-concurrent 4 \
   --rate-limit-rps 5 \
   --budget-max-calls 500 \
   --cost-per-call "${COST_PER_CALL}" \
   ${TRANSFER_BANK_FLAG} \
+  ${RUNNER_CONFIG_FLAG} \
+  ${OVERWRITE} \
   ${DRY_RUN} \
   ${PREREG_FLAG}
 

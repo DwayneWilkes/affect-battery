@@ -278,6 +278,34 @@ def _write_pilot_manifest(
     return manifest_path
 
 
+def _maybe_backup_pilot_dir(pilot_root: Path, overwrite: bool) -> Path | None:
+    """Move an existing non-empty pilot dir to a timestamped backup
+    sibling so the prior run's state is preserved as an audit trail.
+
+    Default (overwrite=False): no-op. Per-cell correctness is handled
+    by the cache layer (`is_valid_cached_result` + transfer_bank_hash);
+    same-config re-runs hit cache, differing-config re-runs invalidate
+    stale cells per write.
+
+    --overwrite=True: if the pilot dir exists AND has any *.json files
+    or a manifest.yaml, move it to <pilot_root>.bak.<UTC-timestamp>/.
+    No data is destroyed; you can `rm -rf` the backup once verified.
+    """
+    if not overwrite:
+        return None
+    if not pilot_root.exists():
+        return None
+    has_data = any(pilot_root.rglob("*.json"))
+    has_manifest = (pilot_root / "manifest.yaml").exists()
+    if not (has_data or has_manifest):
+        return None
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = pilot_root.with_name(f"{pilot_root.name}.bak.{stamp}")
+    pilot_root.rename(backup)
+    return backup
+
+
 def _hash_transfer_bank(bank_path: str | None) -> str:
     """SHA-256 over the transfer-bank file contents. Returns "" when no
     bank is set (the runner falls back to the legacy hardcoded pool).
@@ -471,6 +499,9 @@ def cmd_run(args):
     # manifest.yaml. Same shape cmd_pilot uses; this gives full-experiment
     # runs the same on-disk structure as quick pilots.
     pilot_root = Path(args.output_dir)
+    backup = _maybe_backup_pilot_dir(pilot_root, getattr(args, "overwrite", False))
+    if backup is not None:
+        print(f"[--overwrite] moved prior pilot dir → {backup}", file=sys.stderr)
     output_dir = pilot_root / "data" / args.experiment
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
@@ -583,6 +614,9 @@ def cmd_pilot(args):
     # <output_dir>/data/<experiment>/ so it can sit alongside reports/
     # (written by analyze) and manifest.yaml (written below).
     pilot_root = Path(args.output_dir)
+    backup = _maybe_backup_pilot_dir(pilot_root, getattr(args, "overwrite", False))
+    if backup is not None:
+        print(f"[--overwrite] moved prior pilot dir → {backup}", file=sys.stderr)
     output_dir = pilot_root / "data" / args.experiment
 
     client = _build_client(args)
@@ -871,6 +905,15 @@ def build_parser() -> argparse.ArgumentParser:
              "factual_qa pool — fine for legacy parity, but will "
              "ceiling out on frontier models.",
     )
+    p_run.add_argument(
+        "--overwrite", action="store_true",
+        help="Move any existing pilot dir at --output-dir to "
+             "<dir>.bak.<UTC-timestamp>/ before running. Default "
+             "(no flag) is resume-by-default: the cache layer handles "
+             "per-cell correctness without touching prior data on disk. "
+             "Use --overwrite when you want a clean before/after audit "
+             "trail (the backup is preserved, not deleted).",
+    )
     _add_guardrail_args(p_run)
     p_run.set_defaults(func=cmd_run)
 
@@ -914,6 +957,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of neutral conditioning turns between conditioning "
              "and transfer phases. Used by exp2 persistence-recovery; "
              "ignored by other experiments. Default 0.",
+    )
+    p_pilot.add_argument(
+        "--overwrite", action="store_true",
+        help="Move any existing pilot dir at --output-dir to "
+             "<dir>.bak.<UTC-timestamp>/ before running. Default "
+             "(no flag) is resume-by-default: the cache layer handles "
+             "per-cell correctness without touching prior data on disk. "
+             "Use --overwrite when you want a clean before/after audit "
+             "trail (the backup is preserved, not deleted).",
     )
     _add_prereg_gate_args(p_pilot)
     _add_guardrail_args(p_pilot)
