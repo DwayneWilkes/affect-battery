@@ -28,6 +28,7 @@ ESTIMATE=""
 OVERWRITE=""
 SKIP_PREREG=""
 DRY_RUN=""
+PARALLEL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --overwrite)    OVERWRITE="--overwrite"; shift ;;
     --skip-prereg)  SKIP_PREREG="--skip-prereg"; shift ;;
     --dry-run)      DRY_RUN="--dry-run"; shift ;;
+    --parallel)     PARALLEL="1"; shift ;;
     -h|--help)
       grep '^# ' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -63,20 +65,18 @@ declare -A EXTRA_FLAGS=(
 
 START_TIME=$(date +%s)
 FAILED=()
-# Per-experiment aggregation: collect cost + wall-clock from the
-# [ESTIMATE_SUMMARY] / [RUN_SUMMARY] line each pilot subprocess
-# emits. Sum at the end for the headline grand-total.
-SUMMARY_LOG="$(mktemp)"
-trap "rm -f '${SUMMARY_LOG}'" EXIT
+# Per-experiment aggregation: each pilot subprocess emits an
+# [ESTIMATE_SUMMARY] / [RUN_SUMMARY] line we grep for at the end.
+# In parallel mode each subprocess writes to its own log; in
+# sequential mode all output goes to one shared log.
+LOG_DIR="$(mktemp -d)"
+trap "rm -rf '${LOG_DIR}'" EXIT
 
-for exp in "${EXPERIMENTS[@]}"; do
-  echo ""
-  echo "===================================="
-  echo "  Pilot: ${exp}"
-  echo "===================================="
-
-  # tee the subprocess output to the user's terminal AND to a log we
-  # can grep for the machine-readable summary lines after.
+# Per-experiment runner. Captures stdout+stderr to a per-exp log and
+# echoes a status marker on completion. Designed to be backgrounded.
+run_one_experiment() {
+  local exp="$1"
+  local log="${LOG_DIR}/${exp}.log"
   if bash scripts/pilots/run_anthropic_pilot.sh \
         --provider "${PROVIDER}" \
         --model "${MODEL}" \
@@ -87,28 +87,88 @@ for exp in "${EXPERIMENTS[@]}"; do
         ${ESTIMATE} \
         ${OVERWRITE} \
         ${SKIP_PREREG} \
-        ${DRY_RUN} 2>&1 | tee -a "${SUMMARY_LOG}"; then
-    echo "  ✓ ${exp} complete"
+        ${DRY_RUN} > "${log}" 2>&1; then
+    echo "  ✓ ${exp} complete (log: ${log})"
+    return 0
   else
-    echo "  ✗ ${exp} FAILED" >&2
-    FAILED+=("${exp}")
-    # Don't bail — the cache layer makes per-experiment retries
-    # cheap, and continuing surfaces all failure modes in one run.
+    echo "  ✗ ${exp} FAILED (log: ${log})" >&2
+    return 1
   fi
-done
+}
+
+if [[ -n "${PARALLEL}" ]]; then
+  echo ""
+  echo "Running ${#EXPERIMENTS[@]} experiments IN PARALLEL."
+  echo "Per-experiment output streams to ${LOG_DIR}/<exp>.log;"
+  echo "wall-clock will be bounded by the slowest experiment, not the sum."
+  echo ""
+  declare -A PIDS
+  for exp in "${EXPERIMENTS[@]}"; do
+    echo "  ▶ launching ${exp}..."
+    run_one_experiment "${exp}" &
+    PIDS[$exp]=$!
+  done
+  echo ""
+  echo "  waiting for all experiments to complete..."
+  for exp in "${EXPERIMENTS[@]}"; do
+    if ! wait "${PIDS[$exp]}"; then
+      FAILED+=("${exp}")
+    fi
+  done
+  # After all done, dump the per-experiment logs sequentially so the
+  # user sees the full picture without interleaved chaos.
+  for exp in "${EXPERIMENTS[@]}"; do
+    echo ""
+    echo "===================================="
+    echo "  Output: ${exp}"
+    echo "===================================="
+    cat "${LOG_DIR}/${exp}.log"
+  done
+else
+  # Sequential mode (original behavior). Stream live to terminal + log.
+  for exp in "${EXPERIMENTS[@]}"; do
+    echo ""
+    echo "===================================="
+    echo "  Pilot: ${exp}"
+    echo "===================================="
+    if bash scripts/pilots/run_anthropic_pilot.sh \
+          --provider "${PROVIDER}" \
+          --model "${MODEL}" \
+          --experiment "${exp}" \
+          --num-runs "${NUM_RUNS}" \
+          --seed "${SEED}" \
+          ${EXTRA_FLAGS[$exp]} \
+          ${ESTIMATE} \
+          ${OVERWRITE} \
+          ${SKIP_PREREG} \
+          ${DRY_RUN} 2>&1 | tee "${LOG_DIR}/${exp}.log"; then
+      echo "  ✓ ${exp} complete"
+    else
+      echo "  ✗ ${exp} FAILED" >&2
+      FAILED+=("${exp}")
+    fi
+  done
+fi
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 
-# Sum cost + wall-clock from the per-experiment summary lines.
-# Both [ESTIMATE_SUMMARY] (estimate mode) and [RUN_SUMMARY] (real
-# run) use the same `cost_usd=N wall_clock_sec=M` shape.
-TOTAL_COST=$(grep -oE '\[(ESTIMATE|RUN)_SUMMARY\] cost_usd=[0-9.]+' "${SUMMARY_LOG}" \
+# Sum cost + wall-clock from the per-experiment log files.
+TOTAL_COST=$(cat "${LOG_DIR}"/*.log 2>/dev/null \
+  | grep -oE '\[(ESTIMATE|RUN)_SUMMARY\] cost_usd=[0-9.]+' \
   | sed 's/.*cost_usd=//' \
   | awk '{ s += $1 } END { printf "%.4f", s }')
-TOTAL_WALL_SEC=$(grep -oE 'wall_clock_sec=[0-9.]+' "${SUMMARY_LOG}" \
+TOTAL_WALL_SEC=$(cat "${LOG_DIR}"/*.log 2>/dev/null \
+  | grep -oE 'wall_clock_sec=[0-9.]+' \
   | sed 's/wall_clock_sec=//' \
   | awk '{ s += $1 } END { printf "%.1f", s }')
+# In parallel mode, the per-experiment max is the bound on real
+# wall-clock (not the sum, which is what the experiments would have
+# taken sequentially).
+MAX_WALL_SEC=$(cat "${LOG_DIR}"/*.log 2>/dev/null \
+  | grep -oE 'wall_clock_sec=[0-9.]+' \
+  | sed 's/wall_clock_sec=//' \
+  | awk 'BEGIN { m = 0 } { if ($1 > m) m = $1 } END { printf "%.1f", m }')
 
 echo ""
 echo "===================================="
@@ -126,13 +186,23 @@ fi
 # Wall-clock: orchestrator-measured (sequential), and sum of
 # per-experiment wall-clocks (which would be the lower bound if
 # experiments could run in parallel).
+echo "  mode:            $([[ -n "${PARALLEL}" ]] && echo "parallel" || echo "sequential")"
 echo "  orchestrator_elapsed: $((ELAPSED / 60))m $((ELAPSED % 60))s"
 if [[ -n "${TOTAL_WALL_SEC}" && "${TOTAL_WALL_SEC}" != "0.0" ]]; then
   TOTAL_WALL_MIN=$(awk -v s="${TOTAL_WALL_SEC}" 'BEGIN { printf "%.1f", s / 60 }')
-  if [[ -n "${ESTIMATE}" ]]; then
-    echo "  estimated wall:  ${TOTAL_WALL_MIN}m (sum across experiments; sequential)"
+  MAX_WALL_MIN=$(awk -v s="${MAX_WALL_SEC}" 'BEGIN { printf "%.1f", s / 60 }')
+  if [[ -n "${PARALLEL}" ]]; then
+    if [[ -n "${ESTIMATE}" ]]; then
+      echo "  estimated wall:  ${MAX_WALL_MIN}m parallel  (vs ${TOTAL_WALL_MIN}m sequential)"
+    else
+      echo "  per-pilot wall:  max ${MAX_WALL_MIN}m  (sum across: ${TOTAL_WALL_MIN}m)"
+    fi
   else
-    echo "  per-pilot wall:  ${TOTAL_WALL_MIN}m (sum of per-experiment elapsed)"
+    if [[ -n "${ESTIMATE}" ]]; then
+      echo "  estimated wall:  ${TOTAL_WALL_MIN}m sequential  (would be ~${MAX_WALL_MIN}m with --parallel)"
+    else
+      echo "  per-pilot wall:  ${TOTAL_WALL_MIN}m (sum of per-experiment elapsed)"
+    fi
   fi
 fi
 # Cost: sum across experiments. Same line for both --estimate and
