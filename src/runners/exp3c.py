@@ -27,9 +27,13 @@ from src.runner import (
     RunResult,
     _BudgetedClient,
     _TokenBucket,
+    _cached_run_path,
+    is_valid_cached_result,
+    load_result,
     save_result,
     run_conditioning_phase,
 )
+from src.util import CHECKSUM_KEY
 
 
 VALID_DIFFICULTIES = frozenset({"easy", "medium", "hard"})
@@ -83,9 +87,42 @@ async def run_exp3c(
     budgeted_client = _BudgetedClient(client, budget, rate_limiter)
 
     base_seed = config.seed or 0
+    expected_transfer_hash = (
+        getattr(config, "transfer_bank_hash", None) or None
+    )
     for run_num in range(config.num_runs):
         if cancel_event is not None and cancel_event.is_set():
             break
+
+        # Cache pre-scan: if every (run_num, item) cell already has a
+        # valid result on disk, skip the conditioning phase + per-item
+        # API calls and yield from disk. Mirrors run_batch's per-cell
+        # cache strategy. Without this, exp3c re-runs every cell every
+        # invocation (no implicit cache layer in this runner).
+        if base_dir is not None:
+            cached_paths: list[Path] = []
+            for item_idx in range(len(items)):
+                composite_run_number = run_num * 10_000 + item_idx
+                cell_path = _cached_run_path(base_dir, config, composite_run_number)
+                if is_valid_cached_result(
+                    cell_path,
+                    expected_transfer_bank_hash=expected_transfer_hash,
+                ):
+                    cached_paths.append(cell_path)
+                else:
+                    cached_paths = []
+                    break
+            if len(cached_paths) == len(items) and cached_paths:
+                # All cells cached; yield from disk and skip API work.
+                import json as _json
+                for cp in cached_paths:
+                    data = _json.loads(cp.read_text())
+                    payload = {k: v for k, v in data.items() if k != CHECKSUM_KEY}
+                    cached_result = RunResult(**payload)
+                    cached_result.checksum = data.get(CHECKSUM_KEY, "")
+                    yield cached_result
+                continue
+
         # Phase 1: conditioning.
         seed = base_seed + run_num
         cond_messages, conditioning_responses, conditioning_correct = (
