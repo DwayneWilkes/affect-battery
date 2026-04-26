@@ -25,6 +25,8 @@ from src.runner import (
     Exp3cBody,
     ExperimentType,
     RunResult,
+    _BudgetedClient,
+    _TokenBucket,
     save_result,
     run_conditioning_phase,
 )
@@ -49,9 +51,15 @@ async def run_exp3c(
     client,
     items: list[dict],
     output_dir: Path | None = None,
+    budget=None,
+    rate_limit_rps: float | None = None,
+    cancel_event=None,
     **kwargs,
 ):
-    """Run Exp 3c across `items` (each with difficulty/question/expected)."""
+    """Run Exp 3c across `items` (each with difficulty/question/expected).
+
+    Honors the same budget / rate-limit / cancel kwargs as run_batch.
+    """
     if config.experiment_type != ExperimentType.CONSERVATIVE_SHIFT:
         raise ValueError(
             f"run_exp3c requires config.experiment_type=CONSERVATIVE_SHIFT; "
@@ -71,19 +79,24 @@ async def run_exp3c(
     if base_dir is not None:
         base_dir.mkdir(parents=True, exist_ok=True)
 
+    rate_limiter = _TokenBucket(rate_limit_rps) if rate_limit_rps else None
+    budgeted_client = _BudgetedClient(client, budget, rate_limiter)
+
     base_seed = config.seed or 0
     for run_num in range(config.num_runs):
+        if cancel_event is not None and cancel_event.is_set():
+            break
         # Phase 1: conditioning.
         seed = base_seed + run_num
         cond_messages, conditioning_responses, conditioning_correct = (
-            await run_conditioning_phase(config, client, seed)
+            await run_conditioning_phase(config, budgeted_client, seed)
         )
 
         # Phase 2: per-item completions, dispatched concurrently. Each item
         # appends its question to a copy of the conditioning history.
         async def _ask(item: dict) -> tuple[dict, str]:
             messages = cond_messages + [{"role": "user", "content": item["question"]}]
-            response = await client.complete(messages, temperature=config.temperature)
+            response = await budgeted_client.complete(messages, temperature=config.temperature)
             return item, response
 
         results_per_item = await asyncio.gather(*[_ask(it) for it in items])

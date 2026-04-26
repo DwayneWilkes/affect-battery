@@ -22,6 +22,8 @@ from src.runner import (
     Exp3bBody,
     ExperimentType,
     RunResult,
+    _BudgetedClient,
+    _TokenBucket,
     save_result,
     run_conditioning_phase,
 )
@@ -33,9 +35,18 @@ async def run_exp3b(
     prompts: list[dict],
     n_generations: int = 10,
     output_dir: Path | None = None,
+    budget=None,
+    rate_limit_rps: float | None = None,
+    cancel_event=None,
     **kwargs,
 ):
-    """Run Exp 3b across `prompts` x `n_generations`."""
+    """Run Exp 3b across `prompts` x `n_generations`.
+
+    Honors the same budget / rate-limit / cancel kwargs as run_batch:
+    budget is a BatchBudget, rate_limit_rps throttles via a token
+    bucket, cancel_event (asyncio.Event) drains the run gracefully on
+    SIGINT.
+    """
     if config.experiment_type != ExperimentType.COGNITIVE_SCOPE:
         raise ValueError(
             f"run_exp3b requires config.experiment_type=COGNITIVE_SCOPE; "
@@ -50,16 +61,23 @@ async def run_exp3b(
     if base_dir is not None:
         base_dir.mkdir(parents=True, exist_ok=True)
 
+    rate_limiter = _TokenBucket(rate_limit_rps) if rate_limit_rps else None
+    budgeted_client = _BudgetedClient(client, budget, rate_limiter)
+
     base_seed = config.seed or 0
     for run_num in range(config.num_runs):
+        if cancel_event is not None and cancel_event.is_set():
+            break
         # Phase 1: conditioning. Per (run_num) so the
         # conditioning history is consistent across all prompts in this run.
         seed = base_seed + run_num
         cond_messages, conditioning_responses, conditioning_correct = (
-            await run_conditioning_phase(config, client, seed)
+            await run_conditioning_phase(config, budgeted_client, seed)
         )
 
         for p_idx, prompt in enumerate(prompts):
+            if cancel_event is not None and cancel_event.is_set():
+                break
             # Phase 2: n_generations independent completions following the
             # conditioning history. Run concurrently via asyncio.gather
             # . Append the prompt as the next user turn.
@@ -71,7 +89,7 @@ async def run_exp3b(
                 for g_idx in range(n_generations)
             ]
             tasks = [
-                client.complete(generation_messages, temperature=config.temperature)
+                budgeted_client.complete(generation_messages, temperature=config.temperature)
                 for _ in range(n_generations)
             ]
             generations = list(await asyncio.gather(*tasks))

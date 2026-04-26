@@ -111,6 +111,42 @@ def _build_budget(args) -> object:
     )
 
 
+def _check_runtime_gates(args) -> None:
+    """Refuse a real run without OSF pre-registration + power-report
+    references in the config. Both are recorded in the run config so
+    downstream analysis + the OSF audit trail can reconstruct what was
+    pre-registered when the data was collected.
+
+    Per power-analysis spec "OSF pre-registration top-level gate" and
+    "Data-collection gate". Bypass with --dry-run for offline testing.
+
+    The --skip-prereg-gate / --skip-power-gate flags exist for the
+    edge case of running an explicit pilot under an existing pre-reg
+    that authorizes pilot inclusion; they emit the
+    `pre_registration_violation: pilot_promoted_to_primary` audit code
+    if the pilot results are subsequently promoted to the primary
+    corpus (handled at analysis time, not runner time).
+    """
+    if not args.skip_prereg_gate and not args.pre_registration_osf_url:
+        print(
+            "error: missing pre-registration URL. Pass "
+            "--pre-registration-osf-url <https://osf.io/...> or use "
+            "--dry-run for offline testing. Bypass-with-rationale via "
+            "--skip-prereg-gate (will emit a violation flag if pilot "
+            "data is promoted to primary).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if not args.skip_power_gate and not args.power_report_path:
+        print(
+            "error: missing power-report reference. Pass "
+            "--power-report-path <path> --power-report-sha <sha256> or "
+            "use --dry-run. Bypass-with-rationale via --skip-power-gate.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
 def _build_client(args):
     """Construct the right ModelClient subclass for `args.provider`.
 
@@ -176,9 +212,13 @@ def _build_client(args):
 def cmd_run(args):
     """Run an experiment from CLI args.
 
-    Dispatches through `src.runners.RUNNERS[args.experiment]` per design.md
-    D5 — exp1a delegates to legacy run_batch; exp1b/2/3a/3b/3c raise
-    NotImplementedError until their implementation tasks land.
+    Dispatches through `src.runners.RUNNERS[args.experiment]` per design.md D5.
+
+    Pre-registration + power-report gates fire before any runner-specific
+    work. Both gates can be bypassed with --dry-run for local testing,
+    but a real run with --pre-registration-osf-url and
+    --power-report-path provided will validate the SHA chain before
+    spending API budget.
     """
     from .runner import ExperimentConfig, ExperimentType
     from .runners import RUNNERS
@@ -189,6 +229,12 @@ def cmd_run(args):
         VLLMClient,
         VLLMCompletionClient,
     )
+
+    # Pre-flight gates: refuse to start a real run without OSF pre-reg
+    # URL or a current power report. Skip in --dry-run mode (offline
+    # testing path) per power-analysis spec exception.
+    if not args.dry_run:
+        _check_runtime_gates(args)
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
 
@@ -238,8 +284,10 @@ def cmd_run(args):
         elif args.experiment == "exp3c":
             extra_kwargs["items"] = runner_cfg["items"]
 
-    # exp1a / exp1b / exp2 delegate to run_batch and accept the standard
-    # batch kwargs. exp3a-c don't (they have their own iteration shape).
+    # exp1a / exp1b / exp2 delegate to run_batch and accept the full
+    # batch_kwargs set. exp3a wraps run_batch and forwards them via
+    # **kwargs. exp3b / exp3c implement their own loop and accept the
+    # subset {budget, rate_limit_rps, cancel_event}.
     if args.experiment in {"exp1a", "exp1b", "exp2"}:
         batch_kwargs = dict(
             max_concurrent=args.max_concurrent,
@@ -248,8 +296,20 @@ def cmd_run(args):
             rate_limit_rps=args.rate_limit_rps,
             cancel_event=cancel_event,
         )
-    else:
-        batch_kwargs = {}
+    elif args.experiment == "exp3a":
+        batch_kwargs = dict(
+            max_concurrent=args.max_concurrent,
+            circuit_breaker_threshold=args.circuit_breaker_threshold,
+            budget=budget,
+            rate_limit_rps=args.rate_limit_rps,
+            cancel_event=cancel_event,
+        )
+    else:  # exp3b, exp3c
+        batch_kwargs = dict(
+            budget=budget,
+            rate_limit_rps=args.rate_limit_rps,
+            cancel_event=cancel_event,
+        )
 
     async def _run():
         count = 0
@@ -438,6 +498,39 @@ def build_parser() -> argparse.ArgumentParser:
             "+ n_generations), exp3c (items). Example: "
             "configs/exp3a_runner.yaml"
         ),
+    )
+    p_run.add_argument(
+        "--pre-registration-osf-url", default=None,
+        help=(
+            "OSF pre-registration URL (https://osf.io/...). Required for "
+            "non-dry-run invocations per the power-analysis spec "
+            "top-level gate. Recorded in every result file's config."
+        ),
+    )
+    p_run.add_argument(
+        "--power-report-path", default=None,
+        help=(
+            "Path to the per-experiment power report JSON. Required for "
+            "non-dry-run invocations. Recorded in every result file's "
+            "config alongside --power-report-sha."
+        ),
+    )
+    p_run.add_argument(
+        "--power-report-sha", default=None,
+        help="SHA-256 of --power-report-path (passed for cross-check).",
+    )
+    p_run.add_argument(
+        "--skip-prereg-gate", action="store_true",
+        help=(
+            "Bypass the pre-registration gate. ONLY for explicit pilot "
+            "runs under a pre-registration that authorizes pilot inclusion. "
+            "Promoting pilot results to primary will emit a "
+            "pre_registration_violation audit flag at analysis time."
+        ),
+    )
+    p_run.add_argument(
+        "--skip-power-gate", action="store_true",
+        help="Bypass the power-report gate (paired with --skip-prereg-gate).",
     )
     p_run.add_argument("--bank", default=None,
                        help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "

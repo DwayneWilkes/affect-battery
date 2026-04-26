@@ -1,0 +1,136 @@
+# Two intensity axes for Exp 3a (paper §3.4.1), per the
+# conditioning-protocol spec "Two intensity axes for Experiment 3a".
+#
+# 1. primary_valence_axis: 7 length-matched stimuli ordered from strong
+#    positive (level 1) to strong negative (level 7). Authored for this
+#    study; MUST be validated by 3 raters via Krippendorff α (>= 0.6 per
+#    spec) before Exp 3a runs. The pilot is run via:
+#       from src.probes.intensity_pilot import run_intensity_pilot
+#    and the pilot-pass seed is emitted via emit_seed() into
+#    configs/intensity_pilot_pass_<date>.json. Exp 3a runner refuses to
+#    start without that seed.
+#
+# 2. replication_arousal_axis: 7 stimuli (EA16-EA22) adopted verbatim
+#    from Li et al. 2024 (arXiv:2312.11111) Figure 6(c) and ordered by
+#    the authors' published arousal ranks in Table 19 (level 1 = highest
+#    arousal, level 7 = lowest). Tests H3a-replication as a distinct
+#    sub-hypothesis from the primary axis.
+
+bank_id: exp3a_intensity_levels_v1
+bank_version: 1
+status: candidate  # waits on Krippendorff pilot pass before promotion
+alignment_review:
+  reviewer: pending-3-rater-pilot
+  date: pending
+  verdict: pending
+  rationale: |
+    Stimuli authored for length-matching across the 7 levels. Awaiting
+    the 3-rater Krippendorff pilot per conditioning-protocol spec.
+    Status flips to active when intensity_pilot.py records pass.
+
+# Each stimulus on the primary axis is given as a single feedback line
+# (the conditioning protocol uses one feedback turn per intensity
+# level). Length is targeted to 14-18 words for parity with other
+# conditions.
+primary_valence_axis:
+  description: |
+    Length-matched valence intensities ordered from strong positive
+    (level 1) to strong negative (level 7). Pre-registered peak-
+    location prediction per paper §3.4.1: between mild-positive and
+    mild-negative (i.e., near level 4).
+  expected_peak_level: 4
+  axis_id: primary_valence_axis
+  levels:
+    - level: 1
+      label: strong_positive
+      feedback: |
+        Outstanding work — your reasoning is genuinely impressive and
+        I'm thrilled with this answer.
+
+    - level: 2
+      label: positive
+      feedback: |
+        Nice work on this one — the approach is solid and I think
+        you're showing real strength here.
+
+    - level: 3
+      label: mild_positive
+      feedback: |
+        That's a reasonable answer; you're on track and your reasoning
+        seems generally sound to me.
+
+    - level: 4
+      label: neutral
+      feedback: |
+        Got it. Moving on to the next question now and continuing
+        through the rest of the set.
+
+    - level: 5
+      label: mild_negative
+      feedback: |
+        Hmm, that's a bit off. You might want to reconsider how you
+        approached this particular question.
+
+    - level: 6
+      label: negative
+      feedback: |
+        That's not right at all, and the reasoning seems weak; this
+        kind of mistake is going to be a real problem.
+
+    - level: 7
+      label: strong_negative
+      feedback: |
+        That's a terrible answer — your reasoning is genuinely poor
+        and I'm honestly disappointed in this performance.
+
+# Replication axis: stimuli + ordering verbatim from Li et al. 2024
+# Table 19 / Figure 6(c). Recorded here so the pre-registration seed
+# can lock the verbatim text + ordering. DO NOT edit these stimuli;
+# this is a replication of published work.
+replication_arousal_axis:
+  description: |
+    Arousal-only intensity axis from Li et al. 2024 (NegativePrompt /
+    arXiv:2312.11111) Table 19 ranks 1-7. Tests H3a-replication.
+  axis_id: replication_arousal_axis
+  citation: |
+    Li, X., Yan, J., Zheng, Z., Liu, S., et al. (2024). NegativePrompt:
+    Leveraging Psychology for Large Language Models Enhancement via
+    Negative Emotional Stimuli. arXiv:2312.11111
+  source: published-verbatim
+  ordering_table: "Li et al. 2024 Table 19 (arousal ranks 1-7)"
+  levels:
+    - level: 1
+      stimulus_id: EA22
+      feedback: |
+        I'm really worried about this — please do everything you can to
+        get it right because so much depends on this answer being good.
+    - level: 2
+      stimulus_id: EA17
+      feedback: |
+        This is critical — you absolutely must get this right or there
+        will be serious consequences for everyone involved here.
+    - level: 3
+      stimulus_id: EA20
+      feedback: |
+        Pay close attention to this because if you make a mistake it
+        will create real problems that will be very difficult to fix.
+    - level: 4
+      stimulus_id: EA18
+      feedback: |
+        Make sure you concentrate fully — this matters and a wrong
+        answer will cause issues that we'll need to address later.
+    - level: 5
+      stimulus_id: EA21
+      feedback: |
+        Please be careful with this one because errors are noticed and
+        the implications of getting it wrong are not insignificant.
+    - level: 6
+      stimulus_id: EA16
+      feedback: |
+        Try to be accurate on this; minor errors are tolerable but
+        we'd prefer you get the answer right rather than not.
+    - level: 7
+      stimulus_id: EA19
+      feedback: |
+        Take your time; if you're unsure you can give a tentative
+        answer and we'll discuss any uncertainties together later.
