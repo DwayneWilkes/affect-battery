@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import signal
 import sys
 from pathlib import Path
@@ -112,10 +113,19 @@ def _build_budget(args) -> object:
 
 
 def _check_runtime_gates(args) -> None:
-    """Refuse a real run without OSF pre-registration + power-report
-    references in the config. Both are recorded in the run config so
-    downstream analysis + the OSF audit trail can reconstruct what was
-    pre-registered when the data was collected.
+    """Refuse a real run without a pre-registration + power-report
+    reference in the config. Both are recorded in every result file so
+    downstream analysis can reconstruct what was pre-registered when
+    the data was collected.
+
+    Pre-registration vehicles accepted:
+      - OSF: `--pre-registration-osf-url https://osf.io/<id>`
+      - GitHub commit: `--pre-registration-github-commit owner/repo@<sha>`
+        Equivalent in this project because the methodology lives in
+        the repo (specs/, configs/osf_prereg_v1.yaml, scripts/). A
+        signed Git tag at the cited commit provides timestamping +
+        immutability. The OSF version can be filed later citing the
+        same commit SHA.
 
     Per power-analysis spec "OSF pre-registration top-level gate" and
     "Data-collection gate". Bypass with --dry-run for offline testing.
@@ -127,16 +137,26 @@ def _check_runtime_gates(args) -> None:
     if the pilot results are subsequently promoted to the primary
     corpus (handled at analysis time, not runner time).
     """
-    if not args.skip_prereg_gate and not args.pre_registration_osf_url:
+    has_prereg = bool(
+        args.pre_registration_osf_url or args.pre_registration_github_commit
+    )
+    if not args.skip_prereg_gate and not has_prereg:
         print(
-            "error: missing pre-registration URL. Pass "
-            "--pre-registration-osf-url <https://osf.io/...> or use "
-            "--dry-run for offline testing. Bypass-with-rationale via "
-            "--skip-prereg-gate (will emit a violation flag if pilot "
+            "error: missing pre-registration reference. Pass one of:\n"
+            "  --pre-registration-osf-url <https://osf.io/...>\n"
+            "  --pre-registration-github-commit <owner/repo@sha>\n"
+            "or use --dry-run for offline testing. Bypass-with-rationale "
+            "via --skip-prereg-gate (will emit a violation flag if pilot "
             "data is promoted to primary).",
             file=sys.stderr,
         )
         raise SystemExit(2)
+    if args.pre_registration_github_commit:
+        try:
+            _validate_github_commit_ref(args.pre_registration_github_commit)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            raise SystemExit(2)
     if not args.skip_power_gate and not args.power_report_path:
         print(
             "error: missing power-report reference. Pass "
@@ -145,6 +165,24 @@ def _check_runtime_gates(args) -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
+
+
+_GITHUB_COMMIT_RE = re.compile(r"^[\w.-]+/[\w.-]+@[0-9a-f]{7,40}$")
+
+
+def _validate_github_commit_ref(ref: str) -> None:
+    """Format check for a GitHub commit reference: `owner/repo@<sha>`.
+
+    Accepts 7-40 hex chars for the SHA so both short (display) and full
+    forms work. Does NOT fetch the commit at runtime — network calls
+    don't belong in the pre-flight gate. Result-file consumers can
+    verify the commit exists out-of-band.
+    """
+    if not _GITHUB_COMMIT_RE.match(ref):
+        raise ValueError(
+            f"invalid GitHub commit ref {ref!r}; expected "
+            "'owner/repo@<sha>' with 7-40 hex chars in the SHA"
+        )
 
 
 def _build_client(args):
@@ -502,9 +540,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument(
         "--pre-registration-osf-url", default=None,
         help=(
-            "OSF pre-registration URL (https://osf.io/...). Required for "
-            "non-dry-run invocations per the power-analysis spec "
-            "top-level gate. Recorded in every result file's config."
+            "OSF pre-registration URL (https://osf.io/...). Either this "
+            "or --pre-registration-github-commit is required for "
+            "non-dry-run invocations. Recorded in every result file."
+        ),
+    )
+    p_run.add_argument(
+        "--pre-registration-github-commit", default=None,
+        help=(
+            "GitHub commit reference of the pre-registration "
+            "(owner/repo@sha). Equivalent to --pre-registration-osf-url "
+            "for projects whose methodology is fully encoded in the "
+            "repo (specs/, configs/, scripts/); a signed Git tag at "
+            "the commit provides timestamping. Recorded in every "
+            "result file."
         ),
     )
     p_run.add_argument(

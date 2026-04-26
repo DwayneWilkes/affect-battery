@@ -251,6 +251,44 @@ Family-wise corrections (Holm) run automatically across H1, H1b directional, H1b
 
 ## Pre-registration
 
+The runner accepts **two equivalent pre-registration vehicles**. Pick whichever fits the timeline; the result-file schema records which was used so reviewers can verify either way.
+
+### Option A — GitHub commit (fast, no third-party dependency)
+
+The methodology lives in the repo: `specs/`, `configs/osf_prereg_v1.yaml`, `scripts/`, and the runners + analyzers. A signed Git tag at a specific commit gives timestamping and immutability comparable to OSF, and reviewers can `git show <tag>` to see exactly what was pre-registered.
+
+```bash
+# At a clean commit on a branch that's been pushed to origin:
+python -m scripts.create_prereg_tag \
+    --tag prereg-affect-battery-2026-04-26 \
+    --message "Affect Battery study, full pre-registration" \
+    --sign
+
+# Prints the --pre-registration-github-commit flag, e.g.:
+#   --pre-registration-github-commit DwayneWilkes/affect-battery@1ed7b43...
+```
+
+Then cite it in your run:
+
+```bash
+ANTHROPIC_API_KEY=... uv run affect-battery run \
+    --experiment exp1a --provider anthropic --model claude-opus-4-7 \
+    --condition strong_negative --num-runs 50 \
+    --pre-registration-github-commit DwayneWilkes/affect-battery@1ed7b43... \
+    --power-report-path results/power_report.json \
+    --power-report-sha <sha256> \
+    --output-dir results/exp1a/
+```
+
+The commit ref appears in every result file's `config.pre_registration_github_commit`. Reviewers verify the methodology with `git show <tag>` (the tag points to the same commit).
+
+The `create_prereg_tag` script enforces three invariants:
+- Working tree must be clean (no uncommitted changes)
+- HEAD must be reachable from `origin/<branch>` (the commit must be public)
+- The tag name must not already exist (pre-reg tags are immutable)
+
+### Option B — OSF (formal, third-party-timestamped)
+
 The OSF pre-reg YAML at `configs/osf_prereg_v1.yaml` is the source of truth for hypotheses, MDEs, and stopping rules. The lifecycle is v0 → v1 → submit:
 
 - **v0**: skeleton with placeholder MDEs. Lives at `configs/osf_prereg_v0.yaml` (or your initial scaffold).

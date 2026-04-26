@@ -16,7 +16,7 @@ import pytest
 
 
 class TestRuntimeGates:
-    def test_real_run_without_prereg_url_exits(self, tmp_path, capsys):
+    def test_real_run_without_prereg_ref_exits(self, tmp_path, capsys):
         from src.cli import build_parser, cmd_run
 
         parser = build_parser()
@@ -25,14 +25,16 @@ class TestRuntimeGates:
             "--experiment", "exp1a",
             "--model", "test/model",
             "--condition", "neutral",
-            # No --dry-run, no --pre-registration-osf-url
+            # No --dry-run, no pre-reg ref
             "--output-dir", str(tmp_path),
         ])
         with pytest.raises(SystemExit) as excinfo:
             cmd_run(args)
         assert excinfo.value.code == 2
         captured = capsys.readouterr()
-        assert "pre-registration URL" in captured.err
+        # Error message lists both vehicles
+        assert "osf-url" in captured.err
+        assert "github-commit" in captured.err
 
     def test_real_run_without_power_report_exits(self, tmp_path, capsys):
         from src.cli import build_parser, cmd_run
@@ -70,6 +72,70 @@ class TestRuntimeGates:
             "--output-dir", str(tmp_path),
         ])
         cmd_run(args)  # MUST NOT raise
+
+    def test_github_commit_pre_reg_satisfies_gate(self, tmp_path):
+        """The GitHub-commit pre-reg vehicle is equivalent to OSF for the
+        gate's purposes. Real-run gating accepts either."""
+        from src.cli import build_parser, cmd_run
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "run",
+            "--experiment", "exp1a",
+            "--model", "dry-run",
+            "--condition", "neutral",
+            "--num-runs", "1",
+            "--seed", "0",
+            "--dry-run",  # bypass the API path
+            "--pre-registration-github-commit",
+            "DwayneWilkes/affect-battery@abc1234567890def",
+            "--power-report-path", "results/power_report.json",
+            "--output-dir", str(tmp_path),
+        ])
+        # cmd_run with --dry-run + valid GitHub ref should not raise.
+        cmd_run(args)
+
+    def test_invalid_github_commit_ref_rejected(self, tmp_path, capsys):
+        from src.cli import build_parser, cmd_run
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "run",
+            "--experiment", "exp1a",
+            "--model", "test",
+            "--condition", "neutral",
+            "--pre-registration-github-commit", "not-a-valid-ref",
+            "--power-report-path", "results/power_report.json",
+            "--output-dir", str(tmp_path),
+        ])
+        with pytest.raises(SystemExit) as excinfo:
+            cmd_run(args)
+        assert excinfo.value.code == 2
+        captured = capsys.readouterr()
+        assert "invalid GitHub commit ref" in captured.err
+
+    def test_validate_github_commit_ref_format(self):
+        from src.cli import _validate_github_commit_ref
+
+        # Valid forms
+        _validate_github_commit_ref("owner/repo@abc1234")
+        _validate_github_commit_ref(
+            "DwayneWilkes/affect-battery@1ed7b43d5c8f2e0a9b6c4f8e7d2a1c0b9f8e7d6c"
+        )
+        _validate_github_commit_ref("a/b@aaaaaaa")  # minimal
+
+        # Invalid forms
+        for bad in [
+            "no-at-sign",
+            "@1234567",
+            "owner/repo@",
+            "owner/repo@xyz1234",  # non-hex
+            "owner/repo@123",  # too short
+            "owner/repo@" + "a" * 41,  # too long
+            "owner@1234567",  # missing repo
+        ]:
+            with pytest.raises(ValueError, match="invalid GitHub commit ref"):
+                _validate_github_commit_ref(bad)
 
     def test_skip_flags_bypass_real_run(self, tmp_path):
         """--skip-prereg-gate + --skip-power-gate together let an explicit
