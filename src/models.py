@@ -259,39 +259,78 @@ class OpenAIClient(ModelClient):
             params["max_completion_tokens"] = max_tokens
         else:
             params["max_tokens"] = max_tokens
-        try:
-            resp = await self._client.chat.completions.create(**params)
-        except Exception as e:
-            from openai import RateLimitError  # type: ignore[import]
-            # OpenAI uses 429 for two distinct conditions:
-            #   - rate_limit_exceeded: too many RPM/TPM. SDK auto-retries
-            #     with backoff; if we get here the SDK gave up. Non-retryable
-            #     from our perspective (the budgeted_client moves on).
-            #   - insufficient_quota: account is out of credit. The SDK
-            #     does NOT retry (no point); user must top up. Surface
-            #     this distinctly so users don't conflate it with rate
-            #     limiting.
-            if isinstance(e, RateLimitError):
+        from openai import (  # type: ignore[import]
+            APIStatusError, AuthenticationError, RateLimitError,
+        )
+        import asyncio as _asyncio
+        # OpenAI 429 handling has two distinct branches:
+        #   - rate_limit_exceeded: too many RPM/TPM. SDK already retries
+        #     2x; if those failed, sustained-rate retry with longer
+        #     backoff (5s → 15s → 45s) usually clears once the rolling
+        #     window resets. After max_extra_retries we give up via
+        #     NonRetryableAPIError so the circuit breaker can react.
+        #   - insufficient_quota: account is out of credit. Not
+        #     retryable; surface a billing-page hint.
+        # Other 4xx (auth, bad input) are NonRetryableAPIError on first
+        # hit. 5xx propagate so the SDK's transport-level retry kicks in.
+        max_extra_retries = 3
+        last_exception: Exception | None = None
+        resp = None
+        for attempt in range(max_extra_retries + 1):
+            try:
+                resp = await self._client.chat.completions.create(**params)
+                break
+            except RateLimitError as e:
+                last_exception = e
                 error_str = str(e).lower()
-                if "insufficient_quota" in error_str or "exceeded your current quota" in error_str:
+                if (
+                    "insufficient_quota" in error_str
+                    or "exceeded your current quota" in error_str
+                ):
                     raise NonRetryableAPIError(
                         f"OpenAI account out of credit (insufficient_quota). "
                         f"Top up at platform.openai.com/settings/organization/billing "
                         f"before re-running. Original: {e}",
                         status_code=429,
                     ) from e
-            # Map auth + 4xx to NonRetryableAPIError so the batch runner's
-            # circuit breaker doesn't endlessly retry on bad input.
-            from openai import APIStatusError, AuthenticationError  # type: ignore[import]
-            if isinstance(e, AuthenticationError):
+                if attempt >= max_extra_retries:
+                    raise NonRetryableAPIError(
+                        f"OpenAI rate-limit sustained after "
+                        f"{max_extra_retries} client-side retries (SDK "
+                        f"already retried 2x before this). Lower "
+                        f"--rate-limit-rps or --max-concurrent. Original: {e}",
+                        status_code=429,
+                    ) from e
+                # Honor Retry-After header when present; otherwise
+                # exponential backoff (5s, 15s, 45s).
+                retry_after_sec: float | None = None
+                response = getattr(e, "response", None)
+                if response is not None and hasattr(response, "headers"):
+                    raw = response.headers.get("retry-after")
+                    if raw is not None:
+                        try:
+                            retry_after_sec = float(raw)
+                        except ValueError:
+                            pass
+                wait = retry_after_sec if retry_after_sec else (5 * (3 ** attempt))
+                await _asyncio.sleep(wait)
+            except AuthenticationError as e:
                 raise NonRetryableAPIError(
                     f"OpenAI auth failure: {e}", status_code=401,
                 ) from e
-            if isinstance(e, APIStatusError) and 400 <= getattr(e, "status_code", 500) < 500:
-                raise NonRetryableAPIError(
-                    f"OpenAI 4xx: {e}", status_code=e.status_code,
-                ) from e
-            raise
+            except APIStatusError as e:
+                if 400 <= getattr(e, "status_code", 500) < 500:
+                    raise NonRetryableAPIError(
+                        f"OpenAI 4xx: {e}", status_code=e.status_code,
+                    ) from e
+                raise
+        if resp is None:
+            # Defensive: shouldn't happen given the explicit raises above.
+            raise NonRetryableAPIError(
+                f"OpenAI request failed after {max_extra_retries} retries; "
+                f"last error: {last_exception}",
+                status_code=429,
+            )
         return resp.choices[0].message.content or ""
 
     async def complete_text(self, *_a, **_kw) -> str:

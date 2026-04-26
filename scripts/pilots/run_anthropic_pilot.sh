@@ -40,16 +40,21 @@ RUNNER_CONFIG=""
 NEUTRAL_TURNS=0
 OVERWRITE=""
 ESTIMATE=""
-# Concurrency + rate limit. Defaults tuned for typical tier-2 API
-# accounts (Anthropic / OpenAI both allow 1000+ RPM on small models
-# at this tier). The SDKs handle 429 with built-in retry +
-# Retry-After honor, so a high static cap is safe — the SDK throttles
-# us back if we hit the wall. For tier-1 accounts or large-context
-# models, lower these via flags. For tier-3+ accounts you can go
-# higher; cmd_pilot will saturate whichever ceiling is lower
-# (concurrency × inverse-latency vs rate-limit-rps).
+# Concurrency + rate limit. Defaults tuned conservatively for tier-1
+# and tier-2 API accounts (~200-500 RPM on small models). At 8 RPS
+# the aggregate stays under 480 RPM, comfortable for tier-2 OpenAI
+# (500 RPM gpt-5.4-nano) and tier-2 Anthropic (1000+ RPM Haiku 4.5).
+# Tier-3+ accounts can override via --rate-limit-rps to 30+ and
+# saturate higher RPM ceilings. The SDKs handle transient 429s via
+# built-in retry + Retry-After; our wrapper retries sustained
+# rate-limit errors up to 3 more times before raising.
+#
+# In --parallel mode, the orchestrator auto-divides this rate budget
+# across the N parallel experiments so the aggregate to the provider
+# stays at the user-set ceiling. (Each subprocess has its own
+# client-side limiter; they don't share state.)
 MAX_CONCURRENT=16
-RATE_LIMIT_RPS=20
+RATE_LIMIT_RPS=8
 # Default to the alias-aware TriviaQA hard subset so frontier models don't
 # saturate on the legacy 6-item hardcoded pool. Override with
 # --transfer-bank '' to use the legacy pool, or with another bank path.

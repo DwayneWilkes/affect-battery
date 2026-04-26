@@ -30,7 +30,11 @@ SKIP_PREREG=""
 DRY_RUN=""
 PARALLEL=""
 MAX_CONCURRENT=""  # if unset, run_anthropic_pilot.sh's default applies (16)
-RATE_LIMIT_RPS=""  # if unset, run_anthropic_pilot.sh's default applies (20)
+# Default aggregate rate-limit budget. In sequential mode this passes
+# through to one pilot. In --parallel mode the orchestrator divides
+# this across N experiments to keep aggregate at this ceiling. Tuned
+# for tier-1/tier-2 accounts (~200-500 RPM); tier-3+ can override.
+RATE_LIMIT_RPS=8
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -69,12 +73,30 @@ declare -A EXTRA_FLAGS=(
 
 # Build optional concurrency flags so empty values don't pass through
 # as empty strings (the CLI argparser would reject them).
+#
+# Critical for --parallel: each subprocess has its own client-side
+# rate limiter; they don't share state. So if you ask for 20 RPS per
+# pilot and run 5 in parallel, you get 100 RPS aggregate to the
+# provider — way over typical tier-1/tier-2 RPM caps. Auto-divide
+# the rate budget across N parallel experiments so the aggregate
+# stays at the user-set ceiling. Concurrency cap (sockets) is
+# per-process so doesn't need division.
+EFFECTIVE_RATE_LIMIT_RPS="${RATE_LIMIT_RPS}"
+if [[ -n "${PARALLEL}" && -n "${RATE_LIMIT_RPS}" ]]; then
+  N_EXP=${#EXPERIMENTS[@]}
+  EFFECTIVE_RATE_LIMIT_RPS=$(awk -v r="${RATE_LIMIT_RPS}" -v n="${N_EXP}" \
+    'BEGIN { printf "%.2f", r / n }')
+  echo ""
+  echo "  [parallel] dividing --rate-limit-rps ${RATE_LIMIT_RPS} across "
+  echo "  ${N_EXP} parallel experiments → ${EFFECTIVE_RATE_LIMIT_RPS} RPS each"
+  echo "  (aggregate stays at ${RATE_LIMIT_RPS} RPS)"
+fi
 CONCURRENCY_FLAGS=""
 if [[ -n "${MAX_CONCURRENT}" ]]; then
   CONCURRENCY_FLAGS+="--max-concurrent ${MAX_CONCURRENT} "
 fi
-if [[ -n "${RATE_LIMIT_RPS}" ]]; then
-  CONCURRENCY_FLAGS+="--rate-limit-rps ${RATE_LIMIT_RPS} "
+if [[ -n "${EFFECTIVE_RATE_LIMIT_RPS}" ]]; then
+  CONCURRENCY_FLAGS+="--rate-limit-rps ${EFFECTIVE_RATE_LIMIT_RPS} "
 fi
 
 START_TIME=$(date +%s)
