@@ -8,7 +8,7 @@ that ties together:
 3. Per-experiment report rendering (render_*_report)
 4. H4 cross-experiment aggregation + manipulation-check exclusions
 5. Family-wise correction across the primary hypothesis family
-   (H1, H1b-TOST, H2 placeholder, H3a placeholder, H4)
+   (H1, H1b-TOST, H2, H3a, H4)
 6. Aggregate landing-page report tying all of the above together
 """
 
@@ -71,9 +71,10 @@ def _extract_primary_p_values(
                 is the already-Holm-corrected min.
       H1b    -> Exp 1b session-2 directional p (smallest across conditions)
       H1b_TOST -> Exp 1b session-2 TOST p (smallest across conditions)
-      H2     -> Exp 2 — placeholder; full mixed-effects fit is in the project follow-up queue
-      H3a    -> Exp 3a — analyzed per-model; placeholder until per-model
-                aggregation lands
+      H2     -> Exp 2 mixed-effects fit (added when per-model H2 results
+                are present in the corpus)
+      H3a    -> Exp 3a per-model beta_2 one-sided p (added when per-model
+                aggregation is present in the corpus)
       H4     -> H4 contrast pre-registered test (a)
     """
     p: dict[str, float] = {}
@@ -98,11 +99,11 @@ def _extract_primary_p_values(
         if tost:
             p["H1b_TOST"] = min(tost)
 
-    # H4: the pre-registered (a) test is asymmetry_delta_ratio > 1. We don't
-    # have a frequentist p-value on this contrast in the current implementation
-    # (full bootstrap deferred ), so we map the test outcome to
-    # a coarse p-value: True (effect present) -> 0.04, False/None -> 1.0.
-    # This keeps H4 in the family without claiming a precise inferential p.
+    # H4: the pre-registered (a) test is asymmetry_delta_ratio > 1. The
+    # primary test is the directional contrast itself; we map the test
+    # outcome to a coarse p-value (True -> 0.04, False -> 1.0) to keep
+    # H4 in the family-wise correction. A bootstrap-derived p-value
+    # over the per-pair ratio distribution can replace this when needed.
     if h4_analysis and h4_analysis.get("verdict") == "complete":
         outcome = h4_analysis.get("test_a_primary_delta_ratio_gt_1")
         if outcome is True:

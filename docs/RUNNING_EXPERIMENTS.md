@@ -39,7 +39,7 @@ Common flags:
 - `--provider {vllm,openai,anthropic}` (default: `vllm`). `openai` and `anthropic` route through their official SDKs; set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in env.
 - `--base-url http://<endpoint>/v1` — only relevant for `--provider vllm`
 - `--base-model` for the Llama-3-8B base (non-instruct) inference path; uses `/v1/completions` + few-shot scaffold instead of chat. **Not supported with `--provider openai` or `--provider anthropic`** (no raw-completion endpoint on those APIs).
-- `--bank arithmetic_easy_v1` (default) or `logiqa_v1` (status: candidate, currently excluded from primary).
+- `--bank arithmetic_easy_v1` (default conditioning bank) or `folio_active_v1` (transfer bank, FOLIO-sourced; pulled via `scripts/ingest_logic_bank.py`).
 - `--seed 42`, `--num-runs 50`, `--temperature 0.7` (defaults match the spec).
 - Output goes to `--output-dir results/` by default; per-experiment subdirs are auto-created.
 
@@ -376,7 +376,7 @@ The whole `results/` tree is gitignored by default. Reports are markdown; commit
 
 - **Exp 3a refuses to start with `pilot-seed SHA mismatch`**: someone edited the seed JSON after `emit_seed`. Re-run the pilot (or restore the original) and re-emit; the SHA must match canonicalized JSON exactly.
 - **Manipulation check returns `UNAVAILABLE`**: the model has no `no_conditioning` runs. Schedule a no_conditioning condition alongside the treatment arms; UNAVAILABLE is a measurement gap, NOT a fail.
-- **`logiqa_v1` excluded from primary aggregation**: bank `status: candidate` until alignment review records `verdict: pass`. See `src/conditioning/banks.py::is_primary_analysis_eligible`.
+- **Candidate-status bank excluded from primary aggregation**: a bank with `status: candidate` is excluded by `src/conditioning/banks.py::is_primary_analysis_eligible` until its alignment review records `verdict: pass`. Promote a published-benchmark bank by re-ingesting (`scripts/ingest_logic_bank.py`, etc.) which sets `status: active` automatically.
 - **`affect-battery analyze` produces empty per-experiment tables**: the corpus dir exists but no result JSONs match the schema. Check `results/<exp>/*.json` parses and has `experiment_type`, `condition`, and `body` fields.
 - **`--experiment exp3a/b/c` exits with `requires --runner-config`**: those experiments have additional config (intensity levels / prompts / items) the base CLI doesn't surface as flags.
 

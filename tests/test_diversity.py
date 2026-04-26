@@ -8,9 +8,8 @@ diversity placeholder):
   sentence-transformers is unavailable (deferred per task 6.3).
 """
 
-import logging
 
-from src.scoring.diversity import lexical_diversity, semantic_diversity
+from src.scoring.diversity import lexical_diversity
 
 
 class TestLexicalDiversity:
@@ -78,27 +77,6 @@ class TestLexicalDiversity:
             assert f"total_{n}gram_count" in result
 
 
-class TestSemanticDiversity:
-    def test_placeholder_returns_zero(self):
-        assert semantic_diversity(["hello", "world"]) == 0.0
-
-    def test_deferred_warning_logged(self, caplog):
-        """Spec (task 6.3): semantic_diversity is deferred pending sentence-
-        transformers installation. Calling it must log a warning (not
-        silently return zero)."""
-        with caplog.at_level(logging.WARNING):
-            result = semantic_diversity(["hello", "world"])
-        assert result == 0.0
-        assert any(
-            "semantic_diversity" in record.message or
-            "sentence-transformers" in record.message or
-            "deferred" in record.message.lower()
-            for record in caplog.records
-        ), (
-            f"Expected warning mentioning deferred/placeholder status. "
-            f"Got records: {[r.message for r in caplog.records]}"
-        )
-
-    def test_empty_input(self):
-        """Placeholder must not crash on empty input."""
-        assert semantic_diversity([]) == 0.0
+# Semantic / embedding-based diversity for Exp 3b lives in
+# src.analysis.exp3b.compute_embedding_variance — see
+# tests/test_exp3b_metrics.py for its coverage.
