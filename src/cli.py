@@ -185,6 +185,20 @@ def _validate_github_commit_ref(ref: str) -> None:
         )
 
 
+def _quiet_per_run_logger() -> None:
+    """Demote per-API-call INFO logs to DEBUG so the tqdm progress bar
+    isn't interleaved with one log line per run. The runner module's
+    'Run N/M | <condition> | <model>' message and the run_batch
+    preflight summary both come from src.runner; this lifts the
+    src.runner logger threshold to WARNING for the duration of the
+    process.
+
+    The SDK loggers (httpx / openai / anthropic) are silenced
+    separately in main() at process startup.
+    """
+    logging.getLogger("src.runner").setLevel(logging.WARNING)
+
+
 def _build_client(args):
     """Construct the right ModelClient subclass for `args.provider`.
 
@@ -349,20 +363,37 @@ def cmd_run(args):
             cancel_event=cancel_event,
         )
 
+    # Single non-scrolling progress bar over the expected run count.
+    # exp3a / exp3b iterate per (level / prompt) on top of num_runs;
+    # we use args.num_runs as a conservative lower bound and let
+    # tqdm's rate-of-progress display handle the actual count via
+    # `total=None` overflow semantics for the multi-axis experiments.
+    import time as _time
+    from tqdm import tqdm
+    _quiet_per_run_logger()
+    bar_total = args.num_runs if args.experiment in {"exp1a", "exp1b", "exp2"} else None
+    started = _time.time()
+
     async def _run():
-        count = 0
-        async for result in runner(
-            config, client,
-            output_dir=output_dir,
-            **extra_kwargs,
-            **batch_kwargs,
-        ):
-            count += 1
-            print(f"[{count}] {result.config.get('condition')} run_number={result.run_number}")
+        with tqdm(
+            total=bar_total,
+            desc=f"{args.experiment}/{args.condition}",
+            unit="run",
+            dynamic_ncols=True,
+        ) as bar:
+            async for _result in runner(
+                config, client,
+                output_dir=output_dir,
+                **extra_kwargs,
+                **batch_kwargs,
+            ):
+                bar.update(1)
         if hasattr(client, 'close'):
             await client.close()
 
     asyncio.run(_run())
+    elapsed = _time.time() - started
+    print(f"\nRun complete in {elapsed:.1f}s. Results in {output_dir}/")
 
 
 def cmd_analyze(args):
@@ -418,36 +449,54 @@ def cmd_pilot(args):
     cancel_event = asyncio.Event()
     _install_sigint_handler(cancel_event)
 
+    # Single non-scrolling progress bar across (conditions × num_runs).
+    # The runner.py per-run INFO logger continues to fire but is
+    # demoted to DEBUG via _quiet_per_run_logger() so it doesn't
+    # interleave with the bar.
+    import time as _time
+    from tqdm import tqdm
+    _quiet_per_run_logger()
+
+    total = len(conditions) * args.num_runs
+    started = _time.time()
+
     async def _run():
-        for cond in conditions:
-            if cancel_event.is_set():
-                break
-            config = ExperimentConfig(
-                model_name=args.model,
-                condition=cond,
-                experiment_type=ExperimentType.TRANSFER_WITHIN,
-                num_runs=args.num_runs,
-                temperature=args.temperature,
-                seed=args.seed,
-                is_base_model=args.base_model,
-                stimulus_bank=bank_id,
-                stimulus_bank_hash=bank_hash,
-            )
-            async for result in run_batch(
-                config, client,
-                max_concurrent=args.max_concurrent,
-                output_dir=output_dir,
-                circuit_breaker_threshold=args.circuit_breaker_threshold,
-                budget=budget,
-                rate_limit_rps=args.rate_limit_rps,
-                cancel_event=cancel_event,
-            ):
-                print(f"[{cond.value}] run_number={result.run_number}")
+        with tqdm(total=total, desc="pilot", unit="run", dynamic_ncols=True) as bar:
+            for cond in conditions:
+                if cancel_event.is_set():
+                    break
+                bar.set_postfix_str(cond.value, refresh=False)
+                config = ExperimentConfig(
+                    model_name=args.model,
+                    condition=cond,
+                    experiment_type=ExperimentType.TRANSFER_WITHIN,
+                    num_runs=args.num_runs,
+                    temperature=args.temperature,
+                    seed=args.seed,
+                    is_base_model=args.base_model,
+                    stimulus_bank=bank_id,
+                    stimulus_bank_hash=bank_hash,
+                )
+                async for _result in run_batch(
+                    config, client,
+                    max_concurrent=args.max_concurrent,
+                    output_dir=output_dir,
+                    circuit_breaker_threshold=args.circuit_breaker_threshold,
+                    budget=budget,
+                    rate_limit_rps=args.rate_limit_rps,
+                    cancel_event=cancel_event,
+                ):
+                    bar.update(1)
         if hasattr(client, 'close'):
             await client.close()
 
     asyncio.run(_run())
-    print(f"\nPilot complete. Results in {output_dir}/")
+    elapsed = _time.time() - started
+    print(
+        f"\nPilot complete in {elapsed:.1f}s "
+        f"({total} runs, {elapsed / max(total, 1):.2f}s/run avg). "
+        f"Results in {output_dir}/"
+    )
 
 
 def cmd_score(args):
@@ -703,7 +752,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main():
     parser = build_parser()
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    # Silence the chatty per-request HTTP loggers from the OpenAI /
+    # Anthropic SDKs (and httpx underneath). These emit one INFO line
+    # per API call, which spams the terminal during a 35-run pilot.
+    # WARNING level still surfaces 4xx/5xx + auth errors.
+    for noisy in ("httpx", "anthropic", "openai"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     args.func(args)
 
 

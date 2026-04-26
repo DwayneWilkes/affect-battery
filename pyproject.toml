@@ -12,6 +12,7 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.50",
     "krippendorff>=0.6",
+    "tqdm>=4.65",
 ]
 
 [project.optional-dependencies]
