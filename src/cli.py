@@ -340,12 +340,30 @@ _ANTHROPIC_PRICING_PER_MTOK: dict[str, dict[str, float]] = {
 }
 
 
-# OpenAI rates included for completeness; not authoritative — verify
-# against https://openai.com/api/pricing/ before use.
+# OpenAI API pricing in USD per million tokens (Standard tier,
+# short-context). Source:
+#   https://developers.openai.com/api/docs/pricing
+# (snapshotted 2026-04-26). Like Anthropic, output rates are 5-6x
+# input. OpenAI's Batch + Flex tiers offer 50% discount on Standard
+# (matching Anthropic's batch discount); Priority tier is 2-2.5x
+# Standard for faster latency guarantees.
+#
+# Note: long-context pricing (>200k tokens) is roughly 2x these rates
+# but our affect-battery prompts are well under 1k tokens, so the
+# short-context column is what applies.
 _OPENAI_PRICING_PER_MTOK: dict[str, dict[str, float]] = {
-    "gpt-4o":      {"input": 2.50,  "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15,  "output": 0.60},
-    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+    "gpt-5.5":      {"input": 5.00,  "output": 30.00},
+    "gpt-5.5-pro":  {"input": 30.00, "output": 180.00},
+    "gpt-5.4":      {"input": 2.50,  "output": 15.00},
+    "gpt-5.4-mini": {"input": 0.75,  "output": 4.50},
+    "gpt-5.4-nano": {"input": 0.20,  "output": 1.25},
+    "gpt-5.4-pro":  {"input": 30.00, "output": 180.00},
+    # Older generation rates retained for users on prior model IDs.
+    # Verify against the current pricing page if these IDs are still
+    # active for your account.
+    "gpt-4o":       {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini":  {"input": 0.15,  "output": 0.60},
+    "gpt-4-turbo":  {"input": 10.00, "output": 30.00},
 }
 
 
@@ -497,8 +515,14 @@ def _resolve_token_pricing(model: str) -> tuple[float, float, str]:
         return 3.00, 15.00, "tier (sonnet-4-6 rates)"
     if "opus" in lo:
         return 5.00, 25.00, "tier (opus-4-7 rates; opus-4/4.1 are 3x higher)"
-    if "gpt-4o-mini" in lo or "mini" in lo:
-        return 0.15, 0.60, "tier (gpt-4o-mini rates)"
+    if "nano" in lo:
+        return 0.20, 1.25, "tier (gpt-5.4-nano rates)"
+    if "mini" in lo:
+        return 0.75, 4.50, "tier (gpt-5.4-mini rates)"
+    if "gpt-5.4" in lo:
+        return 2.50, 15.00, "tier (gpt-5.4 rates)"
+    if "gpt-5" in lo:
+        return 5.00, 30.00, "tier (gpt-5.5 rates)"
     if "gpt-4o" in lo or "gpt-4" in lo:
         return 2.50, 10.00, "tier (gpt-4o rates)"
     return 3.00, 15.00, "default (sonnet-tier fallback)"
