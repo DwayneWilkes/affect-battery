@@ -612,14 +612,22 @@ class EventEmitter:
 def _cached_run_path(output_dir: Path, config: ExperimentConfig, run_number: int) -> Path:
     """Derive the path save_result writes for a (config, run_number).
 
-    Layout: <output_dir>/<condition>/<NNNN>.json. The other axes are
-    encoded by the caller's directory hierarchy: model lives in the
-    pilot directory name (and manifest), experiment_type lives in the
-    parent of `output_dir`. This puts each cell of the experimental
-    matrix in its own leaf directory so per-condition operations
-    (`ls`, `du`, `wc`, `jq`) are natural.
+    Layout: <output_dir>/<condition>/[<n_prefix>_]<NNNN>.json. The
+    n_prefix is `n<neutral_turns>_` for exp2's N-sweep so different
+    neutral_turns runs at the same (condition, run_number) don't
+    collide on disk. Other experiments (neutral_turns=0) get the
+    plain `<NNNN>.json` filename.
+
+    Other matrix axes are encoded by the caller's directory hierarchy:
+    model lives in the pilot directory name (and manifest), experiment
+    type lives in the parent of `output_dir`. This puts each cell of
+    the experimental matrix in its own leaf directory so per-condition
+    operations (`ls`, `du`, `wc`, `jq`) are natural.
     """
     cond = enum_value(config.condition)
+    n = getattr(config, "neutral_turns", 0) or 0
+    if n > 0:
+        return Path(output_dir) / cond / f"n{n}_{run_number:04d}.json"
     return Path(output_dir) / cond / f"{run_number:04d}.json"
 
 
@@ -901,17 +909,22 @@ def _validate_result(result: RunResult) -> None:
 def save_result(result: RunResult, output_dir: Path):
     """Validate and write a single result JSON.
 
-    Layout (per results-layout requirement): the file lands at
-    <output_dir>/<condition>/<NNNN>.json. The serialised config still
-    coerces enum values to their `.value` strings so cross-lookup by
-    config field works regardless of nesting.
+    Layout: <output_dir>/<condition>/[n<N>_]<NNNN>.json. The n<N>
+    prefix is included when config.neutral_turns > 0 so exp2's
+    multi-N sweep can coexist in the same condition dir without
+    collision.
     """
     _validate_result(result)
     cfg = result.config
     cond = enum_value(cfg["condition"])
     cond_dir = output_dir / cond
     cond_dir.mkdir(parents=True, exist_ok=True)
-    path = cond_dir / f"{result.run_number:04d}.json"
+    n_turns = cfg.get("neutral_turns", 0) or 0
+    if n_turns > 0:
+        filename = f"n{n_turns}_{result.run_number:04d}.json"
+    else:
+        filename = f"{result.run_number:04d}.json"
+    path = cond_dir / filename
     payload = asdict(result)
     payload["config"] = {k: enum_value(v) for k, v in payload["config"].items()}
     path.write_text(json.dumps(payload, indent=2, default=str))

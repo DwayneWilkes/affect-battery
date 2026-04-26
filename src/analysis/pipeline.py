@@ -78,7 +78,24 @@ def _resolve_corpus_dir(results_dir: Path, experiment: str) -> Path:
         return pilot_root_layout
 
     # Layout 3: legacy flat layout.
-    return results_dir / experiment
+    legacy = results_dir / experiment
+    if legacy.exists():
+        return legacy
+
+    # Layout 4 (sibling lookup): when results_dir is itself a single-
+    # experiment pilot dir like `<pilot_root>/exp1b/` and we're asked
+    # for a DIFFERENT experiment (e.g. exp1a for the three-way
+    # comparison), look at the sibling pilot dir `<pilot_root>/exp1a/`
+    # and resolve from there.
+    sibling = results_dir.parent / experiment
+    if sibling.is_dir() and sibling != results_dir:
+        sibling_data = sibling / "data"
+        if sibling_data.is_dir():
+            return sibling_data
+
+    # Last resort: return the (non-existent) legacy path; _load_corpus
+    # checks .exists() and returns [] when nothing matches.
+    return legacy
 
 
 def _load_corpus(results_dir: Path, experiment: str) -> list[dict]:
@@ -210,18 +227,42 @@ def _extract_primary_p_values(
     return p
 
 
+_VALID_EXPERIMENT_NAMES = frozenset(
+    ["exp1a", "exp1b", "exp2", "exp3a", "exp3b", "exp3c"]
+)
+
+
 def analyze_results_dir(
     results_dir: Path,
     model: str = "aggregate",
     base_model: str = "Meta-Llama-3-8B",
     instruct_model: str = "Meta-Llama-3-8B-Instruct",
+    only_experiment: str | None = None,
 ) -> dict[str, Path]:
-    """Run analysis + report rendering across all experiments present
-    under results_dir. Returns a dict mapping experiment_id (or 'h4',
-    'aggregate') to the path of the rendered report.
+    """Run analysis + report rendering across experiments present
+    under results_dir.
+
+    When `results_dir`'s basename is itself an experiment name (e.g.
+    `<pilot_root>/exp1b/`), render is auto-scoped to only that
+    experiment — sibling corpora are loaded for cross-references
+    (exp1b's three-way comparison needs exp1a's corpus) but only the
+    requested experiment's report is written. Pass `only_experiment`
+    explicitly to override the auto-detection.
+
+    Returns a dict mapping experiment_id (or 'h4', 'aggregate') to the
+    path of the rendered report.
     """
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-detect single-experiment scope from dir name. If results_dir
+    # is named after an experiment AND only_experiment isn't already set,
+    # restrict report rendering to that experiment only.
+    if only_experiment is None and results_dir.name in _VALID_EXPERIMENT_NAMES:
+        only_experiment = results_dir.name
+
+    def _should_render(exp: str) -> bool:
+        return only_experiment is None or exp == only_experiment
 
     # Reports directory: pilot-root layouts (those with <root>/data/<exp>/)
     # get reports under <root>/reports/. Legacy flat layouts keep reports
@@ -238,12 +279,13 @@ def analyze_results_dir(
     exp1a_analysis: dict | None = None
     if exp1a_corpus:
         exp1a_analysis = analyze_exp1a_corpus(exp1a_corpus, model=model)
-        path = reports_dir / "exp1a_report.md"
-        render_exp1a_report(exp1a_analysis, output_path=path)
-        rendered["exp1a"] = path
-        aggregate_payload["exp1a"] = {
-            "model": model, "verdict": exp1a_analysis["verdict"],
-        }
+        if _should_render("exp1a"):
+            path = reports_dir / "exp1a_report.md"
+            render_exp1a_report(exp1a_analysis, output_path=path)
+            rendered["exp1a"] = path
+            aggregate_payload["exp1a"] = {
+                "model": model, "verdict": exp1a_analysis["verdict"],
+            }
 
     # ---- Exp 1b (needs both 1a and 1b corpora for three-way comparison) ----
     exp1b_corpus = _load_corpus(results_dir, "exp1b")
@@ -255,21 +297,23 @@ def analyze_results_dir(
             model=model,
             h1b_dual_tests=True,
         )
-        path = reports_dir / "exp1b_report.md"
-        render_exp1b_report(exp1b_analysis, output_path=path)
-        rendered["exp1b"] = path
-        aggregate_payload["exp1b"] = {
-            "model": model, "verdict": exp1b_analysis["verdict"],
-        }
+        if _should_render("exp1b"):
+            path = reports_dir / "exp1b_report.md"
+            render_exp1b_report(exp1b_analysis, output_path=path)
+            rendered["exp1b"] = path
+            aggregate_payload["exp1b"] = {
+                "model": model, "verdict": exp1b_analysis["verdict"],
+            }
 
     # ---- Exp 2 (A1) ----
     exp2_corpus = _load_corpus(results_dir, "exp2")
     exp2_analysis: dict | None = None
     if exp2_corpus:
         exp2_analysis = analyze_exp2_corpus(exp2_corpus, model=model)
-        path = reports_dir / "exp2_report.md"
-        render_exp2_report(exp2_analysis, output_path=path)
-        rendered["exp2"] = path
+        if _should_render("exp2"):
+            path = reports_dir / "exp2_report.md"
+            render_exp2_report(exp2_analysis, output_path=path)
+            rendered["exp2"] = path
         aggregate_payload["exp2"] = {
             "model": model, "verdict": exp2_analysis["verdict"],
         }
@@ -293,35 +337,38 @@ def analyze_results_dir(
         if len(accuracy_by_level) >= 3:
             exp3a_analysis = analyze_exp3a(accuracy_by_level)
             exp3a_analysis["model"] = model
-            path = reports_dir / "exp3a_report.md"
-            render_exp3a_report(exp3a_analysis, output_path=path)
-            rendered["exp3a"] = path
-            aggregate_payload["exp3a"] = {
-                "model": model,
-                "verdict": "complete",
-            }
+            if _should_render("exp3a"):
+                path = reports_dir / "exp3a_report.md"
+                render_exp3a_report(exp3a_analysis, output_path=path)
+                rendered["exp3a"] = path
+                aggregate_payload["exp3a"] = {
+                    "model": model,
+                    "verdict": "complete",
+                }
 
     # ---- Exp 3b (A2) ----
     exp3b_corpus = _load_corpus(results_dir, "exp3b")
     if exp3b_corpus:
         exp3b_analysis = analyze_exp3b_corpus(exp3b_corpus, model=model)
-        path = reports_dir / "exp3b_report.md"
-        render_exp3b_report(exp3b_analysis, output_path=path)
-        rendered["exp3b"] = path
-        aggregate_payload["exp3b"] = {
-            "model": model, "verdict": exp3b_analysis["verdict"],
-        }
+        if _should_render("exp3b"):
+            path = reports_dir / "exp3b_report.md"
+            render_exp3b_report(exp3b_analysis, output_path=path)
+            rendered["exp3b"] = path
+            aggregate_payload["exp3b"] = {
+                "model": model, "verdict": exp3b_analysis["verdict"],
+            }
 
     # ---- Exp 3c (A3) ----
     exp3c_corpus = _load_corpus(results_dir, "exp3c")
     if exp3c_corpus:
         exp3c_analysis = analyze_exp3c_corpus(exp3c_corpus, model=model)
-        path = reports_dir / "exp3c_report.md"
-        render_exp3c_report(exp3c_analysis, output_path=path)
-        rendered["exp3c"] = path
-        aggregate_payload["exp3c"] = {
-            "model": model, "verdict": exp3c_analysis["verdict"],
-        }
+        if _should_render("exp3c"):
+            path = reports_dir / "exp3c_report.md"
+            render_exp3c_report(exp3c_analysis, output_path=path)
+            rendered["exp3c"] = path
+            aggregate_payload["exp3c"] = {
+                "model": model, "verdict": exp3c_analysis["verdict"],
+            }
 
     # ---- H4 cross-experiment + manipulation-check (A4 + A5) ----
     h4_analysis: dict | None = None

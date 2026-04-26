@@ -61,15 +61,28 @@ done
 # seed, which is a separate prerequisite workflow.
 EXPERIMENTS=(exp1a exp1b exp2 exp3b exp3c)
 
-# Per-experiment extra flags. exp2 needs --neutral-turns; exp3b/3c need
-# --runner-config. Everything else inherits the script defaults.
+# Per-experiment extra flags. exp2 sweeps neutral_turns over multiple
+# N values (recovery-curve fit needs ≥2 distinct N to compute);
+# exp3b/3c need --runner-config. Everything else inherits the script
+# defaults.
+#
+# exp2 is special: the spec calls for sweeping N to fit the persistence
+# decay curve. A single N value yields verdict='unavailable_no_control'.
+# The orchestrator launches one sub-pilot per N value; results all
+# land in the same exp2/data/ dir tagged by config.neutral_turns,
+# and the analyzer groups by (condition, n_value) cells.
 declare -A EXTRA_FLAGS=(
   [exp1a]=""
   [exp1b]=""
-  [exp2]="--neutral-turns 5"
+  [exp2]="--neutral-turns 5"  # placeholder; real sweep happens below
   [exp3b]="--runner-config configs/exp3b_runner.yaml"
   [exp3c]="--runner-config configs/exp3c_runner.yaml"
 )
+# Sweep values for exp2's neutral_turns parameter. ≥2 distinct N
+# required for the recovery-curve fit. Default sweep covers short
+# (N=1) through long (N=10) buffer windows so the analyzer can
+# distinguish exponential decay from linear.
+EXP2_N_SWEEP=(1 3 5 10)
 
 # Build optional concurrency flags so empty values don't pass through
 # as empty strings (the CLI argparser would reject them).
@@ -148,9 +161,58 @@ trap "rm -rf '${LOG_DIR}'" EXIT
 
 # Per-experiment runner. Captures stdout+stderr to a per-exp log and
 # echoes a status marker on completion. Designed to be backgrounded.
+#
+# exp2 is special: it requires sweeping neutral_turns over multiple N
+# values for the recovery-curve fit. We loop over EXP2_N_SWEEP and
+# call the underlying pilot script once per N. All sub-runs land in
+# the same exp2/data/<cond>/ dir, distinguished by `n<N>_` filename
+# prefix, so the analyzer can group results by (condition, n_value)
+# cells without further restructuring.
 run_one_experiment() {
   local exp="$1"
   local log="${LOG_DIR}/${exp}.log"
+  if [[ "${exp}" == "exp2" ]]; then
+    # exp2 sweep: intermediate sub-pilots' analyze-step verdicts are
+    # 'unavailable_no_control' (need ≥2 distinct N for the recovery
+    # curve fit). Don't treat that as failure — only the FINAL
+    # sub-pilot's exit code matters for "did the full sweep complete?"
+    local final_rc=0
+    local total_n=${#EXP2_N_SWEEP[@]}
+    local i=0
+    for n in "${EXP2_N_SWEEP[@]}"; do
+      i=$(( i + 1 ))
+      echo "[orchestrator] exp2 sub-pilot ${i}/${total_n} at neutral_turns=${n}" >> "${log}"
+      bash scripts/pilots/run_anthropic_pilot.sh \
+            --provider "${PROVIDER}" \
+            --model "${MODEL}" \
+            --experiment "exp2" \
+            --num-runs "${NUM_RUNS}" \
+            --seed "${SEED}" \
+            --neutral-turns "${n}" \
+            ${ESTIMATE} \
+            ${OVERWRITE} \
+            ${SKIP_PREREG} \
+            ${DRY_RUN} \
+            ${CONCURRENCY_FLAGS} >> "${log}" 2>&1
+      local rc=$?
+      if [[ ${i} -eq ${total_n} ]]; then
+        # Final sub-pilot's exit code is what defines sweep success
+        # (its analyze sees all N values and produces the real report).
+        final_rc=${rc}
+      fi
+      # Only the first sub-run honors --overwrite; subsequent runs
+      # would otherwise wipe the prior N's data. Strip after first.
+      OVERWRITE=""
+    done
+    if [[ ${final_rc} -eq 0 ]]; then
+      echo "  ✓ ${exp} complete (sweep: N=${EXP2_N_SWEEP[*]}; log: ${log})"
+      return 0
+    else
+      echo "  ✗ ${exp} FAILED (final sub-pilot non-zero; log: ${log})" >&2
+      return 1
+    fi
+  fi
+
   if bash scripts/pilots/run_anthropic_pilot.sh \
         --provider "${PROVIDER}" \
         --model "${MODEL}" \
@@ -246,27 +308,23 @@ if [[ -n "${PARALLEL}" ]]; then
     cat "${LOG_DIR}/${exp}.log"
   done
 else
-  # Sequential mode (original behavior). Stream live to terminal + log.
+  # Sequential mode. Use run_one_experiment so the exp2 N-sweep
+  # (and any other multi-step experiments added later) is applied
+  # consistently between sequential and parallel modes. We tee the
+  # per-experiment log to the live terminal here for streaming UX;
+  # the helper itself writes the same log via redirect, so we
+  # rely on tail -F afterward instead of dual-redirecting.
   for exp in "${EXPERIMENTS[@]}"; do
     echo ""
     echo "===================================="
     echo "  Pilot: ${exp}"
     echo "===================================="
-    if bash scripts/pilots/run_anthropic_pilot.sh \
-          --provider "${PROVIDER}" \
-          --model "${MODEL}" \
-          --experiment "${exp}" \
-          --num-runs "${NUM_RUNS}" \
-          --seed "${SEED}" \
-          ${EXTRA_FLAGS[$exp]} \
-          ${ESTIMATE} \
-          ${OVERWRITE} \
-          ${SKIP_PREREG} \
-          ${DRY_RUN} \
-          ${CONCURRENCY_FLAGS} 2>&1 | tee "${LOG_DIR}/${exp}.log"; then
-      echo "  ✓ ${exp} complete"
+    if run_one_experiment "${exp}"; then
+      # Stream the log to the terminal after completion so the user
+      # sees output (run_one_experiment redirects to file, not stdout).
+      cat "${LOG_DIR}/${exp}.log"
     else
-      echo "  ✗ ${exp} FAILED" >&2
+      cat "${LOG_DIR}/${exp}.log"
       FAILED+=("${exp}")
     fi
   done
