@@ -13,7 +13,7 @@
 #   bash scripts/pilots/run_anthropic_pilot.sh --dry-run     # offline smoke test
 #   bash scripts/pilots/run_anthropic_pilot.sh --skip-prereg # pilot under existing pre-reg
 #
-# Output: results/pilots/<YYYY-MM-DD>_<model_slug>_<experiment>/
+# Output: results/pilots/<YYYY-MM-DD>_<model_slug>/<experiment>/
 
 set -euo pipefail
 
@@ -102,9 +102,9 @@ MODEL_SLUG="${MODEL//\//_}"
 if [[ -n "${DRY_RUN}" ]]; then
   # Segregate dry-run output so its canned responses cannot pollute the
   # real-run cache via the (config, run_number) cache key.
-  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_${EXPERIMENT}_dryrun"
+  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_dryrun/${EXPERIMENT}"
 else
-  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_${EXPERIMENT}"
+  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}/${EXPERIMENT}"
 fi
 
 # ---- Pre-flight ----

@@ -238,9 +238,11 @@ echo ""
 if [[ -z "${ESTIMATE}" && -z "${DRY_RUN}" ]]; then
   DATE_STAMP=$(date -u +%Y-%m-%d)
   MODEL_SLUG="${MODEL//\//_}"
-  echo "  Pilot dirs:"
+  PILOT_ROOT="results/pilots/${DATE_STAMP}_${MODEL_SLUG}"
+  echo "  Pilot root:    ${PILOT_ROOT}/"
+  echo "  Per-experiment dirs:"
   for exp in "${EXPERIMENTS[@]}"; do
-    DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_${exp}"
+    DIR="${PILOT_ROOT}/${exp}"
     if [[ -d "${DIR}" ]]; then
       echo "    ${DIR}/"
     fi
