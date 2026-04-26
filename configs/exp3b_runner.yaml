@@ -1,0 +1,25 @@
+# Exp 3b runner config — open-ended generation prompts for cognitive
+# scope analysis (paper §3.4.2). The runner iterates over `prompts`,
+# generating `n_generations` per prompt per (condition × run) so the
+# semantic-diversity metrics have enough variation per cell.
+#
+# Smoke-pilot defaults: 3 prompts × 3 generations gives 9 results per
+# (condition × run); at num_runs=2 across 7 conditions that's 126
+# yielded results per pilot invocation — enough to verify the runner
+# end-to-end without the full 15-prompt × 10-generation production load.
+#
+# Replace with the full configs/banks/exp3b_prompts.yaml prompt set
+# for the real run.
+
+n_generations: 3
+
+prompts:
+  - id: p1_story_lighthouse
+    family: story_completion
+    text: "Continue this story in 3-4 sentences: 'The lighthouse keeper had not seen another human in six months when...'"
+  - id: p2_brainstorm_paperclip
+    family: brainstorming
+    text: "List 5 unconventional uses for a paperclip."
+  - id: p3_creative_dilemma
+    family: creative_problem_solving
+    text: "Describe a creative way to teach the concept of probability to a 7-year-old, in 3-4 sentences."

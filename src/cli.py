@@ -638,11 +638,26 @@ def cmd_pilot(args):
     from tqdm import tqdm
     _quiet_per_run_logger()
 
-    # exp3a/3b/3c iterate per (level / prompt / item) on top of num_runs
-    # so the bar's `total` would be wrong; let tqdm count from None.
+    # Per-condition yield differs by experiment shape:
+    #   exp1a/1b/2: 1 result per (run) → num_runs per condition
+    #   exp3a:      num_runs × len(intensity_levels)
+    #   exp3b:      num_runs × len(prompts)
+    #   exp3c:      num_runs × len(items)
+    # Computing proper bar totals (vs falling back to None) gives the
+    # user real progress percentages even on multi-axis experiments.
+    if args.experiment in {"exp1a", "exp1b", "exp2"}:
+        per_cond_yield = args.num_runs
+    elif args.experiment == "exp3a":
+        per_cond_yield = args.num_runs * len(extra_kwargs["intensity_levels"])
+    elif args.experiment == "exp3b":
+        per_cond_yield = args.num_runs * len(extra_kwargs["prompts"])
+    elif args.experiment == "exp3c":
+        per_cond_yield = args.num_runs * len(extra_kwargs["items"])
+    else:
+        per_cond_yield = None
     bar_total = (
-        len(conditions) * args.num_runs
-        if args.experiment in {"exp1a", "exp1b", "exp2"}
+        len(conditions) * per_cond_yield
+        if per_cond_yield is not None
         else None
     )
     started = _time.time()
