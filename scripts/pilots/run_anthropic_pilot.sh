@@ -65,6 +65,13 @@ if [[ -z "${PREREG_TAG}" && -z "${SKIP_PREREG}" && -z "${DRY_RUN}" ]]; then
 fi
 
 # Convert prereg tag -> owner/repo@sha for the CLI flag.
+# Power-report gate is intentionally skipped here: pilots run BEFORE
+# the variance probe that grounds the power report, so requiring one
+# would be circular. The pre-reg gate stays armed (the methodology
+# IS the pre-reg) so pilot runs are still locked to a specific
+# commit. If pilot results are later promoted to primary without an
+# amendment, the analysis pipeline emits the
+# `pre_registration_violation: pilot_promoted_to_primary` audit code.
 PREREG_FLAG=""
 if [[ -n "${PREREG_TAG}" ]]; then
   ORIGIN_URL=$(git remote get-url origin)
@@ -77,13 +84,14 @@ if [[ -n "${PREREG_TAG}" ]]; then
     exit 2
   fi
   TAG_SHA=$(git rev-parse "${PREREG_TAG}^{commit}")
-  PREREG_FLAG="--pre-registration-github-commit ${OWNER}/${REPO}@${TAG_SHA}"
+  PREREG_FLAG="--pre-registration-github-commit ${OWNER}/${REPO}@${TAG_SHA} --skip-power-gate"
   echo "Using pre-registration: ${PREREG_TAG} -> ${OWNER}/${REPO}@${TAG_SHA:0:12}"
+  echo "Power-report gate skipped (pilots run before the variance probe)."
 fi
 
 if [[ -n "${SKIP_PREREG}" ]]; then
   PREREG_FLAG="--skip-prereg-gate --skip-power-gate"
-  echo "WARNING: skipping pre-registration + power gates (pilot mode)"
+  echo "WARNING: skipping BOTH pre-registration + power gates (explicit pilot bypass)"
 fi
 
 # ---- Run ----
