@@ -29,6 +29,7 @@ OVERWRITE=""
 SKIP_PREREG=""
 DRY_RUN=""
 PARALLEL=""
+YES=""
 MAX_CONCURRENT=""  # if unset, run_anthropic_pilot.sh's default applies (16)
 # Default aggregate rate-limit budget. In sequential mode this passes
 # through to one pilot. In --parallel mode the orchestrator divides
@@ -47,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --skip-prereg)  SKIP_PREREG="--skip-prereg"; shift ;;
     --dry-run)      DRY_RUN="--dry-run"; shift ;;
     --parallel)     PARALLEL="1"; shift ;;
+    --yes|-y)       YES="1"; shift ;;
     --max-concurrent) MAX_CONCURRENT="$2"; shift 2 ;;
     --rate-limit-rps) RATE_LIMIT_RPS="$2"; shift 2 ;;
     -h|--help)
@@ -110,6 +112,55 @@ if [[ -n "${MAX_CONCURRENT}" ]]; then
 fi
 if [[ -n "${EFFECTIVE_RATE_LIMIT_RPS}" ]]; then
   CONCURRENCY_FLAGS+="--rate-limit-rps ${EFFECTIVE_RATE_LIMIT_RPS} "
+fi
+
+# ---- Pre-launch confirmation gate ----
+# Skip in --dry-run (no API spend), --estimate (no API spend), or --yes
+# (explicit override for CI / scripts). For all other modes, present a
+# full preview of the run and require an explicit y/yes from stdin.
+# Refuses to proceed in non-interactive sessions without --yes.
+DATE_STAMP_PREVIEW=$(date -u +%Y-%m-%d)
+MODEL_SLUG_PREVIEW="${MODEL//\//_}"
+PILOT_ROOT_PREVIEW="results/pilots/${DATE_STAMP_PREVIEW}_${MODEL_SLUG_PREVIEW}"
+
+if [[ -z "${DRY_RUN}" && -z "${ESTIMATE}" && -z "${YES}" ]]; then
+  echo ""
+  echo "===================================================="
+  echo "  Confirmation required (real API spend ahead)"
+  echo "===================================================="
+  echo ""
+  echo "  Provider:       ${PROVIDER}"
+  echo "  Model:          ${MODEL}"
+  echo "  Experiments:    ${EXPERIMENTS[*]}"
+  echo "  Num runs/cell:  ${NUM_RUNS}"
+  echo "  Seed:           ${SEED}"
+  echo "  Mode:           $([[ -n "${PARALLEL}" ]] && echo "parallel (5 subprocesses)" || echo "sequential")"
+  echo "  Concurrency:    max=${MAX_CONCURRENT:-(default 16)} rps=${RATE_LIMIT_RPS}"
+  echo "                  (parallel divides aggregate rps by experiment count)"
+  echo "  exp2 N-sweep:   ${EXP2_N_SWEEP[*]}  (4 sub-pilots)"
+  echo "  exp3b config:   configs/exp3b_runner.yaml"
+  echo "  exp3c config:   configs/exp3c_runner.yaml"
+  echo "  Output:         ${PILOT_ROOT_PREVIEW}/"
+  echo "  Skip-prereg:    ${SKIP_PREREG:-no}"
+  echo "  Overwrite:      ${OVERWRITE:-no (resume-by-default; cache hits skip cells)}"
+  echo ""
+  echo "  Tip: re-run with --estimate (no flags changed) to preview"
+  echo "       expected cost + wall-clock before committing."
+  echo ""
+  if [[ ! -t 0 ]]; then
+    # Non-interactive (piped, scripted): refuse without explicit --yes.
+    echo "  ERROR: stdin is not a terminal. Pass --yes to confirm" >&2
+    echo "         non-interactively (e.g. 'echo y | bash ...' is NOT" >&2
+    echo "         enough — the orchestrator deliberately requires" >&2
+    echo "         the explicit flag to prevent accidental spending)." >&2
+    exit 2
+  fi
+  read -r -p "  Proceed with real API spend? [y/N] " confirm
+  case "${confirm}" in
+    y|Y|yes|YES) echo "  Confirmed. Launching..." ;;
+    *) echo "  Aborted (no API calls made)." ; exit 0 ;;
+  esac
+  echo ""
 fi
 
 START_TIME=$(date +%s)
