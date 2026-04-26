@@ -13,7 +13,7 @@
 #   bash scripts/pilots/run_anthropic_pilot.sh --dry-run     # offline smoke test
 #   bash scripts/pilots/run_anthropic_pilot.sh --skip-prereg # pilot under existing pre-reg
 #
-# Output: results/pilots/anthropic_pilot_<YYYY-MM-DD>/
+# Output: results/pilots/<YYYY-MM-DD>_<model_slug>/
 
 set -euo pipefail
 
@@ -34,15 +34,20 @@ SEED=42
 DRY_RUN=""
 SKIP_PREREG=""
 PREREG_TAG=""
+# Default to the alias-aware TriviaQA hard subset so frontier models don't
+# saturate on the legacy 6-item hardcoded pool. Override with
+# --transfer-bank '' to use the legacy pool, or with another bank path.
+TRANSFER_BANK="configs/banks/exp1a_factual_qa_hard_v1.yaml"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --model)        MODEL="$2"; shift 2 ;;
-    --num-runs)     NUM_RUNS="$2"; shift 2 ;;
-    --seed)         SEED="$2"; shift 2 ;;
-    --dry-run)      DRY_RUN="--dry-run"; shift ;;
-    --skip-prereg)  SKIP_PREREG="1"; shift ;;
-    --prereg-tag)   PREREG_TAG="$2"; shift 2 ;;
+    --model)          MODEL="$2"; shift 2 ;;
+    --num-runs)       NUM_RUNS="$2"; shift 2 ;;
+    --seed)           SEED="$2"; shift 2 ;;
+    --dry-run)        DRY_RUN="--dry-run"; shift ;;
+    --skip-prereg)    SKIP_PREREG="1"; shift ;;
+    --prereg-tag)     PREREG_TAG="$2"; shift 2 ;;
+    --transfer-bank)  TRANSFER_BANK="$2"; shift 2 ;;
     -h|--help)
       grep '^# ' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -56,10 +61,15 @@ DATE_STAMP=$(date -u +%Y-%m-%d)
 # real-run share the same model_name in config, so without this
 # suffix the dry-run results would be picked up by the run-batch
 # cache loader during a subsequent real run.
+# Pilot directory is `<date>_<model_slug>/` so two models = two sibling
+# dirs that don't collide. Slashes in the model name (e.g.
+# 'meta-llama/Llama-3') are replaced with underscores so the path stays
+# one level deep.
+MODEL_SLUG="${MODEL//\//_}"
 if [[ -n "${DRY_RUN}" ]]; then
-  OUTPUT_DIR="results/pilots/anthropic_pilot_${DATE_STAMP}_dryrun"
+  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}_dryrun"
 else
-  OUTPUT_DIR="results/pilots/anthropic_pilot_${DATE_STAMP}"
+  OUTPUT_DIR="results/pilots/${DATE_STAMP}_${MODEL_SLUG}"
 fi
 
 # ---- Pre-flight ----
@@ -118,10 +128,11 @@ fi
 
 echo ""
 echo "Running Anthropic pilot:"
-echo "  model:      ${MODEL}"
-echo "  num_runs:   ${NUM_RUNS}"
-echo "  seed:       ${SEED}"
-echo "  output_dir: ${OUTPUT_DIR}"
+echo "  model:         ${MODEL}"
+echo "  num_runs:      ${NUM_RUNS}"
+echo "  seed:          ${SEED}"
+echo "  output_dir:    ${OUTPUT_DIR}"
+echo "  transfer_bank: ${TRANSFER_BANK:-<legacy hardcoded pool>}"
 echo ""
 
 # Note: `affect-battery pilot` runs all 7 conditions × num_runs.
@@ -143,6 +154,14 @@ case "${MODEL}" in
   *)         COST_PER_CALL="0.015" ;;  # conservative default
 esac
 
+# Forward --transfer-bank only when set; an empty string means "fall
+# back to the hardcoded factual_qa pool", and the CLI argparser would
+# reject the empty value. So we conditionally append.
+TRANSFER_BANK_FLAG=""
+if [[ -n "${TRANSFER_BANK}" ]]; then
+  TRANSFER_BANK_FLAG="--transfer-bank ${TRANSFER_BANK}"
+fi
+
 uv run affect-battery pilot \
   --provider anthropic \
   --model "${MODEL}" \
@@ -153,6 +172,7 @@ uv run affect-battery pilot \
   --rate-limit-rps 5 \
   --budget-max-calls 500 \
   --cost-per-call "${COST_PER_CALL}" \
+  ${TRANSFER_BANK_FLAG} \
   ${DRY_RUN} \
   ${PREREG_FLAG}
 
@@ -165,5 +185,6 @@ uv run affect-battery analyze \
   --model "${MODEL}"
 
 echo ""
-echo "Pilot complete. Reports under ${OUTPUT_DIR}/"
-echo "Top-level: ${OUTPUT_DIR}/AGGREGATE_REPORT.md"
+echo "Pilot complete. Reports under ${OUTPUT_DIR}/reports/"
+echo "Top-level: ${OUTPUT_DIR}/reports/AGGREGATE_REPORT.md"
+echo "Manifest:  ${OUTPUT_DIR}/manifest.yaml"
