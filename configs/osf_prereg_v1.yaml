@@ -199,3 +199,55 @@ amendment_chain:
       changes (e.g. real LogiQA ingestion, mixed-effects model upgrade).
     content_sha: TBD_at_finalize  # filled in by prereg.finalize_v1
     affected_sections: [hypotheses, mdes, correction_families, stopping_rules]
+
+  - amendment_id: 2
+    date: 2026-04-26
+    rationale: |
+      Methodology amendment: extend the §3.1 model panel beyond the
+      original four open-source vLLM-served checkpoints (Llama-3-8B-
+      Instruct, Mistral-7B-Instruct, Gemma-2-9B-IT, Llama-3-8B base) to
+      include contemporary closed-API models (OpenAI + Anthropic). The
+      core hypotheses (H1, H1b, H2, H3a, H3b, H3c) port over directly:
+      they ask whether AI emotional states follow biological patterns,
+      and the question is more interesting on stronger contemporary
+      models.
+
+      H4 (base-vs-instruct asymmetry) is the load-bearing exception.
+      Neither OpenAI nor Anthropic exposes a base (non-RLHF'd) version
+      of their newer models. Three options for H4 are available;
+      the chosen disposition is recorded under
+      `h4_disposition` in this entry and SHOULD be selected at run
+      time:
+
+        - retain: keep Llama-3-8B base + Llama-3-8B-Instruct as the H4
+          anchor pair alongside the API models (preserves H4 as
+          originally specified).
+
+        - reframe: redefine H4 as cross-provider asymmetry contrast
+          (e.g., compare aggregate_asymmetry_ratio across Claude Opus,
+          GPT-5, Llama-Instruct). Tests a different question than the
+          original RLHF-amplification hypothesis; report explicitly.
+
+        - drop: omit H4 from primary analysis, document as deferred.
+          Per power-analysis spec budget-contingency rule, this is
+          option (1) (defer non-primary experiment).
+
+      Reproducibility caveat: closed APIs change underneath us. Every
+      result file MUST record the API model version string at run
+      time (e.g., `claude-opus-4-7-2026-04-15`) in config so cross-run
+      drift can be detected at analysis time.
+
+    content_sha: TBD_at_finalize  # filled in by prereg.finalize_v1
+    affected_sections: [model_panel, h4_disposition, reproducibility_caveats]
+    h4_disposition: retain  # default; override at run time
+    additional_providers:
+      - provider: openai
+        env_var: OPENAI_API_KEY
+        client_class: src.models.OpenAIClient
+        capabilities: [chat]
+        base_model_supported: false
+      - provider: anthropic
+        env_var: ANTHROPIC_API_KEY
+        client_class: src.models.AnthropicClient
+        capabilities: [chat]
+        base_model_supported: false

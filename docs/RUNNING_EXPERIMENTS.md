@@ -35,9 +35,10 @@ The `analyze` step always produces `results/pilot/AGGREGATE_REPORT.md`. Per-expe
 ## Real runs (per experiment)
 
 Common flags:
-- `--model meta-llama/Meta-Llama-3-8B-Instruct` (or any of the four §3.1 models)
-- `--base-url http://<endpoint>/v1`
-- `--base-model` for the Llama-3-8B base (non-instruct) inference path; uses `/v1/completions` + few-shot scaffold instead of chat.
+- `--model <name>` (paper §3.1 model, or `gpt-5` / `claude-opus-4-7` etc. when using API providers)
+- `--provider {vllm,openai,anthropic}` (default: `vllm`). `openai` and `anthropic` route through their official SDKs; set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in env.
+- `--base-url http://<endpoint>/v1` — only relevant for `--provider vllm`
+- `--base-model` for the Llama-3-8B base (non-instruct) inference path; uses `/v1/completions` + few-shot scaffold instead of chat. **Not supported with `--provider openai` or `--provider anthropic`** (no raw-completion endpoint on those APIs).
 - `--bank arithmetic_easy_v1` (default) or `logiqa_v1` (status: candidate, currently excluded from primary).
 - `--seed 42`, `--num-runs 50`, `--temperature 0.7` (defaults match the spec).
 - Output goes to `--output-dir results/` by default; per-experiment subdirs are auto-created.
@@ -47,14 +48,42 @@ Common flags:
 No extra config needed. Uses `run_batch`; budget / rate-limit / cancel work.
 
 ```bash
+# vLLM (open-source paper §3.1 panel)
 uv run affect-battery run \
     --experiment exp1a \
+    --provider vllm \
     --model meta-llama/Meta-Llama-3-8B-Instruct \
     --condition strong_negative \
     --num-runs 50 \
     --base-url http://<endpoint>/v1 \
     --output-dir results/exp1a
+
+# Anthropic Claude
+ANTHROPIC_API_KEY=sk-ant-... uv run affect-battery run \
+    --experiment exp1a \
+    --provider anthropic \
+    --model claude-opus-4-7 \
+    --condition strong_negative \
+    --num-runs 50 \
+    --output-dir results/exp1a
+
+# OpenAI
+OPENAI_API_KEY=sk-... uv run affect-battery run \
+    --experiment exp1a \
+    --provider openai \
+    --model gpt-5 \
+    --condition strong_negative \
+    --num-runs 50 \
+    --output-dir results/exp1a
 ```
+
+**Provider notes:**
+- `--provider vllm` (default) uses the local/RunPod OpenAI-compatible endpoint at `--base-url`. This is the only provider that supports `--base-model`.
+- `--provider openai` uses `openai.AsyncOpenAI` with the `OPENAI_API_KEY` env var. Chat models only.
+- `--provider anthropic` uses `anthropic.AsyncAnthropic` with `ANTHROPIC_API_KEY`. Chat models only; the system prompt is automatically extracted from the messages array.
+- API model version drift: record the exact model string (e.g., `claude-opus-4-7-2026-04-15`) in your run config so analysis can detect cross-run drift.
+
+**H4 caveat:** the base-vs-instruct asymmetry test requires a base (non-RLHF'd) checkpoint, which only the vLLM Llama-3-8B base provides. When running the API providers, you can either keep that vLLM checkpoint as the H4 anchor, reframe H4 as a cross-provider contrast, or drop H4 (see `configs/osf_prereg_v1.yaml::amendment_chain` entry 2).
 
 Repeat per condition × per model. See `src/runners/batch_exp1a.py::run_exp1a_batch` for the model-sweep helper.
 

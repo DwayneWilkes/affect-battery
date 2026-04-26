@@ -111,6 +111,68 @@ def _build_budget(args) -> object:
     )
 
 
+def _build_client(args):
+    """Construct the right ModelClient subclass for `args.provider`.
+
+    Provider matrix:
+      - dry-run (any provider) -> DryRunClient
+      - openai -> OpenAIClient (chat only; refuses --base-model)
+      - anthropic -> AnthropicClient (chat only; refuses --base-model)
+      - vllm + --base-model -> VLLMCompletionClient (raw completions
+        endpoint for the few-shot scaffold path)
+      - vllm (default) -> VLLMClient (chat-completions endpoint)
+
+    The OpenAI / Anthropic clients refuse --base-model because neither
+    provider exposes a raw-completion endpoint for their newer models;
+    base-model studies require a vLLM endpoint with a non-instruct
+    checkpoint.
+    """
+    from .models import (
+        AnthropicClient,
+        DryRunClient,
+        OpenAIClient,
+        VLLMClient,
+        VLLMCompletionClient,
+    )
+
+    if args.dry_run:
+        return DryRunClient(model=args.model)
+
+    provider = getattr(args, "provider", "vllm")
+
+    if provider == "openai":
+        if args.base_model:
+            print(
+                "error: --base-model is not supported with --provider openai "
+                "(no raw-completion endpoint on modern OpenAI chat models)",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        return OpenAIClient(model=args.model)
+
+    if provider == "anthropic":
+        if args.base_model:
+            print(
+                "error: --base-model is not supported with --provider anthropic "
+                "(no raw-completion endpoint on Anthropic API)",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        return AnthropicClient(model=args.model)
+
+    if provider != "vllm":
+        print(
+            f"error: unknown provider {provider!r}; expected one of "
+            "{vllm, openai, anthropic}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if args.base_model:
+        return VLLMCompletionClient(base_url=args.base_url, model=args.model)
+    return VLLMClient(base_url=args.base_url, model=args.model)
+
+
 def cmd_run(args):
     """Run an experiment from CLI args.
 
@@ -120,7 +182,13 @@ def cmd_run(args):
     """
     from .runner import ExperimentConfig, ExperimentType
     from .runners import RUNNERS
-    from .models import VLLMClient, VLLMCompletionClient, DryRunClient
+    from .models import (
+        AnthropicClient,
+        DryRunClient,
+        OpenAIClient,
+        VLLMClient,
+        VLLMCompletionClient,
+    )
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
 
@@ -137,12 +205,7 @@ def cmd_run(args):
         stimulus_bank_hash=bank_hash,
     )
 
-    if args.dry_run:
-        client = DryRunClient(model=args.model)
-    elif args.base_model:
-        client = VLLMCompletionClient(base_url=args.base_url, model=args.model)
-    else:
-        client = VLLMClient(base_url=args.base_url, model=args.model)
+    client = _build_client(args)
 
     output_dir = Path(args.output_dir)
     budget = _build_budget(args)
@@ -240,12 +303,7 @@ def cmd_pilot(args):
     conditions = list(DEFAULT_PILOT_CONDITIONS)
     output_dir = Path(args.output_dir) / "pilot"
 
-    if args.dry_run:
-        client = DryRunClient(model=args.model)
-    elif args.base_model:
-        client = VLLMCompletionClient(base_url=args.base_url, model=args.model)
-    else:
-        client = VLLMClient(base_url=args.base_url, model=args.model)
+    client = _build_client(args)
 
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
@@ -348,7 +406,17 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Experiment type (paper §3 alignment; default exp1a)")
     p_run.add_argument("--num-runs", type=int, default=50)
     p_run.add_argument("--temperature", type=float, default=0.7)
-    p_run.add_argument("--base-url", default="http://localhost:8000/v1", help="vLLM API base URL")
+    p_run.add_argument(
+        "--provider", default="vllm", choices=["vllm", "openai", "anthropic"],
+        help=(
+            "Inference provider. 'vllm' (default) uses a local/remote "
+            "OpenAI-compatible server (typically RunPod). 'openai' uses "
+            "the OpenAI API (OPENAI_API_KEY env var). 'anthropic' uses "
+            "the Anthropic API (ANTHROPIC_API_KEY env var). "
+            "OpenAI/Anthropic do not support --base-model."
+        ),
+    )
+    p_run.add_argument("--base-url", default="http://localhost:8000/v1", help="vLLM API base URL (ignored for openai/anthropic providers)")
     p_run.add_argument("--output-dir", default="results")
     p_run.add_argument("--seed", type=int, default=42)
     p_run.add_argument("--dry-run", action="store_true", help="Use canned responses instead of real API")
@@ -382,6 +450,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_pilot.add_argument("--model", default="meta-llama/Meta-Llama-3-8B-Instruct")
     p_pilot.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
                          help="Experiment type (paper §3 alignment; default exp1a)")
+    p_pilot.add_argument(
+        "--provider", default="vllm", choices=["vllm", "openai", "anthropic"],
+        help="Inference provider; see `affect-battery run --help`.",
+    )
     p_pilot.add_argument("--base-url", default="http://localhost:8000/v1")
     p_pilot.add_argument("--temperature", type=float, default=0.7)
     p_pilot.add_argument("--output-dir", default="results")
