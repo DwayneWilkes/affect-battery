@@ -1,0 +1,14 @@
+# Personal secrets for this project. Copy to .envrc.local (gitignored)
+# and fill in values. direnv will source this whenever you cd into the
+# project; cd-out unsets them.
+#
+#   cp .envrc.local.example .envrc.local
+#   $EDITOR .envrc.local
+#   direnv allow
+
+# API keys for the closed-API providers.
+# export ANTHROPIC_API_KEY=sk-ant-...
+# export OPENAI_API_KEY=sk-...
+
+# Default vLLM endpoint (only relevant when --provider vllm).
+# export VLLM_BASE_URL=http://localhost:8000/v1
