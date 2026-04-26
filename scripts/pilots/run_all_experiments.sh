@@ -188,11 +188,54 @@ if [[ -n "${PARALLEL}" ]]; then
   done
   echo ""
   echo "  waiting for all experiments to complete (Ctrl-C to abort)..."
+  echo "  (heartbeat below shows progress every 30s; full per-experiment"
+  echo "   logs at ${LOG_DIR}/<exp>.log — \`tail -F ${LOG_DIR}/*.log\` to live-tail)"
+  echo ""
+
+  # Heartbeat: periodically print which experiments are still running,
+  # along with the last line of each one's log so the user can see
+  # progress without parsing 5 interleaved tqdm streams.
+  heartbeat_loop() {
+    while true; do
+      sleep 30
+      local now elapsed mins secs
+      now=$(date +%s)
+      elapsed=$(( now - START_TIME ))
+      mins=$(( elapsed / 60 ))
+      secs=$(( elapsed % 60 ))
+      local still_running=()
+      for e in "${EXPERIMENTS[@]}"; do
+        if kill -0 "${PIDS[$e]}" 2>/dev/null; then
+          still_running+=("${e}")
+        fi
+      done
+      if [[ ${#still_running[@]} -eq 0 ]]; then return 0; fi
+      echo "  [+${mins}m${secs}s] running: ${still_running[*]}"
+      for e in "${still_running[@]}"; do
+        # Grab the last non-blank line from each log; tqdm progress
+        # bars use \r so we strip CRs to get the last update.
+        local last
+        last=$(tr '\r' '\n' < "${LOG_DIR}/${e}.log" 2>/dev/null \
+               | grep -v '^$' | tail -1 | head -c 100)
+        if [[ -n "${last}" ]]; then
+          echo "    ${e}: ${last}"
+        fi
+      done
+    done
+  }
+  heartbeat_loop &
+  HEARTBEAT_PID=$!
+  CHILD_PIDS+=("${HEARTBEAT_PID}")  # also kill on SIGINT
+
   for exp in "${EXPERIMENTS[@]}"; do
     if ! wait "${PIDS[$exp]}"; then
       FAILED+=("${exp}")
     fi
   done
+
+  # Stop the heartbeat now that all experiments have completed.
+  kill "${HEARTBEAT_PID}" 2>/dev/null || true
+  wait "${HEARTBEAT_PID}" 2>/dev/null || true
   # After all done, dump the per-experiment logs sequentially so the
   # user sees the full picture without interleaved chaos.
   for exp in "${EXPERIMENTS[@]}"; do
