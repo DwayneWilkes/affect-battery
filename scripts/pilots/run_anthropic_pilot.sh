@@ -17,7 +17,10 @@
 
 set -euo pipefail
 
-MODEL="claude-sonnet-4-6"
+# Default to Haiku for cheapest validation. Override with --model
+# claude-sonnet-4-6 or --model claude-opus-4-7 once the harness is
+# verified end-to-end on Haiku.
+MODEL="claude-haiku-4-5"
 NUM_RUNS=5
 SEED=42
 DRY_RUN=""
@@ -106,9 +109,22 @@ echo ""
 
 # Note: `affect-battery pilot` runs all 7 conditions × num_runs.
 # Total API calls ≈ num_runs × 7 conditions × ~10 turns = ~350 calls
-# at the default num_runs=5. At Sonnet 4.6 pricing (~$3/M input +
-# $15/M output, ~500 input + ~150 output tokens per call) this is
-# roughly $2-3 USD. Opus 4.7 is ~5x that.
+# at the default num_runs=5, ~650 tokens per call.
+# Cost at default model:
+#   Haiku 4.5: ~$0.80/M input + $4/M output  -> ~$0.40-0.80 total
+#   Sonnet 4.6: ~$3/M input + $15/M output   -> ~$2-3 total
+#   Opus 4.7: ~$15/M input + $75/M output    -> ~$10-15 total
+# Cost-per-call default below is calibrated for Haiku; override with
+# --model claude-sonnet-4-6 / --model claude-opus-4-7 (and the script
+# will scale --cost-per-call accordingly via the case statement above).
+
+# Scale cost-per-call by model so the budget guardrail stays honest.
+case "${MODEL}" in
+  *opus*)    COST_PER_CALL="0.080" ;;  # rough mid-estimate
+  *sonnet*)  COST_PER_CALL="0.015" ;;
+  *haiku*)   COST_PER_CALL="0.003" ;;
+  *)         COST_PER_CALL="0.015" ;;  # conservative default
+esac
 
 uv run affect-battery pilot \
   --provider anthropic \
@@ -119,7 +135,7 @@ uv run affect-battery pilot \
   --max-concurrent 4 \
   --rate-limit-rps 5 \
   --budget-max-calls 500 \
-  --cost-per-call 0.015 \
+  --cost-per-call "${COST_PER_CALL}" \
   ${DRY_RUN} \
   ${PREREG_FLAG}
 
