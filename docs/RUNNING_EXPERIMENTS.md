@@ -42,9 +42,30 @@ Defaults: `claude-sonnet-4-6`, 5 runs × 7 conditions, ~350 API calls,
 roughly $2-3 USD on Sonnet (about 5x that on Opus). The script
 auto-discovers the most recent `prereg-*` tag, converts it to the
 `--pre-registration-github-commit` flag, pipes through to
-`affect-battery pilot`, and runs `analyze` on completion. Results land
-under `results/pilots/anthropic_pilot_<YYYY-MM-DD>/` with
-`AGGREGATE_REPORT.md` at the top level.
+`affect-battery pilot`, and runs `analyze` on completion.
+
+Pilot output uses the **pilot-root layout** — one directory per
+(date, model) pair, with manifest, reports, and data at separate
+sub-paths so multi-model and multi-bank work doesn't collide:
+
+```
+results/pilots/<YYYY-MM-DD>_<model_slug>/
+├── manifest.yaml             model, banks, prereg refs, per-condition timing
+├── reports/
+│   ├── AGGREGATE_REPORT.md
+│   └── exp1a_report.md
+└── data/
+    └── exp1a/
+        ├── events.jsonl
+        ├── strong_negative/0000.json...0004.json
+        ├── strong_positive/...
+        └── (other conditions)
+```
+
+Each leaf directory holds exactly one cell of (model × experiment ×
+condition). H4 cross-model report is suppressed when the corpus
+contains <2 distinct models (single-model pilots produce no
+nonsense placeholder report).
 
 Override the model with `--model claude-opus-4-7` for the frontier
 Opus checkpoint, or `--model claude-haiku-4-5` for the cheapest
@@ -411,7 +432,9 @@ The whole `results/` tree is gitignored by default. Reports are markdown; commit
 - **Exp 3a refuses to start with `pilot-seed SHA mismatch`**: someone edited the seed JSON after `emit_seed`. Re-run the pilot (or restore the original) and re-emit; the SHA must match canonicalized JSON exactly.
 - **Manipulation check returns `UNAVAILABLE`**: the model has no `no_conditioning` runs. Schedule a no_conditioning condition alongside the treatment arms; UNAVAILABLE is a measurement gap, NOT a fail.
 - **Candidate-status bank excluded from primary aggregation**: a bank with `status: candidate` is excluded by `src/conditioning/banks.py::is_primary_analysis_eligible` until its alignment review records `verdict: pass`. Promote a published-benchmark bank by re-ingesting (`scripts/ingest_logic_bank.py`, etc.) which sets `status: active` automatically.
-- **`affect-battery analyze` produces empty per-experiment tables**: the corpus dir exists but no result JSONs match the schema. Check `results/<exp>/*.json` parses and has `experiment_type`, `condition`, and `body` fields.
+- **`affect-battery analyze` produces empty per-experiment tables**: the corpus dir exists but no result JSONs match the schema. Check `<pilot_root>/data/<exp>/<condition>/*.json` parses and has `experiment_type`, `condition`, and `body` fields. Legacy flat layouts at `<pilot_root>/<exp>/*.json` still work via backward-compat fallback in `_resolve_corpus_dir`.
+- **`affect-battery analyze` reports 0.000 accuracy across all conditions**: the runner predates the alias-aware scoring fix, so `transfer_correct` was empty in the result files. Re-run analyze on the same data — `_load_corpus` backfills correctness on the fly via `score_factual_qa`. If accuracy is now uniformly 1.000 instead of 0.000, the model is saturating on the transfer bank: pass `--transfer-bank configs/banks/exp1a_factual_qa_hard_v1.yaml` (TriviaQA hard, alias-annotated) to break the ceiling.
+- **Re-piloting with a different `--transfer-bank` returns identical results**: the cache layer correctly invalidates when `transfer_bank_hash` differs (sha256 over the bank file). If you're seeing stale data, verify the bank file changed on disk; identical contents = identical hash = correctly served from cache.
 - **`--experiment exp3a/b/c` exits with `requires --runner-config`**: those experiments have additional config (intensity levels / prompts / items) the base CLI doesn't surface as flags.
 
 ## Where to look in code
