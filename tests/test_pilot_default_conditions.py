@@ -68,16 +68,22 @@ class TestCmdPilotUsesSevenConditionsByDefault:
         monkeypatch.setattr("src.cli.VLLMClient", _NoOpClient, raising=False)
         monkeypatch.setattr("src.cli.VLLMCompletionClient", _NoOpClient, raising=False)
 
-        # Intercept asyncio.run and inspect the coroutine's conditions.
-        # Simpler path: wrap run_batch so each invocation records the condition.
-        async def fake_run_batch(config, *args, **kwargs):
+        # Intercept the per-experiment runner dispatch so we capture each
+        # condition cmd_pilot constructs an ExperimentConfig for. cmd_pilot
+        # resolves the runner via `RUNNERS[args.experiment]` (post the
+        # multi-experiment dispatch refactor), so patching run_batch on
+        # src.runner alone misses the dispatch path. Patching the entry
+        # in the RUNNERS dict is the principled hook.
+        async def fake_runner(config, *args, **kwargs):
             captured_conditions.append(config.condition)
-            # Return an empty async generator.
             return
             yield  # makes this an async generator
 
-        monkeypatch.setattr("src.runner.run_batch", fake_run_batch)
-        monkeypatch.setattr("src.cli.run_batch", fake_run_batch, raising=False)
+        from src.runners import RUNNERS as _RUNNERS
+        # Patch every experiment slot so the test works regardless of
+        # which --experiment was passed.
+        for k in list(_RUNNERS):
+            monkeypatch.setitem(_RUNNERS, k, fake_runner)
 
         # Drive asyncio.run without actually scheduling. We want the body to
         # run to completion on our fake coroutines.

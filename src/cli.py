@@ -366,6 +366,60 @@ def _build_client(args):
     return VLLMClient(base_url=args.base_url, model=args.model)
 
 
+def _build_runner_extra_kwargs(args) -> dict:
+    """Per-experiment extra kwargs loaded from --runner-config YAML.
+
+    exp3a/3b/3c require additional inputs (intensity_levels +
+    pilot_seed_path, prompts + n_generations, items) that don't fit on
+    the base ExperimentConfig. Both cmd_run and cmd_pilot consume this
+    helper so the dispatch contract stays in one place.
+    """
+    extra: dict = {}
+    if args.experiment not in {"exp3a", "exp3b", "exp3c"}:
+        return extra
+    if not getattr(args, "runner_config", None):
+        print(
+            f"error: --experiment {args.experiment} requires "
+            f"--runner-config <path-to-yaml>",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    import yaml as _yaml
+    cfg = _yaml.safe_load(Path(args.runner_config).read_text())
+    if args.experiment == "exp3a":
+        extra["intensity_levels"] = cfg["intensity_levels"]
+        extra["pilot_seed_path"] = Path(cfg["pilot_seed_path"])
+    elif args.experiment == "exp3b":
+        extra["prompts"] = cfg["prompts"]
+        extra["n_generations"] = cfg.get("n_generations", 10)
+    elif args.experiment == "exp3c":
+        extra["items"] = cfg["items"]
+    return extra
+
+
+def _build_runner_batch_kwargs(args, budget, cancel_event) -> dict:
+    """Per-experiment batch-control kwargs.
+
+    exp1a/1b/2/3a accept the full batch_kwargs set (max_concurrent +
+    circuit-breaker threshold + budget + rate limit). exp3b/3c implement
+    their own loop and only accept the budget + rate limit + cancel
+    subset. Centralized here so cmd_run and cmd_pilot don't drift.
+    """
+    if args.experiment in {"exp3b", "exp3c"}:
+        return dict(
+            budget=budget,
+            rate_limit_rps=args.rate_limit_rps,
+            cancel_event=cancel_event,
+        )
+    return dict(
+        max_concurrent=args.max_concurrent,
+        circuit_breaker_threshold=args.circuit_breaker_threshold,
+        budget=budget,
+        rate_limit_rps=args.rate_limit_rps,
+        cancel_event=cancel_event,
+    )
+
+
 def cmd_run(args):
     """Run an experiment from CLI args.
 
@@ -423,57 +477,8 @@ def cmd_run(args):
     _install_sigint_handler(cancel_event)
 
     runner = RUNNERS[args.experiment]
-
-    # Per-experiment extra kwargs loaded from --runner-config YAML when
-    # the runner needs them. exp3a/exp3b/exp3c require additional kwargs
-    # (intensity_levels / pilot_seed_path, prompts + n_generations,
-    # items) that aren't covered by the base ExperimentConfig.
-    extra_kwargs: dict = {}
-    if args.experiment in {"exp3a", "exp3b", "exp3c"}:
-        if not args.runner_config:
-            print(
-                f"error: --experiment {args.experiment} requires "
-                f"--runner-config <path-to-yaml>",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        import yaml
-        runner_cfg = yaml.safe_load(Path(args.runner_config).read_text())
-        if args.experiment == "exp3a":
-            extra_kwargs["intensity_levels"] = runner_cfg["intensity_levels"]
-            extra_kwargs["pilot_seed_path"] = Path(runner_cfg["pilot_seed_path"])
-        elif args.experiment == "exp3b":
-            extra_kwargs["prompts"] = runner_cfg["prompts"]
-            extra_kwargs["n_generations"] = runner_cfg.get("n_generations", 10)
-        elif args.experiment == "exp3c":
-            extra_kwargs["items"] = runner_cfg["items"]
-
-    # exp1a / exp1b / exp2 delegate to run_batch and accept the full
-    # batch_kwargs set. exp3a wraps run_batch and forwards them via
-    # **kwargs. exp3b / exp3c implement their own loop and accept the
-    # subset {budget, rate_limit_rps, cancel_event}.
-    if args.experiment in {"exp1a", "exp1b", "exp2"}:
-        batch_kwargs = dict(
-            max_concurrent=args.max_concurrent,
-            circuit_breaker_threshold=args.circuit_breaker_threshold,
-            budget=budget,
-            rate_limit_rps=args.rate_limit_rps,
-            cancel_event=cancel_event,
-        )
-    elif args.experiment == "exp3a":
-        batch_kwargs = dict(
-            max_concurrent=args.max_concurrent,
-            circuit_breaker_threshold=args.circuit_breaker_threshold,
-            budget=budget,
-            rate_limit_rps=args.rate_limit_rps,
-            cancel_event=cancel_event,
-        )
-    else:  # exp3b, exp3c
-        batch_kwargs = dict(
-            budget=budget,
-            rate_limit_rps=args.rate_limit_rps,
-            cancel_event=cancel_event,
-        )
+    extra_kwargs = _build_runner_extra_kwargs(args)
+    batch_kwargs = _build_runner_batch_kwargs(args, budget, cancel_event)
 
     # Single non-scrolling progress bar over the expected run count.
     # exp3a / exp3b iterate per (level / prompt) on top of num_runs;
@@ -568,8 +573,12 @@ def cmd_pilot(args):
     if not args.dry_run:
         _check_runtime_gates(args)
 
+    from .runner import ExperimentConfig, ExperimentType, run_batch
+    from .runners import RUNNERS
+
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
     conditions = list(DEFAULT_PILOT_CONDITIONS)
+    experiment_type = ExperimentType(args.experiment)
     # Pilot-root layout: <output_dir> is the pilot root. Data lives under
     # <output_dir>/data/<experiment>/ so it can sit alongside reports/
     # (written by analyze) and manifest.yaml (written below).
@@ -577,6 +586,10 @@ def cmd_pilot(args):
     output_dir = pilot_root / "data" / args.experiment
 
     client = _build_client(args)
+    # Per-experiment runner dispatch (parity with cmd_run). exp3a/3b/3c
+    # need --runner-config; the helper raises SystemExit(2) if missing.
+    runner = RUNNERS[args.experiment]
+    extra_kwargs = _build_runner_extra_kwargs(args)
 
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
@@ -591,7 +604,13 @@ def cmd_pilot(args):
     from tqdm import tqdm
     _quiet_per_run_logger()
 
-    total = len(conditions) * args.num_runs
+    # exp3a/3b/3c iterate per (level / prompt / item) on top of num_runs
+    # so the bar's `total` would be wrong; let tqdm count from None.
+    bar_total = (
+        len(conditions) * args.num_runs
+        if args.experiment in {"exp1a", "exp1b", "exp2"}
+        else None
+    )
     started = _time.time()
     started_utc = datetime.now(timezone.utc).isoformat()
     # Per-condition timing for the end-of-run summary table.
@@ -599,7 +618,9 @@ def cmd_pilot(args):
     per_cond_count: dict[str, int] = {}
 
     async def _run():
-        with tqdm(total=total, desc="pilot", unit="run", dynamic_ncols=True) as bar:
+        with tqdm(
+            total=bar_total, desc="pilot", unit="run", dynamic_ncols=True,
+        ) as bar:
             for cond in conditions:
                 if cancel_event.is_set():
                     break
@@ -609,11 +630,14 @@ def cmd_pilot(args):
                 config = ExperimentConfig(
                     model_name=args.model,
                     condition=cond,
-                    experiment_type=ExperimentType.TRANSFER_WITHIN,
+                    experiment_type=experiment_type,
                     num_runs=args.num_runs,
                     temperature=args.temperature,
                     seed=args.seed,
                     is_base_model=args.base_model,
+                    # neutral_turns is the persistence-recovery sweep
+                    # parameter (exp2). Default 0 for non-exp2 experiments.
+                    neutral_turns=getattr(args, "neutral_turns", 0) or 0,
                     stimulus_bank=bank_id,
                     stimulus_bank_hash=bank_hash,
                     transfer_bank=getattr(args, "transfer_bank", None) or "",
@@ -621,14 +645,16 @@ def cmd_pilot(args):
                         getattr(args, "transfer_bank", None)
                     ),
                 )
-                async for _result in run_batch(
+                # Build batch_kwargs per-condition since cancel_event +
+                # budget are shared across the loop.
+                batch_kwargs = _build_runner_batch_kwargs(
+                    args, budget, cancel_event,
+                )
+                async for _result in runner(
                     config, client,
-                    max_concurrent=args.max_concurrent,
                     output_dir=output_dir,
-                    circuit_breaker_threshold=args.circuit_breaker_threshold,
-                    budget=budget,
-                    rate_limit_rps=args.rate_limit_rps,
-                    cancel_event=cancel_event,
+                    **extra_kwargs,
+                    **batch_kwargs,
                 ):
                     bar.update(1)
                     cond_completed += 1
@@ -876,6 +902,18 @@ def build_parser() -> argparse.ArgumentParser:
              "When unset, the runner falls back to the hardcoded "
              "factual_qa pool — fine for legacy parity, but will "
              "ceiling out on frontier models.",
+    )
+    p_pilot.add_argument(
+        "--runner-config", default=None,
+        help="Per-experiment runner config YAML. Required for "
+             "--experiment in {exp3a, exp3b, exp3c} (intensity_levels / "
+             "prompts / items). Optional otherwise.",
+    )
+    p_pilot.add_argument(
+        "--neutral-turns", type=int, default=0,
+        help="Number of neutral conditioning turns between conditioning "
+             "and transfer phases. Used by exp2 persistence-recovery; "
+             "ignored by other experiments. Default 0.",
     )
     _add_prereg_gate_args(p_pilot)
     _add_guardrail_args(p_pilot)
