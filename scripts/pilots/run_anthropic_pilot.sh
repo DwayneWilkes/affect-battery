@@ -38,6 +38,7 @@ PREREG_TAG=""
 RUNNER_CONFIG=""
 NEUTRAL_TURNS=0
 OVERWRITE=""
+ESTIMATE=""
 # Default to the alias-aware TriviaQA hard subset so frontier models don't
 # saturate on the legacy 6-item hardcoded pool. Override with
 # --transfer-bank '' to use the legacy pool, or with another bank path.
@@ -56,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --runner-config)  RUNNER_CONFIG="$2"; shift 2 ;;
     --neutral-turns)  NEUTRAL_TURNS="$2"; shift 2 ;;
     --overwrite)      OVERWRITE="--overwrite"; shift ;;
+    --estimate)       ESTIMATE="--estimate"; shift ;;
     -h|--help)
       grep '^# ' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -93,7 +95,9 @@ fi
 
 # ---- Pre-flight ----
 
-if [[ -z "${DRY_RUN}" ]]; then
+# --estimate computes cost + wall-clock without making API calls;
+# no API key needed. --dry-run uses canned responses; same.
+if [[ -z "${DRY_RUN}" && -z "${ESTIMATE}" ]]; then
   if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
     echo "error: ANTHROPIC_API_KEY not set. Export it from your shell profile" >&2
     echo "       or pass --dry-run for an offline smoke test." >&2
@@ -102,7 +106,7 @@ if [[ -z "${DRY_RUN}" ]]; then
 fi
 
 # Resolve a pre-registration tag if the user didn't supply one.
-if [[ -z "${PREREG_TAG}" && -z "${SKIP_PREREG}" && -z "${DRY_RUN}" ]]; then
+if [[ -z "${PREREG_TAG}" && -z "${SKIP_PREREG}" && -z "${DRY_RUN}" && -z "${ESTIMATE}" ]]; then
   # Pick the most recent prereg-* tag, if any.
   PREREG_TAG=$(git tag --list 'prereg-*' --sort=-creatordate | head -1)
   if [[ -z "${PREREG_TAG}" ]]; then
@@ -187,6 +191,14 @@ RUNNER_CONFIG_FLAG=""
 if [[ -n "${RUNNER_CONFIG}" ]]; then
   RUNNER_CONFIG_FLAG="--runner-config ${RUNNER_CONFIG}"
 fi
+# For --estimate, omit --cost-per-call so the Python tier resolution
+# can pick the right per-model default and label it 'exact'/'tier'
+# in the estimate output. For real runs, the bash default is a
+# meaningful budget guard.
+COST_PER_CALL_FLAG=""
+if [[ -z "${ESTIMATE}" ]]; then
+  COST_PER_CALL_FLAG="--cost-per-call ${COST_PER_CALL}"
+fi
 
 uv run affect-battery pilot \
   --provider anthropic \
@@ -199,22 +211,26 @@ uv run affect-battery pilot \
   --max-concurrent 4 \
   --rate-limit-rps 5 \
   --budget-max-calls 500 \
-  --cost-per-call "${COST_PER_CALL}" \
+  ${COST_PER_CALL_FLAG} \
   ${TRANSFER_BANK_FLAG} \
   ${RUNNER_CONFIG_FLAG} \
   ${OVERWRITE} \
+  ${ESTIMATE} \
   ${DRY_RUN} \
   ${PREREG_FLAG}
 
 # ---- Analyze ----
+# Skip when --estimate (no real pilot ran, no results to analyze).
 
-echo ""
-echo "Running analysis on pilot results..."
-uv run affect-battery analyze \
-  --results-dir "${OUTPUT_DIR}" \
-  --model "${MODEL}"
+if [[ -z "${ESTIMATE}" ]]; then
+  echo ""
+  echo "Running analysis on pilot results..."
+  uv run affect-battery analyze \
+    --results-dir "${OUTPUT_DIR}" \
+    --model "${MODEL}"
 
-echo ""
-echo "Pilot complete. Reports under ${OUTPUT_DIR}/reports/"
-echo "Top-level: ${OUTPUT_DIR}/reports/AGGREGATE_REPORT.md"
-echo "Manifest:  ${OUTPUT_DIR}/manifest.yaml"
+  echo ""
+  echo "Pilot complete. Reports under ${OUTPUT_DIR}/reports/"
+  echo "Top-level: ${OUTPUT_DIR}/reports/AGGREGATE_REPORT.md"
+  echo "Manifest:  ${OUTPUT_DIR}/manifest.yaml"
+fi

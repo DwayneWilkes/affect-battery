@@ -318,6 +318,234 @@ def _hash_transfer_bank(bank_path: str | None) -> str:
     return hashlib.sha256(Path(bank_path).read_bytes()).hexdigest()
 
 
+# Per-call cost estimates (USD), blended input + output for typical
+# affect-battery call shape (~500 input + ~100 output tokens). Values
+# calibrated against the public-API pricing each provider documents at
+# the time of authoring (2026-04). For precise budget tracking, pass
+# --cost-per-call to override.
+_PER_CALL_COST_USD: dict[str, float] = {
+    # Anthropic
+    "claude-haiku-4-5":  0.0030,
+    "claude-sonnet-4-6": 0.0150,
+    "claude-opus-4-7":   0.0800,
+    # OpenAI
+    "gpt-4o-mini":       0.0010,
+    "gpt-4o":            0.0200,
+    "gpt-4-turbo":       0.0300,
+}
+
+
+def _resolve_per_call_cost(model: str) -> tuple[float, str]:
+    """Return (cost_usd_per_call, source). Source is one of:
+      'exact' — model name matched a row in _PER_CALL_COST_USD
+      'tier'  — substring match on 'haiku' / 'sonnet' / 'opus'
+      'default' — no match; using a conservative 0.005 fallback
+    """
+    if model in _PER_CALL_COST_USD:
+        return _PER_CALL_COST_USD[model], "exact"
+    lo = model.lower()
+    if "haiku" in lo:
+        return 0.0030, "tier"
+    if "sonnet" in lo:
+        return 0.0150, "tier"
+    if "opus" in lo:
+        return 0.0800, "tier"
+    if "gpt-4o-mini" in lo or "mini" in lo:
+        return 0.0010, "tier"
+    if "gpt-4" in lo:
+        return 0.0200, "tier"
+    return 0.0050, "default"
+
+
+def _empirical_seconds_per_call(model: str, results_root: Path) -> float | None:
+    """Average wall-clock seconds per API call across prior pilots of this
+    model. Pulled from manifest.yaml `timing_per_condition.*` and
+    derived calls-per-result. Returns None when no prior pilot data
+    exists for `model`.
+
+    Lets `--estimate` give realistic time forecasts for repeat models
+    rather than always falling back to coarse tier defaults.
+    """
+    import yaml as _yaml
+
+    if not results_root.exists():
+        return None
+    samples: list[float] = []
+    for manifest_path in results_root.glob("**/manifest.yaml"):
+        try:
+            m = _yaml.safe_load(manifest_path.read_text())
+        except Exception:
+            continue
+        if not isinstance(m, dict) or m.get("model") != model:
+            continue
+        timing = m.get("timing_per_condition") or {}
+        n_runs = m.get("num_runs") or 0
+        n_cond = len(m.get("conditions") or [])
+        cond_turns = m.get("num_conditioning_turns") or 5
+        transfer_qs = m.get("num_transfer_questions") or 5
+        calls_per_run = cond_turns + transfer_qs
+        total_calls = n_runs * n_cond * calls_per_run
+        # `wall_clock_seconds` is the tightest empirical signal; fall
+        # back to summing per-condition wall_clock_seconds.
+        wall = m.get("wall_clock_seconds")
+        if wall is None:
+            wall = sum(
+                (t.get("wall_clock_seconds") or t.get("total_seconds") or 0)
+                for t in timing.values() if isinstance(t, dict)
+            )
+        if total_calls > 0 and wall and wall > 0:
+            samples.append(wall / total_calls)
+    return sum(samples) / len(samples) if samples else None
+
+
+def _yield_per_condition(args, extra_kwargs: dict) -> int:
+    """Number of result files yielded per condition for the given
+    experiment shape. Drives both the progress-bar total and the
+    --estimate computation.
+    """
+    if args.experiment in {"exp1a", "exp1b", "exp2"}:
+        return args.num_runs
+    if args.experiment == "exp3a":
+        return args.num_runs * len(extra_kwargs["intensity_levels"])
+    if args.experiment == "exp3b":
+        return args.num_runs * len(extra_kwargs["prompts"])
+    if args.experiment == "exp3c":
+        return args.num_runs * len(extra_kwargs["items"])
+    return args.num_runs
+
+
+def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
+    """Compute the (results, calls, cost, wall-clock) estimate without
+    touching the API. Pure function over (args, conditions, extra_kwargs)
+    so it's straightforward to test and to call from cmd_pilot/cmd_run."""
+    n_cond = len(conditions)
+    n_results = n_cond * (per_cond_yield or args.num_runs)
+
+    # Calls per result varies by experiment shape. Conditioning turns
+    # share between results in exp3b/3c (one conditioning prelude per run,
+    # then multiple prompts/items reuse the conditioning context).
+    cond_turns = getattr(args, "num_conditioning_turns", 5) or 5
+    transfer_qs = getattr(args, "num_transfer_questions", 5) or 5
+    if args.experiment in {"exp1a", "exp1b"}:
+        calls_per_result = cond_turns + transfer_qs
+    elif args.experiment == "exp2":
+        calls_per_result = cond_turns + (args.neutral_turns or 0) + transfer_qs
+    elif args.experiment == "exp3a":
+        # one conditioning + one transfer per (intensity_level, run)
+        calls_per_result = cond_turns + 1
+    elif args.experiment == "exp3b":
+        # conditioning once per run; n_generations per (prompt, run).
+        # Per-result amortizes conditioning across prompts.
+        n_prompts = max(len(extra_kwargs.get("prompts") or []), 1)
+        n_gens = extra_kwargs.get("n_generations", 10) or 10
+        calls_per_run = cond_turns + n_prompts * n_gens
+        results_per_run = n_prompts
+        calls_per_result = calls_per_run / results_per_run
+    elif args.experiment == "exp3c":
+        # conditioning once per run; one call per item.
+        n_items = max(len(extra_kwargs.get("items") or []), 1)
+        calls_per_run = cond_turns + n_items
+        results_per_run = n_items
+        calls_per_result = calls_per_run / results_per_run
+    else:
+        calls_per_result = cond_turns + transfer_qs
+
+    n_calls = int(round(n_results * calls_per_result))
+
+    # Cost
+    if getattr(args, "cost_per_call", None):
+        cost_per_call = float(args.cost_per_call)
+        cost_source = "user-override (--cost-per-call)"
+    else:
+        cost_per_call, cost_source = _resolve_per_call_cost(args.model)
+    total_cost_usd = n_calls * cost_per_call
+
+    # Wall-clock: prefer empirical from prior pilots of the same model.
+    sec_per_call = _empirical_seconds_per_call(
+        args.model, Path("results/pilots"),
+    )
+    if sec_per_call is None:
+        # Tier defaults (rough; calibrated to typical SDK round-trip).
+        lo = args.model.lower()
+        if "haiku" in lo or "mini" in lo:
+            sec_per_call = 1.5
+        elif "sonnet" in lo:
+            sec_per_call = 2.5
+        elif "opus" in lo:
+            sec_per_call = 4.0
+        else:
+            sec_per_call = 2.0
+        time_source = "tier default"
+    else:
+        time_source = "empirical (prior pilot manifest)"
+
+    max_concurrent = max(getattr(args, "max_concurrent", 1) or 1, 1)
+    rate_limit = getattr(args, "rate_limit_rps", None)
+    # Effective throughput is the lower of: concurrency-throughput vs
+    # rate-limit-throughput. With high concurrency and unset rate limit,
+    # concurrency dominates.
+    concurrency_rps = max_concurrent / sec_per_call
+    if rate_limit:
+        effective_rps = min(concurrency_rps, float(rate_limit))
+    else:
+        effective_rps = concurrency_rps
+    wall_clock_sec = n_calls / effective_rps + 5.0  # +5s overhead
+
+    return {
+        "model": args.model,
+        "experiment": args.experiment,
+        "n_conditions": n_cond,
+        "num_runs": args.num_runs,
+        "n_results_yielded": n_results,
+        "n_api_calls": n_calls,
+        "calls_per_result": round(calls_per_result, 2),
+        "cost_per_call_usd": cost_per_call,
+        "cost_source": cost_source,
+        "total_cost_usd": total_cost_usd,
+        "sec_per_call": sec_per_call,
+        "time_source": time_source,
+        "wall_clock_sec": wall_clock_sec,
+        "wall_clock_min": wall_clock_sec / 60.0,
+        "max_concurrent": max_concurrent,
+        "effective_rps": effective_rps,
+    }
+
+
+def _print_estimate(est: dict) -> None:
+    """Pretty-print the estimate dict from _estimate_pilot."""
+    print(
+        f"\nEstimate: {est['model']} / {est['experiment']} / "
+        f"{est['num_runs']} runs × {est['n_conditions']} conditions"
+    )
+    print(f"  results yielded:    {est['n_results_yielded']}")
+    print(
+        f"  API calls:          {est['n_api_calls']:>6} "
+        f"(~{est['calls_per_result']:.1f} calls/result)"
+    )
+    print(
+        f"  cost per call:      ${est['cost_per_call_usd']:.4f} "
+        f"({est['cost_source']})"
+    )
+    print(f"  total cost:         ${est['total_cost_usd']:.2f}")
+    print(
+        f"  seconds per call:   {est['sec_per_call']:.2f}s "
+        f"({est['time_source']})"
+    )
+    mins = est['wall_clock_min']
+    if mins < 1.0:
+        time_str = f"{est['wall_clock_sec']:.0f}s"
+    elif mins < 60.0:
+        time_str = f"{mins:.1f} min"
+    else:
+        time_str = f"{mins / 60.0:.1f} hr"
+    print(
+        f"  wall-clock:         {time_str} "
+        f"(~{est['effective_rps']:.1f} calls/s effective)"
+    )
+    print(f"  max-concurrent:     {est['max_concurrent']}")
+    print()
+
+
 def _quiet_per_run_logger() -> None:
     """Demote per-API-call INFO logs to DEBUG so the tqdm progress bar
     isn't interleaved with one log line per run. The runner module's
@@ -498,6 +726,21 @@ def cmd_run(args):
     # <output_dir>/data/<experiment>/ so it sits alongside reports/ and
     # manifest.yaml. Same shape cmd_pilot uses; this gives full-experiment
     # runs the same on-disk structure as quick pilots.
+    runner = RUNNERS[args.experiment]
+    extra_kwargs = _build_runner_extra_kwargs(args)
+
+    # --estimate: print cost + wall-clock and exit without running.
+    # cmd_run is single-condition, so n_conditions = 1 in the estimate.
+    if getattr(args, "estimate", False):
+        est = _estimate_pilot(
+            args,
+            conditions=[Condition(args.condition)],
+            extra_kwargs=extra_kwargs,
+            per_cond_yield=_yield_per_condition(args, extra_kwargs),
+        )
+        _print_estimate(est)
+        return
+
     pilot_root = Path(args.output_dir)
     backup = _maybe_backup_pilot_dir(pilot_root, getattr(args, "overwrite", False))
     if backup is not None:
@@ -507,8 +750,6 @@ def cmd_run(args):
     cancel_event = asyncio.Event()
     _install_sigint_handler(cancel_event)
 
-    runner = RUNNERS[args.experiment]
-    extra_kwargs = _build_runner_extra_kwargs(args)
     batch_kwargs = _build_runner_batch_kwargs(args, budget, cancel_event)
 
     # Single non-scrolling progress bar over the expected run count.
@@ -600,16 +841,31 @@ def cmd_pilot(args):
     explicit pilot under an existing pre-reg.
     """
     from .runner import ExperimentConfig, ExperimentType, run_batch
-
-    if not args.dry_run:
-        _check_runtime_gates(args)
-
-    from .runner import ExperimentConfig, ExperimentType, run_batch
     from .runners import RUNNERS
+
+    estimate_only = getattr(args, "estimate", False)
+    # Skip runtime gates for --estimate (no API spend, no real run).
+    if not args.dry_run and not estimate_only:
+        _check_runtime_gates(args)
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
     conditions = list(DEFAULT_PILOT_CONDITIONS)
     experiment_type = ExperimentType(args.experiment)
+
+    # Per-experiment runner dispatch (parity with cmd_run). exp3a/3b/3c
+    # need --runner-config; the helper raises SystemExit(2) if missing.
+    # Built early so --estimate can read the multipliers without
+    # constructing a client or touching disk.
+    runner = RUNNERS[args.experiment]
+    extra_kwargs = _build_runner_extra_kwargs(args)
+    per_cond_yield_for_est = _yield_per_condition(args, extra_kwargs)
+
+    # --estimate: print cost + wall-clock and return without running.
+    if estimate_only:
+        est = _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield_for_est)
+        _print_estimate(est)
+        return
+
     # Pilot-root layout: <output_dir> is the pilot root. Data lives under
     # <output_dir>/data/<experiment>/ so it can sit alongside reports/
     # (written by analyze) and manifest.yaml (written below).
@@ -620,10 +876,6 @@ def cmd_pilot(args):
     output_dir = pilot_root / "data" / args.experiment
 
     client = _build_client(args)
-    # Per-experiment runner dispatch (parity with cmd_run). exp3a/3b/3c
-    # need --runner-config; the helper raises SystemExit(2) if missing.
-    runner = RUNNERS[args.experiment]
-    extra_kwargs = _build_runner_extra_kwargs(args)
 
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
@@ -638,28 +890,11 @@ def cmd_pilot(args):
     from tqdm import tqdm
     _quiet_per_run_logger()
 
-    # Per-condition yield differs by experiment shape:
-    #   exp1a/1b/2: 1 result per (run) → num_runs per condition
-    #   exp3a:      num_runs × len(intensity_levels)
-    #   exp3b:      num_runs × len(prompts)
-    #   exp3c:      num_runs × len(items)
-    # Computing proper bar totals (vs falling back to None) gives the
-    # user real progress percentages even on multi-axis experiments.
-    if args.experiment in {"exp1a", "exp1b", "exp2"}:
-        per_cond_yield = args.num_runs
-    elif args.experiment == "exp3a":
-        per_cond_yield = args.num_runs * len(extra_kwargs["intensity_levels"])
-    elif args.experiment == "exp3b":
-        per_cond_yield = args.num_runs * len(extra_kwargs["prompts"])
-    elif args.experiment == "exp3c":
-        per_cond_yield = args.num_runs * len(extra_kwargs["items"])
-    else:
-        per_cond_yield = None
-    bar_total = (
-        len(conditions) * per_cond_yield
-        if per_cond_yield is not None
-        else None
-    )
+    # Bar total: results per condition × n_conditions. Computed via the
+    # shared `_yield_per_condition` helper so the progress bar and the
+    # --estimate calculator agree on the work breakdown.
+    per_cond_yield = _yield_per_condition(args, extra_kwargs)
+    bar_total = len(conditions) * per_cond_yield
     started = _time.time()
     started_utc = datetime.now(timezone.utc).isoformat()
     # Per-condition timing for the end-of-run summary table.
@@ -929,6 +1164,15 @@ def build_parser() -> argparse.ArgumentParser:
              "Use --overwrite when you want a clean before/after audit "
              "trail (the backup is preserved, not deleted).",
     )
+    p_run.add_argument(
+        "--estimate", action="store_true",
+        help="Print a cost + wall-clock estimate for this run (no API "
+             "calls, no client constructed). Estimate uses tier-based "
+             "per-call cost defaults and either empirical "
+             "seconds-per-call from prior pilot manifests of the same "
+             "model OR tier-default fallbacks. Override per-call cost "
+             "with --cost-per-call.",
+    )
     _add_guardrail_args(p_run)
     p_run.set_defaults(func=cmd_run)
 
@@ -981,6 +1225,15 @@ def build_parser() -> argparse.ArgumentParser:
              "per-cell correctness without touching prior data on disk. "
              "Use --overwrite when you want a clean before/after audit "
              "trail (the backup is preserved, not deleted).",
+    )
+    p_pilot.add_argument(
+        "--estimate", action="store_true",
+        help="Print a cost + wall-clock estimate for this pilot (no API "
+             "calls, no client constructed). Estimate uses tier-based "
+             "per-call cost defaults and either empirical "
+             "seconds-per-call from prior pilot manifests of the same "
+             "model OR tier-default fallbacks. Override per-call cost "
+             "with --cost-per-call.",
     )
     _add_prereg_gate_args(p_pilot)
     _add_guardrail_args(p_pilot)
