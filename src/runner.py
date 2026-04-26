@@ -381,7 +381,13 @@ async def run_conditioning_phase(
         for i in range(max_turns):
             problem = problems[i]
             messages.append({"role": "user", "content": problem.question})
-            response = await client.complete(messages, temperature=config.temperature)
+            # Conditioning answers are short numerics — 50 tokens caps
+            # the model's verbosity without truncating valid answers,
+            # cutting output cost on tiers where the model would
+            # otherwise emit prose ("The answer is 47, computed as...").
+            response = await client.complete(
+                messages, temperature=config.temperature, max_tokens=50,
+            )
             messages.append({"role": "assistant", "content": response})
             conditioning_responses.append(response)
 
@@ -423,7 +429,10 @@ async def run_single(
     for _ in range(config.neutral_turns):
         buffer_problems = get_arithmetic_problems(1, seed=seed + 1000 + _)
         messages.append({"role": "user", "content": buffer_problems[0].question})
-        response = await client.complete(messages, temperature=config.temperature)
+        # Neutral buffer turns are arithmetic; 50 tokens is enough.
+        response = await client.complete(
+            messages, temperature=config.temperature, max_tokens=50,
+        )
         messages.append({"role": "assistant", "content": response})
         extracted = extract_numeric_answer(response)
         is_correct = extracted is not None and abs(extracted - buffer_problems[0].answer) < 0.01
@@ -436,7 +445,12 @@ async def run_single(
     transfer_responses = []
     for q in transfer_qs:
         messages.append({"role": "user", "content": q.question})
-        response = await client.complete(messages, temperature=config.temperature)
+        # Transfer answers may include hedging prose (exp3c-style
+        # responses can run 100-200 tokens); 256 caps the worst case
+        # without truncating reasonable hedge-rich answers.
+        response = await client.complete(
+            messages, temperature=config.temperature, max_tokens=256,
+        )
         messages.append({"role": "assistant", "content": response})
         transfer_responses.append(response)
 

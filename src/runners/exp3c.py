@@ -96,7 +96,11 @@ async def run_exp3c(
         # appends its question to a copy of the conditioning history.
         async def _ask(item: dict) -> tuple[dict, str]:
             messages = cond_messages + [{"role": "user", "content": item["question"]}]
-            response = await budgeted_client.complete(messages, temperature=config.temperature)
+            # exp3c factual QA + hedging measurement: 256 tokens is
+            # plenty for the longest legitimate hedge-rich answer.
+            response = await budgeted_client.complete(
+                messages, temperature=config.temperature, max_tokens=256,
+            )
             return item, response
 
         results_per_item = await asyncio.gather(*[_ask(it) for it in items])

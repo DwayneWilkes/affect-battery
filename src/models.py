@@ -310,7 +310,21 @@ class AnthropicClient(ModelClient):
             "max_tokens": max_tokens,
         }
         if system:
-            kwargs["system"] = system
+            # Anthropic prompt caching: mark the system prompt as
+            # cacheable. Below the model's minimum-cacheable-prefix
+            # threshold (4096 tokens for Haiku 4.5 / Opus 4.7+; 2048
+            # for Sonnet 4.6) the marker is a no-op — the API
+            # processes the request without caching, no error. Above
+            # threshold it cuts cached-input cost to ~10% of base
+            # input. Forward-compat: kicks in automatically if the
+            # protocol's system prompt grows beyond the threshold.
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
         try:
             resp = await self._client.messages.create(**kwargs)
         except Exception as e:

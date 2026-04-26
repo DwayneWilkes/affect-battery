@@ -111,8 +111,15 @@ class TestAnthropicClient:
             assert out == "Hello from Claude"
 
             kwargs = mock_inst.messages.create.call_args.kwargs
-            # System extracted to a separate kwarg
-            assert kwargs["system"] == "You are a helpful assistant."
+            # System extracted to a separate kwarg, in the structured
+            # form Anthropic requires for cache_control markers.
+            assert kwargs["system"] == [
+                {
+                    "type": "text",
+                    "text": "You are a helpful assistant.",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
             # Messages array no longer contains the system turn
             roles = [m["role"] for m in kwargs["messages"]]
             assert "system" not in roles

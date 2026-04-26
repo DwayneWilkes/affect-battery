@@ -349,23 +349,131 @@ _OPENAI_PRICING_PER_MTOK: dict[str, dict[str, float]] = {
 }
 
 
-# Token-count estimates per call by experiment shape. Calibrated for
-# typical affect-battery message lengths: a short system prompt, ~5
-# conditioning turns of arithmetic Q/A/feedback, then transfer
-# Q-and-A. Output token estimates account for negative-affect
-# conditions producing more hedging prose than neutral.
-#
-# These are intentionally rough — they're for budget preview, not
-# exact accounting. The largest source of error is conversation-
-# length growth across turns (later turns carry more context).
-_TOKENS_PER_CALL_BY_EXPERIMENT: dict[str, dict[str, int]] = {
-    "exp1a": {"input": 400, "output": 60},
-    "exp1b": {"input": 400, "output": 60},
-    "exp2":  {"input": 400, "output": 60},
-    "exp3a": {"input": 350, "output": 50},
-    "exp3b": {"input": 400, "output": 250},  # open-ended generation
-    "exp3c": {"input": 400, "output": 80},   # factual QA + hedging
+# Per-turn token estimates for the affect-battery message shape.
+# Sourced from manual inspection of result files in the 2026-04-26
+# Haiku pilot. The conversation-growth model below sums these
+# turn-by-turn so per-call input tokens reflect accumulating context.
+_TOKENS_PER_TURN = {
+    "system_prompt":         50,
+    "conditioning_q":        20,
+    "conditioning_a":         5,   # short numeric answer
+    "conditioning_feedback": 30,
+    "transfer_q":            30,
+    "transfer_a_qa":         80,   # factual QA + hedging (exp1a/1b/2/3a/3c)
+    "transfer_a_creative":  250,   # open-ended generation (exp3b)
 }
+
+
+# Anthropic prompt-caching minimum prefix size by model. Below this
+# threshold cache_control markers are no-ops; the API processes the
+# request without caching and there's no cost savings.
+# Source: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+# (snapshotted 2026-04-26).
+_PROMPT_CACHE_MIN_TOKENS = {
+    "claude-haiku-4-5":  4096,
+    "claude-haiku-3-5":  2048,
+    "claude-sonnet-4-6": 2048,
+    "claude-sonnet-4-5": 1024,
+    "claude-sonnet-4":   1024,
+    "claude-opus-4-7":   4096,
+    "claude-opus-4-6":   4096,
+    "claude-opus-4-5":   4096,
+    "claude-opus-4-1":   1024,
+    "claude-opus-4":     1024,
+}
+
+
+def _resolve_cache_threshold(model: str) -> int:
+    """Minimum cacheable prefix length for `model`. Returns a
+    conservative default (4096) when the model isn't in the table —
+    erring high so we don't promise caching won't fire and then have
+    it miss because the threshold turned out higher."""
+    if model in _PROMPT_CACHE_MIN_TOKENS:
+        return _PROMPT_CACHE_MIN_TOKENS[model]
+    lo = model.lower()
+    if "haiku-4" in lo or "opus-4-7" in lo or "opus-4-6" in lo or "opus-4-5" in lo:
+        return 4096
+    if "sonnet-4-6" in lo or "haiku-3-5" in lo:
+        return 2048
+    return 1024
+
+
+def _estimate_call_token_sequence(args, extra_kwargs: dict) -> list[tuple[int, int]]:
+    """Return [(input_tok, output_tok)] per API call in one
+    (condition × run) cell, modeling conversation-length growth.
+
+    Replaces the prior flat per-call token estimate. Each call's
+    input now reflects the accumulated context the model would
+    actually see at that point in the conversation, not a flat
+    400-token average.
+    """
+    sys_tok = _TOKENS_PER_TURN["system_prompt"]
+    cq = _TOKENS_PER_TURN["conditioning_q"]
+    ca = _TOKENS_PER_TURN["conditioning_a"]
+    cfb = _TOKENS_PER_TURN["conditioning_feedback"]
+    tq = _TOKENS_PER_TURN["transfer_q"]
+    cond_turns = getattr(args, "num_conditioning_turns", 5) or 5
+
+    calls: list[tuple[int, int]] = []
+
+    # Phase 1: conditioning. Each turn adds Q + A + feedback to the
+    # accumulated context. Input on turn N includes the system prompt
+    # plus all of turns 0..N-1.
+    accumulated = sys_tok
+    for _ in range(cond_turns):
+        calls.append((accumulated + cq, ca))
+        accumulated += cq + ca + cfb
+
+    # Phase 1.5: neutral buffer turns (exp2 only). These accumulate
+    # like conditioning turns.
+    if args.experiment == "exp2":
+        for _ in range(args.neutral_turns or 0):
+            calls.append((accumulated + cq, ca))
+            accumulated += cq + ca
+
+    # Phase 2: transfer. Per-experiment dispatch.
+    if args.experiment in {"exp1a", "exp2"}:
+        n_transfer = getattr(args, "num_transfer_questions", 5) or 5
+        ta = _TOKENS_PER_TURN["transfer_a_qa"]
+        # Within-session transfer carries the conditioning history.
+        for _ in range(n_transfer):
+            calls.append((accumulated + tq, ta))
+            accumulated += tq + ta
+    elif args.experiment == "exp1b":
+        # Cross-session resets context for the transfer phase per
+        # the conditioning-protocol spec ("system prompt MUST be
+        # identical across all conditions" for the fresh session).
+        n_transfer = getattr(args, "num_transfer_questions", 5) or 5
+        ta = _TOKENS_PER_TURN["transfer_a_qa"]
+        transfer_acc = sys_tok  # fresh session, no conditioning carry-over
+        for _ in range(n_transfer):
+            calls.append((transfer_acc + tq, ta))
+            transfer_acc += tq + ta
+    elif args.experiment == "exp3a":
+        # One transfer call per intensity level, sharing the same
+        # post-conditioning context (per-level, the conditioning
+        # accumulator stays at its end state).
+        levels = extra_kwargs.get("intensity_levels") or [1]
+        ta = _TOKENS_PER_TURN["transfer_a_qa"]
+        for _ in levels:
+            calls.append((accumulated + tq, ta))
+    elif args.experiment == "exp3b":
+        # n_generations per prompt, each independent (re-uses the same
+        # conditioning prefix; doesn't accumulate across generations).
+        prompts = extra_kwargs.get("prompts") or []
+        n_gens = extra_kwargs.get("n_generations", 10) or 10
+        ta = _TOKENS_PER_TURN["transfer_a_creative"]
+        for _ in prompts:
+            for _ in range(n_gens):
+                calls.append((accumulated + tq, ta))
+    elif args.experiment == "exp3c":
+        # One call per item, each independent.
+        items = extra_kwargs.get("items") or []
+        ta = _TOKENS_PER_TURN["transfer_a_qa"]
+        for _ in items:
+            calls.append((accumulated + tq, ta))
+
+    return calls
 
 
 def _resolve_token_pricing(model: str) -> tuple[float, float, str]:
@@ -458,46 +566,31 @@ def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
     touching the API. Pure function over (args, conditions, extra_kwargs)
     so it's straightforward to test and to call from cmd_pilot/cmd_run."""
     n_cond = len(conditions)
-    n_results = n_cond * (per_cond_yield or args.num_runs)
 
-    # Calls per result varies by experiment shape. Conditioning turns
-    # share between results in exp3b/3c (one conditioning prelude per run,
-    # then multiple prompts/items reuse the conditioning context).
-    cond_turns = getattr(args, "num_conditioning_turns", 5) or 5
-    transfer_qs = getattr(args, "num_transfer_questions", 5) or 5
-    if args.experiment in {"exp1a", "exp1b"}:
-        calls_per_result = cond_turns + transfer_qs
-    elif args.experiment == "exp2":
-        calls_per_result = cond_turns + (args.neutral_turns or 0) + transfer_qs
-    elif args.experiment == "exp3a":
-        # one conditioning + one transfer per (intensity_level, run)
-        calls_per_result = cond_turns + 1
-    elif args.experiment == "exp3b":
-        # conditioning once per run; n_generations per (prompt, run).
-        # Per-result amortizes conditioning across prompts.
-        n_prompts = max(len(extra_kwargs.get("prompts") or []), 1)
-        n_gens = extra_kwargs.get("n_generations", 10) or 10
-        calls_per_run = cond_turns + n_prompts * n_gens
-        results_per_run = n_prompts
-        calls_per_result = calls_per_run / results_per_run
-    elif args.experiment == "exp3c":
-        # conditioning once per run; one call per item.
-        n_items = max(len(extra_kwargs.get("items") or []), 1)
-        calls_per_run = cond_turns + n_items
-        results_per_run = n_items
-        calls_per_result = calls_per_run / results_per_run
-    else:
-        calls_per_result = cond_turns + transfer_qs
+    # Conversation-length growth model: per-call input tokens accumulate
+    # across the run, so the average is below early calls and above
+    # transfer calls. Compute the per-call sequence for one cell
+    # (one (condition × run) trajectory), then multiply by n_cells.
+    per_cell_calls = _estimate_call_token_sequence(args, extra_kwargs)
+    cell_input_tokens = sum(c[0] for c in per_cell_calls)
+    cell_output_tokens = sum(c[1] for c in per_cell_calls)
+    cell_max_input = max((c[0] for c in per_cell_calls), default=0)
 
-    n_calls = int(round(n_results * calls_per_result))
+    # n_cells = (n_conditions × n_runs); each cell runs the per_cell_calls
+    # sequence once. n_results uses the existing per_cond_yield definition
+    # (1 result per run for exp1a/1b/2; intensity_levels/prompts/items per
+    # run for exp3 family) so the display payload stays stable.
+    n_cells = n_cond * args.num_runs
+    n_calls = n_cells * len(per_cell_calls)
+    n_results = n_cond * per_cond_yield
+    calls_per_result = n_calls / n_results if n_results > 0 else 0.0
+    total_input_tokens = n_cells * cell_input_tokens
+    total_output_tokens = n_cells * cell_output_tokens
 
     # Cost: prefer proper input + output token pricing from the
     # pricing table. --cost-per-call overrides with a flat blended
     # rate (useful when the user has a contract rate or wants a
     # conservative ceiling).
-    tokens = _TOKENS_PER_CALL_BY_EXPERIMENT.get(
-        args.experiment, {"input": 400, "output": 80}
-    )
     if getattr(args, "cost_per_call", None):
         cost_per_call = float(args.cost_per_call)
         total_cost_usd = n_calls * cost_per_call
@@ -507,13 +600,14 @@ def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
         input_per_mtok = output_per_mtok = None
     else:
         input_per_mtok, output_per_mtok, cost_source = _resolve_token_pricing(args.model)
-        # Tokens per call × calls × $/MTok / 1e6
-        total_input_tokens = n_calls * tokens["input"]
-        total_output_tokens = n_calls * tokens["output"]
         input_cost_usd = total_input_tokens * input_per_mtok / 1_000_000
         output_cost_usd = total_output_tokens * output_per_mtok / 1_000_000
         total_cost_usd = input_cost_usd + output_cost_usd
         cost_per_call = total_cost_usd / n_calls if n_calls > 0 else 0.0
+
+    # Prompt caching diagnostic: would caching engage at this prompt size?
+    cache_threshold = _resolve_cache_threshold(args.model)
+    cache_engages = cell_max_input >= cache_threshold
 
     # Wall-clock: prefer empirical from prior pilots of the same model.
     sec_per_call = _empirical_seconds_per_call(
@@ -554,8 +648,15 @@ def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
         "n_results_yielded": n_results,
         "n_api_calls": n_calls,
         "calls_per_result": round(calls_per_result, 2),
-        "tokens_per_call_input": tokens["input"],
-        "tokens_per_call_output": tokens["output"],
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "avg_input_per_call": (
+            total_input_tokens / n_calls if n_calls > 0 else 0
+        ),
+        "avg_output_per_call": (
+            total_output_tokens / n_calls if n_calls > 0 else 0
+        ),
+        "max_input_in_a_call": cell_max_input,
         "input_per_mtok_usd": input_per_mtok,
         "output_per_mtok_usd": output_per_mtok,
         "input_cost_usd": input_cost_usd,
@@ -569,6 +670,8 @@ def _estimate_pilot(args, conditions, extra_kwargs, per_cond_yield) -> dict:
         "wall_clock_min": wall_clock_sec / 60.0,
         "max_concurrent": max_concurrent,
         "effective_rps": effective_rps,
+        "cache_threshold_tokens": cache_threshold,
+        "cache_engages": cache_engages,
     }
 
 
@@ -590,10 +693,18 @@ def _print_estimate(est: dict) -> None:
     if est["input_per_mtok_usd"] is not None:
         in_cost = est["input_cost_usd"] or 0.0
         out_cost = est["output_cost_usd"] or 0.0
+        avg_in = est["avg_input_per_call"]
+        avg_out = est["avg_output_per_call"]
+        max_in = est["max_input_in_a_call"]
         print(
-            f"  tokens per call:    "
-            f"~{est['tokens_per_call_input']} input / "
-            f"{est['tokens_per_call_output']} output"
+            f"  tokens (avg):       "
+            f"~{avg_in:.0f} input / ~{avg_out:.0f} output per call "
+            f"(max input in a call: {max_in})"
+        )
+        print(
+            f"  total tokens:       "
+            f"{est['total_input_tokens']:,} input / "
+            f"{est['total_output_tokens']:,} output"
         )
         print(
             f"  pricing:            "
@@ -611,6 +722,20 @@ def _print_estimate(est: dict) -> None:
             f"({out_cost / est['total_cost_usd'] * 100:.0f}% of total)"
             if est['total_cost_usd'] > 0 else f"  cost (output):      ${out_cost:.2f}"
         )
+        # Prompt-cache diagnostic — useful to see whether the protocol's
+        # prompt size has crossed the model's caching threshold.
+        if est["cache_engages"]:
+            print(
+                f"  prompt caching:     ENGAGES "
+                f"(max input {max_in} ≥ threshold "
+                f"{est['cache_threshold_tokens']}); cached input cost ~10% of base"
+            )
+        else:
+            print(
+                f"  prompt caching:     no-op "
+                f"(max input {max_in} < threshold "
+                f"{est['cache_threshold_tokens']} for {est['model']})"
+            )
     else:
         print(
             f"  cost per call:      ${est['cost_per_call_usd']:.4f} "

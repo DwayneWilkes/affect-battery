@@ -88,8 +88,18 @@ async def run_exp3b(
                 base_seed + run_num * 100_000 + p_idx * 1_000 + g_idx
                 for g_idx in range(n_generations)
             ]
+            # exp3b open-ended generation: 512 tokens accommodates the
+            # longest creative response without runaway. The semantic-
+            # diversity metric needs the full response, but anything
+            # beyond ~500 tokens is almost certainly the model going
+            # off the rails (we've never seen legitimate generations
+            # longer than ~400 tokens in pilots).
             tasks = [
-                budgeted_client.complete(generation_messages, temperature=config.temperature)
+                budgeted_client.complete(
+                    generation_messages,
+                    temperature=config.temperature,
+                    max_tokens=512,
+                )
                 for _ in range(n_generations)
             ]
             generations = list(await asyncio.gather(*tasks))
