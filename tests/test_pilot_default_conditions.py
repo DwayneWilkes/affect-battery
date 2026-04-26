@@ -102,6 +102,7 @@ class TestCmdPilotUsesSevenConditionsByDefault:
             base_model = False
             provider = "vllm"
             model = "test-model"
+            experiment = "exp1a"
             base_url = "http://unused"
             num_runs = 5
             seed = 42

@@ -43,7 +43,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 DATE_STAMP=$(date -u +%Y-%m-%d)
-OUTPUT_DIR="results/pilots/anthropic_pilot_${DATE_STAMP}"
+# Segregate dry-run output so its canned responses cannot pollute the
+# real-run cache via the (config, run_number) cache key. Dry-run +
+# real-run share the same model_name in config, so without this
+# suffix the dry-run results would be picked up by the run-batch
+# cache loader during a subsequent real run.
+if [[ -n "${DRY_RUN}" ]]; then
+  OUTPUT_DIR="results/pilots/anthropic_pilot_${DATE_STAMP}_dryrun"
+else
+  OUTPUT_DIR="results/pilots/anthropic_pilot_${DATE_STAMP}"
+fi
 
 # ---- Pre-flight ----
 

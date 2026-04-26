@@ -180,6 +180,7 @@ class TestCLISelectsCompletionPath:
             base_model = True
             provider = "vllm"
             model = "Qwen/Qwen2.5-7B"
+            experiment = "exp1a"
             base_url = "http://localhost:8000/v1"
             num_runs = 5
             seed = 42

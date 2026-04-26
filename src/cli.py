@@ -406,7 +406,11 @@ def cmd_pilot(args):
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
     conditions = list(DEFAULT_PILOT_CONDITIONS)
-    output_dir = Path(args.output_dir) / "pilot"
+    # Write into the experiment-specific subdir so analyze_results_dir
+    # finds the corpus at <results_dir>/<experiment>/. Previously this
+    # was hard-coded to "pilot" which made the pilot output invisible
+    # to the analyzer.
+    output_dir = Path(args.output_dir) / args.experiment
 
     client = _build_client(args)
 
