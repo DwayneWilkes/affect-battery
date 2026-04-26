@@ -222,19 +222,45 @@ class OpenAIClient(ModelClient):
     def model_name(self) -> str:
         return self._model
 
+    @staticmethod
+    def _uses_max_completion_tokens(model: str) -> bool:
+        """gpt-5.x and o-series (reasoning) models deprecated `max_tokens`
+        in favor of `max_completion_tokens`. The API rejects the legacy
+        kwarg on these models; we have to use the new one.
+
+        Older chat models (gpt-4, gpt-4o, gpt-3.5) still accept
+        `max_tokens` and not `max_completion_tokens`.
+        """
+        lo = model.lower()
+        if lo.startswith("gpt-5"):
+            return True
+        # o-series reasoning models. Match strict prefix to avoid
+        # false-positives like 'gpt-4o' (which contains 'o').
+        for prefix in ("o1", "o3", "o4", "o5"):
+            if lo == prefix or lo.startswith(f"{prefix}-"):
+                return True
+        return False
+
     async def complete(
         self,
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 1024,
     ) -> str:
+        params: dict = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        # Per-model-family max-tokens parameter naming. gpt-5.x and
+        # o-series use max_completion_tokens; legacy models use
+        # max_tokens. Sending the wrong one yields a 400.
+        if self._uses_max_completion_tokens(self._model):
+            params["max_completion_tokens"] = max_tokens
+        else:
+            params["max_tokens"] = max_tokens
         try:
-            resp = await self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            resp = await self._client.chat.completions.create(**params)
         except Exception as e:
             # Map auth + 4xx to NonRetryableAPIError so the batch runner's
             # circuit breaker doesn't endlessly retry on bad input.

@@ -20,6 +20,7 @@
 set -euo pipefail
 unset VIRTUAL_ENV  # let direnv pick this project's venv
 
+PROVIDER="anthropic"
 MODEL="claude-haiku-4-5"
 NUM_RUNS=2
 SEED=42
@@ -30,6 +31,7 @@ DRY_RUN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --provider)     PROVIDER="$2"; shift 2 ;;
     --model)        MODEL="$2"; shift 2 ;;
     --num-runs)     NUM_RUNS="$2"; shift 2 ;;
     --seed)         SEED="$2"; shift 2 ;;
@@ -69,6 +71,7 @@ for exp in "${EXPERIMENTS[@]}"; do
   echo "===================================="
 
   if bash scripts/pilots/run_anthropic_pilot.sh \
+        --provider "${PROVIDER}" \
         --model "${MODEL}" \
         --experiment "${exp}" \
         --num-runs "${NUM_RUNS}" \

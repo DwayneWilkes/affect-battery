@@ -44,7 +44,10 @@ class TestOpenAIClient:
             kwargs = mock_inst.chat.completions.create.call_args.kwargs
             assert kwargs["model"] == "gpt-5"
             assert kwargs["temperature"] == 0.5
-            assert kwargs["max_tokens"] == 128
+            # gpt-5.x uses max_completion_tokens (max_tokens deprecated
+            # for these model families per OpenAI's API).
+            assert kwargs["max_completion_tokens"] == 128
+            assert "max_tokens" not in kwargs
             assert kwargs["messages"] == [{"role": "user", "content": "Hi"}]
             await client.close()
 

@@ -28,6 +28,7 @@ unset VIRTUAL_ENV
 # Default to Haiku for cheapest validation. Override with --model
 # claude-sonnet-4-6 or --model claude-opus-4-7 once the harness is
 # verified end-to-end on Haiku.
+PROVIDER="anthropic"
 MODEL="claude-haiku-4-5"
 EXPERIMENT="exp1a"
 NUM_RUNS=5
@@ -46,6 +47,7 @@ TRANSFER_BANK="configs/banks/exp1a_factual_qa_hard_v1.yaml"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --provider)       PROVIDER="$2"; shift 2 ;;
     --model)          MODEL="$2"; shift 2 ;;
     --experiment)     EXPERIMENT="$2"; shift 2 ;;
     --num-runs)       NUM_RUNS="$2"; shift 2 ;;
@@ -98,8 +100,13 @@ fi
 # --estimate computes cost + wall-clock without making API calls;
 # no API key needed. --dry-run uses canned responses; same.
 if [[ -z "${DRY_RUN}" && -z "${ESTIMATE}" ]]; then
-  if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-    echo "error: ANTHROPIC_API_KEY not set. Export it from your shell profile" >&2
+  case "${PROVIDER}" in
+    anthropic)  KEY_VAR="ANTHROPIC_API_KEY" ;;
+    openai)     KEY_VAR="OPENAI_API_KEY" ;;
+    *)          KEY_VAR="" ;;  # vllm or unknown; no key check
+  esac
+  if [[ -n "${KEY_VAR}" && -z "${!KEY_VAR:-}" ]]; then
+    echo "error: ${KEY_VAR} not set. Export it from your shell profile" >&2
     echo "       or pass --dry-run for an offline smoke test." >&2
     exit 2
   fi
@@ -173,12 +180,17 @@ echo ""
 # --model claude-sonnet-4-6 / --model claude-opus-4-7 (and the script
 # will scale --cost-per-call accordingly via the case statement above).
 
-# Scale cost-per-call by model so the budget guardrail stays honest.
+# Scale cost-per-call by model tier so the budget guardrail stays
+# honest across providers + tiers. Conservative blended estimates
+# (input + output for ~500-token avg call). The --estimate path
+# uses proper input/output split via the Python tier resolver; this
+# is just the runtime budget cap.
 case "${MODEL}" in
-  *opus*)    COST_PER_CALL="0.080" ;;  # rough mid-estimate
-  *sonnet*)  COST_PER_CALL="0.015" ;;
-  *haiku*)   COST_PER_CALL="0.003" ;;
-  *)         COST_PER_CALL="0.015" ;;  # conservative default
+  *opus*|*gpt-5.5*|*5.5-pro*|*5.4-pro*) COST_PER_CALL="0.080" ;;  # frontier
+  *sonnet*|*gpt-5.4)                    COST_PER_CALL="0.015" ;;  # mid
+  *haiku*|*gpt-5.4-mini|*5.4-mini)      COST_PER_CALL="0.003" ;;  # small
+  *gpt-5.4-nano|*5.4-nano|*nano*)       COST_PER_CALL="0.0008" ;; # nano
+  *)                                    COST_PER_CALL="0.015" ;;  # conservative default
 esac
 
 # Forward optional flags only when set; the CLI argparser would reject
@@ -201,7 +213,7 @@ if [[ -z "${ESTIMATE}" ]]; then
 fi
 
 uv run affect-battery pilot \
-  --provider anthropic \
+  --provider "${PROVIDER}" \
   --model "${MODEL}" \
   --experiment "${EXPERIMENT}" \
   --num-runs "${NUM_RUNS}" \
