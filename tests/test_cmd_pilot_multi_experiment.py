@@ -71,7 +71,7 @@ class TestCmdPilotRespectsExperimentType:
         cli.cmd_pilot(args)
 
         # Result JSONs land under <root>/data/<experiment>/<condition>/.
-        exp_dir = tmp_path / "data" / experiment
+        exp_dir = tmp_path / "data"
         assert exp_dir.is_dir(), (
             f"--experiment {experiment} did not produce <root>/data/{experiment}/. "
             f"Found: {[p.name for p in tmp_path.iterdir() if p.is_dir()]}"
@@ -102,7 +102,7 @@ class TestCmdPilotRespectsExperimentType:
         args = _base_args(tmp_path, experiment="exp1b")
         cli.cmd_pilot(args)
 
-        exp_dir = tmp_path / "data" / "exp1b"
+        exp_dir = tmp_path / "data"
         result_files = list(exp_dir.rglob("*.json"))
         assert len(result_files) >= 1
 
@@ -144,7 +144,7 @@ class TestCmdPilotExp2NeutralTurns:
         args = _base_args(tmp_path, experiment="exp2", neutral_turns=3)
         cli.cmd_pilot(args)
 
-        exp_dir = tmp_path / "data" / "exp2"
+        exp_dir = tmp_path / "data"
         result_files = list(exp_dir.rglob("*.json"))
         assert len(result_files) >= 1
 
@@ -166,7 +166,7 @@ class TestCmdPilotIteratesAllConditions:
         args = _base_args(tmp_path, experiment=experiment)
         cli.cmd_pilot(args)
 
-        exp_dir = tmp_path / "data" / experiment
+        exp_dir = tmp_path / "data"
         cond_subdirs = sorted(p.name for p in exp_dir.iterdir() if p.is_dir())
         # 7 conditions: accurate_negative, mild_negative, neutral,
         # no_conditioning, self_check_neutral, strong_negative,

@@ -60,7 +60,7 @@ class TestPilotRootDataLayout:
         )
         cli.cmd_pilot(args)
 
-        data_dir = tmp_path / "data" / "exp1a"
+        data_dir = tmp_path / "data"
         assert data_dir.is_dir(), (
             f"Expected <output_dir>/data/exp1a/, found these dirs: "
             f"{[p.name for p in tmp_path.iterdir() if p.is_dir()]}"

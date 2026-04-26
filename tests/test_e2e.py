@@ -46,7 +46,7 @@ class TestCliPilotDryRun:
 
         # 7 conditions × 5 runs = 35 result files (plus events.jsonl)
         # Pilot-root layout: cmd_pilot writes into <output_dir>/data/<experiment>/.
-        result_files = list((tmp_path / "data" / "exp1a").rglob("*.json"))
+        result_files = list((tmp_path / "data").rglob("*.json"))
         assert len(result_files) >= 30, f"expected >=30 results; got {len(result_files)}"
         # Manifest written at the pilot root.
         assert (tmp_path / "manifest.yaml").exists()

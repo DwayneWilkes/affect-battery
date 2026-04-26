@@ -984,7 +984,7 @@ def cmd_run(args):
     backup = _maybe_backup_pilot_dir(pilot_root, getattr(args, "overwrite", False))
     if backup is not None:
         print(f"[--overwrite] moved prior pilot dir → {backup}", file=sys.stderr)
-    output_dir = pilot_root / "data" / args.experiment
+    output_dir = pilot_root / "data"
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
     _install_sigint_handler(cancel_event)
@@ -1112,7 +1112,7 @@ def cmd_pilot(args):
     backup = _maybe_backup_pilot_dir(pilot_root, getattr(args, "overwrite", False))
     if backup is not None:
         print(f"[--overwrite] moved prior pilot dir → {backup}", file=sys.stderr)
-    output_dir = pilot_root / "data" / args.experiment
+    output_dir = pilot_root / "data"
 
     client = _build_client(args)
 

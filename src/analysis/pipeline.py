@@ -38,13 +38,46 @@ from src.analysis.stats.corrections import apply_family_corrections
 def _resolve_corpus_dir(results_dir: Path, experiment: str) -> Path:
     """Pick the data directory for `experiment` under `results_dir`.
 
-    Prefer the pilot-root layout (`<results_dir>/data/<exp>/`) when present;
-    fall back to the legacy flat layout (`<results_dir>/<exp>/`) so old
-    pilot directories still analyze without migration.
+    Layouts probed in priority order (newest → oldest):
+      1. Single-experiment pilot dir: <results_dir>/data/<condition>/
+         The pilot dir's name carries the experiment id (e.g.
+         '2026-04-26_gpt-5.4-nano_exp1a/'), so the inner data/ dir
+         doesn't need to repeat it. Each result file's `experiment_type`
+         field is the canonical experiment identity.
+      2. Multi-experiment pilot dir: <results_dir>/data/<experiment>/
+         Older layout where one pilot dir held all 6 experiments under
+         data/<exp>/ subdirs. Kept for backward compat with migrated
+         baselines.
+      3. Legacy flat layout: <results_dir>/<experiment>/
+         Pre-pilot-root layout from before the data/ subdir was
+         introduced. Still works; the analyzer rglobs to find files.
     """
+    # Layout 1: single-experiment pilot dir. Result files at
+    # data/<cond>/<NNNN>.json. We probe by checking for any *.json
+    # file under data/ that matches the requested experiment_type.
+    flat_data = results_dir / "data"
+    if flat_data.exists() and not (flat_data / experiment).exists():
+        # data/ exists but data/<exp>/ does NOT — this is the new layout.
+        # Verify by sampling: at least one JSON file should declare the
+        # requested experiment in its config / experiment_type.
+        sample = next(flat_data.rglob("*.json"), None)
+        if sample is not None:
+            try:
+                payload = json.loads(sample.read_text())
+                exp_type = payload.get("experiment_type") or (
+                    payload.get("config") or {}
+                ).get("experiment_type")
+                if exp_type == experiment:
+                    return flat_data
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Layout 2: explicit per-experiment subdir under data/.
     pilot_root_layout = results_dir / "data" / experiment
     if pilot_root_layout.exists():
         return pilot_root_layout
+
+    # Layout 3: legacy flat layout.
     return results_dir / experiment
 
 
