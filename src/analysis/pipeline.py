@@ -35,9 +35,30 @@ from src.analysis.reports.h4 import render_h4_report
 from src.analysis.stats.corrections import apply_family_corrections
 
 
+def _resolve_corpus_dir(results_dir: Path, experiment: str) -> Path:
+    """Pick the data directory for `experiment` under `results_dir`.
+
+    Prefer the pilot-root layout (`<results_dir>/data/<exp>/`) when present;
+    fall back to the legacy flat layout (`<results_dir>/<exp>/`) so old
+    pilot directories still analyze without migration.
+    """
+    pilot_root_layout = results_dir / "data" / experiment
+    if pilot_root_layout.exists():
+        return pilot_root_layout
+    return results_dir / experiment
+
+
 def _load_corpus(results_dir: Path, experiment: str) -> list[dict]:
-    """Load all result JSONs under results_dir/<experiment>/ as a flat list."""
-    exp_dir = results_dir / experiment
+    """Load all result JSONs under the resolved corpus dir as a flat list.
+
+    Backfills `transfer_correct` from `transfer_responses` + `transfer_expected`
+    via `score_factual_qa` when a legacy result file lacks the field (or
+    has it as None / empty list). This rescues pilot data saved before
+    the runner started grading transfer responses at write time.
+    """
+    from src.scoring.accuracy import score_factual_qa
+
+    exp_dir = _resolve_corpus_dir(results_dir, experiment)
     if not exp_dir.exists():
         return []
     corpus: list[dict] = []
@@ -50,8 +71,20 @@ def _load_corpus(results_dir: Path, experiment: str) -> list[dict]:
             continue
         if "condition" not in data and "config" in data:
             data["condition"] = data.get("config", {}).get("condition", "")
-        if "transfer_correct" not in data:
-            data["transfer_correct"] = []
+        existing = data.get("transfer_correct")
+        if not existing:
+            responses = data.get("transfer_responses") or []
+            expected = data.get("transfer_expected") or []
+            aliases = data.get("transfer_expected_aliases") or [
+                [] for _ in expected
+            ]
+            if responses and len(responses) == len(expected):
+                data["transfer_correct"] = [
+                    score_factual_qa(r, e, aliases=a)
+                    for r, e, a in zip(responses, expected, aliases)
+                ]
+            else:
+                data["transfer_correct"] = []
         corpus.append(data)
     return corpus
 
@@ -157,6 +190,13 @@ def analyze_results_dir(
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
 
+    # Reports directory: pilot-root layouts (those with <root>/data/<exp>/)
+    # get reports under <root>/reports/. Legacy flat layouts keep reports
+    # at the top level so old pilot dirs still work without migration.
+    pilot_root_layout = (results_dir / "data").is_dir()
+    reports_dir = results_dir / "reports" if pilot_root_layout else results_dir
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
     rendered: dict[str, Path] = {}
     aggregate_payload: dict = {}
 
@@ -165,7 +205,7 @@ def analyze_results_dir(
     exp1a_analysis: dict | None = None
     if exp1a_corpus:
         exp1a_analysis = analyze_exp1a_corpus(exp1a_corpus, model=model)
-        path = results_dir / "exp1a_report.md"
+        path = reports_dir / "exp1a_report.md"
         render_exp1a_report(exp1a_analysis, output_path=path)
         rendered["exp1a"] = path
         aggregate_payload["exp1a"] = {
@@ -182,7 +222,7 @@ def analyze_results_dir(
             model=model,
             h1b_dual_tests=True,
         )
-        path = results_dir / "exp1b_report.md"
+        path = reports_dir / "exp1b_report.md"
         render_exp1b_report(exp1b_analysis, output_path=path)
         rendered["exp1b"] = path
         aggregate_payload["exp1b"] = {
@@ -194,7 +234,7 @@ def analyze_results_dir(
     exp2_analysis: dict | None = None
     if exp2_corpus:
         exp2_analysis = analyze_exp2_corpus(exp2_corpus, model=model)
-        path = results_dir / "exp2_report.md"
+        path = reports_dir / "exp2_report.md"
         render_exp2_report(exp2_analysis, output_path=path)
         rendered["exp2"] = path
         aggregate_payload["exp2"] = {
@@ -220,7 +260,7 @@ def analyze_results_dir(
         if len(accuracy_by_level) >= 3:
             exp3a_analysis = analyze_exp3a(accuracy_by_level)
             exp3a_analysis["model"] = model
-            path = results_dir / "exp3a_report.md"
+            path = reports_dir / "exp3a_report.md"
             render_exp3a_report(exp3a_analysis, output_path=path)
             rendered["exp3a"] = path
             aggregate_payload["exp3a"] = {
@@ -232,7 +272,7 @@ def analyze_results_dir(
     exp3b_corpus = _load_corpus(results_dir, "exp3b")
     if exp3b_corpus:
         exp3b_analysis = analyze_exp3b_corpus(exp3b_corpus, model=model)
-        path = results_dir / "exp3b_report.md"
+        path = reports_dir / "exp3b_report.md"
         render_exp3b_report(exp3b_analysis, output_path=path)
         rendered["exp3b"] = path
         aggregate_payload["exp3b"] = {
@@ -243,7 +283,7 @@ def analyze_results_dir(
     exp3c_corpus = _load_corpus(results_dir, "exp3c")
     if exp3c_corpus:
         exp3c_analysis = analyze_exp3c_corpus(exp3c_corpus, model=model)
-        path = results_dir / "exp3c_report.md"
+        path = reports_dir / "exp3c_report.md"
         render_exp3c_report(exp3c_analysis, output_path=path)
         rendered["exp3c"] = path
         aggregate_payload["exp3c"] = {
@@ -252,14 +292,23 @@ def analyze_results_dir(
 
     # ---- H4 cross-experiment + manipulation-check (A4 + A5) ----
     h4_analysis: dict | None = None
-    if exp1a_corpus:
+    # H4 is a cross-model contrast: it only makes sense when the corpus
+    # contains BOTH the base and the instruct model. If <2 distinct models
+    # are present, suppress the H4 render entirely so single-model pilots
+    # don't produce nonsense reports with em-dashes for missing data.
+    distinct_models = {
+        r.get("model") or (r.get("config") or {}).get("model_name")
+        for r in exp1a_corpus or []
+    }
+    distinct_models.discard(None)
+    if exp1a_corpus and len(distinct_models) >= 2:
         h4_analysis = analyze_h4_corpus(
             corpus=exp1a_corpus,
             base_model=base_model,
             instruct_model=instruct_model,
         )
         if h4_analysis.get("verdict") == "complete":
-            path = results_dir / "h4_report.md"
+            path = reports_dir / "h4_report.md"
             render_h4_report(h4_analysis, output_path=path)
             rendered["h4"] = path
             aggregate_payload["h4"] = {
@@ -283,7 +332,7 @@ def analyze_results_dir(
         aggregate_payload["primary_family_corrections"] = corrected
 
     # ---- Aggregate landing page ----
-    aggregate_path = results_dir / "AGGREGATE_REPORT.md"
+    aggregate_path = reports_dir / "AGGREGATE_REPORT.md"
     render_aggregate(aggregate_payload, output_path=aggregate_path)
     rendered["aggregate"] = aggregate_path
 

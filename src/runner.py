@@ -15,7 +15,7 @@ from .conditioning.prompts import Condition, FEEDBACK_SETS
 from .conditioning.protocol import ConditioningProtocol, Message, build_transfer_messages
 from .conditioning.tasks import get_arithmetic_problems, get_transfer_tasks, MathProblem
 from .models import ModelClient, NonRetryableAPIError  # noqa: F401 -- public API
-from .scoring.accuracy import extract_numeric_answer
+from .scoring.accuracy import extract_numeric_answer, score_factual_qa
 from .util import CHECKSUM_KEY, checksum_of_payload, enum_value, model_slug
 
 log = logging.getLogger(__name__)
@@ -64,6 +64,17 @@ class ExperimentConfig:
     # a bank itself; the CLI populates the hash from the loaded bank.
     stimulus_bank: str = "arithmetic_easy_v1"
     stimulus_bank_hash: str = ""
+    # Optional: path to a transfer-question bank YAML. When set, runner
+    # loads transfer questions from the bank (with answer_aliases) instead
+    # of the hardcoded factual_qa pool. Used to swap in TriviaQA hard subset
+    # for Tier-1 ceiling-break on frontier models.
+    transfer_bank: str = ""
+    # SHA-256 over the transfer-bank file content. Participates in cache
+    # identity so re-piloting with a different transfer bank invalidates
+    # cached results (which would otherwise silently return stale data
+    # from the prior bank — a subtle correctness bug we hit when adding
+    # the alias-aware bank loader).
+    transfer_bank_hash: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +99,8 @@ class Exp1aBody:
     transfer_responses: list[str]
     transfer_questions: list[str]
     transfer_expected: list[str]
+    transfer_correct: list[float] = field(default_factory=list)
+    transfer_expected_aliases: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -100,6 +113,8 @@ class Exp1bBody:
     transfer_responses: list[str]
     transfer_questions: list[str]
     transfer_expected: list[str]
+    transfer_correct: list[float] = field(default_factory=list)
+    transfer_expected_aliases: list[list[str]] = field(default_factory=list)
     session_1_seed: int = 0
     session_2_seed: int = 0
 
@@ -134,13 +149,19 @@ class Exp3bBody:
 @dataclass
 class Exp3cBody:
     """Conservative shift (paper §3.4.3 Exp 3c). Factual QA with difficulty
-    stratification + confidence elicitation + refusal tracking."""
+    stratification + confidence elicitation + refusal tracking.
+
+    `expected_aliases` carries the bank's per-item alias list so the
+    analyzer can match 'U.S.' to 'United States' the way exp1a does.
+    Missing/empty aliases reduce to substring match against `expected`.
+    """
     difficulty: str
     question: str
     response: str
     expected: str
     stated_confidence: int | None = None
     refused: bool = False
+    expected_aliases: list[str] = field(default_factory=list)
 
 
 # Union of all body types (for type annotations / analysis dispatch)
@@ -165,6 +186,8 @@ class RunResult:
     transfer_responses: list[str] = field(default_factory=list)
     transfer_questions: list[str] = field(default_factory=list)
     transfer_expected: list[str] = field(default_factory=list)
+    transfer_correct: list[float] = field(default_factory=list)
+    transfer_expected_aliases: list[list[str]] = field(default_factory=list)
     start_time: float = 0.0
     end_time: float = 0.0
     checksum: str = ""
@@ -192,6 +215,8 @@ class RunResult:
                 transfer_responses=list(self.transfer_responses),
                 transfer_questions=list(self.transfer_questions),
                 transfer_expected=list(self.transfer_expected),
+                transfer_correct=list(self.transfer_correct),
+                transfer_expected_aliases=[list(a) for a in self.transfer_expected_aliases],
             )
         elif self.body is None and self.experiment_type == "exp1b":
             # Phase 2 fresh-session re-test: top-level conditioning/transfer
@@ -204,6 +229,8 @@ class RunResult:
                 transfer_responses=list(self.transfer_responses),
                 transfer_questions=list(self.transfer_questions),
                 transfer_expected=list(self.transfer_expected),
+                transfer_correct=list(self.transfer_correct),
+                transfer_expected_aliases=[list(a) for a in self.transfer_expected_aliases],
             )
         elif isinstance(self.body, Exp1aBody):
             # Body was passed; sync top-level for legacy readers, but reject
@@ -211,7 +238,8 @@ class RunResult:
             for field_name in (
                 "conditioning_responses", "conditioning_correct",
                 "transfer_responses", "transfer_questions",
-                "transfer_expected",
+                "transfer_expected", "transfer_correct",
+                "transfer_expected_aliases",
             ):
                 top = getattr(self, field_name)
                 body_v = getattr(self.body, field_name)
@@ -248,6 +276,7 @@ async def _run_single_base(
     problems = get_arithmetic_problems(config.num_conditioning_turns, seed=seed)
     transfer_qs = get_transfer_tasks(
         config.transfer_task, config.num_transfer_questions, seed=seed,
+        bank_path=config.transfer_bank or None,
     )
 
     protocol = ConditioningProtocol(
@@ -300,6 +329,12 @@ async def _run_single_base(
         transfer_responses.append(response)
         scaffold += f"{response}"
 
+    transfer_expected = [q.expected_answer for q in transfer_qs]
+    transfer_aliases = [list(q.expected_aliases) for q in transfer_qs]
+    transfer_correct = [
+        score_factual_qa(r, e, aliases=a)
+        for r, e, a in zip(transfer_responses, transfer_expected, transfer_aliases)
+    ]
     cfg_dict = asdict(config)
     result = RunResult(
         config=cfg_dict,
@@ -308,7 +343,9 @@ async def _run_single_base(
         conditioning_correct=conditioning_correct,
         transfer_responses=transfer_responses,
         transfer_questions=[q.question for q in transfer_qs],
-        transfer_expected=[q.expected_answer for q in transfer_qs],
+        transfer_expected=transfer_expected,
+        transfer_correct=transfer_correct,
+        transfer_expected_aliases=transfer_aliases,
         start_time=start,
         end_time=time.time(),
     )
@@ -370,7 +407,10 @@ async def run_single(
     start = time.time()
 
     seed = (config.seed or 0) + run_number
-    transfer_qs = get_transfer_tasks(config.transfer_task, config.num_transfer_questions, seed=seed)
+    transfer_qs = get_transfer_tasks(
+        config.transfer_task, config.num_transfer_questions, seed=seed,
+        bank_path=config.transfer_bank or None,
+    )
 
     # Phase 1: Conditioning (extracted to a shared helper for Exp 3b/3c).
     messages, conditioning_responses, conditioning_correct = await run_conditioning_phase(
@@ -399,7 +439,13 @@ async def run_single(
         response = await client.complete(messages, temperature=config.temperature)
         messages.append({"role": "assistant", "content": response})
         transfer_responses.append(response)
-    
+
+    transfer_expected = [q.expected_answer for q in transfer_qs]
+    transfer_aliases = [list(q.expected_aliases) for q in transfer_qs]
+    transfer_correct = [
+        score_factual_qa(r, e, aliases=a)
+        for r, e, a in zip(transfer_responses, transfer_expected, transfer_aliases)
+    ]
     result = RunResult(
         config=asdict(config),
         run_number=run_number,
@@ -410,7 +456,9 @@ async def run_single(
         conditioning_correct=conditioning_correct,
         transfer_responses=transfer_responses,
         transfer_questions=[q.question for q in transfer_qs],
-        transfer_expected=[q.expected_answer for q in transfer_qs],
+        transfer_expected=transfer_expected,
+        transfer_correct=transfer_correct,
+        transfer_expected_aliases=transfer_aliases,
         start_time=start,
         end_time=time.time(),
     )
@@ -548,23 +596,36 @@ class EventEmitter:
 
 
 def _cached_run_path(output_dir: Path, config: ExperimentConfig, run_number: int) -> Path:
-    """Derive the filename save_result writes for a (config, run_number)."""
-    model = model_slug(config.model_name)
+    """Derive the path save_result writes for a (config, run_number).
+
+    Layout: <output_dir>/<condition>/<NNNN>.json. The other axes are
+    encoded by the caller's directory hierarchy: model lives in the
+    pilot directory name (and manifest), experiment_type lives in the
+    parent of `output_dir`. This puts each cell of the experimental
+    matrix in its own leaf directory so per-condition operations
+    (`ls`, `du`, `wc`, `jq`) are natural.
+    """
     cond = enum_value(config.condition)
-    exp = enum_value(config.experiment_type)
-    return Path(output_dir) / f"{model}_{cond}_{exp}_{run_number:04d}.json"
+    return Path(output_dir) / cond / f"{run_number:04d}.json"
 
 
 def is_valid_cached_result(
     path: Path,
     expected_stimulus_bank_hash: str | None = None,
+    expected_transfer_bank_hash: str | None = None,
 ) -> bool:
     """Return True if `path` is a schema-valid, checksum-valid result file.
 
-    When `expected_stimulus_bank_hash` is supplied, also rejects the cache
-    if the stored `config.stimulus_bank_hash` doesn't match. Omitting the
-    argument skips the bank-hash check (legacy cached results without the
-    field stay valid under the checksum-only path).
+    Optional bank-hash arguments participate in cache identity:
+      - `expected_stimulus_bank_hash` rejects the cache if the cached
+        result was produced under a different conditioning (arithmetic)
+        bank.
+      - `expected_transfer_bank_hash` rejects the cache if the cached
+        result was produced under a different transfer-question bank
+        (e.g. legacy hardcoded pool vs. TriviaQA hard).
+
+    Omitting either argument skips that check (back-compat for callers
+    that don't track the corresponding bank).
     """
     path = Path(path)
     if not path.exists():
@@ -587,6 +648,10 @@ def is_valid_cached_result(
     if expected_stimulus_bank_hash is not None:
         cached_hash = data.get("config", {}).get("stimulus_bank_hash", "")
         if cached_hash != expected_stimulus_bank_hash:
+            return False
+    if expected_transfer_bank_hash is not None:
+        cached_hash = data.get("config", {}).get("transfer_bank_hash", "")
+        if cached_hash != expected_transfer_bank_hash:
             return False
     return True
 
@@ -624,7 +689,10 @@ async def run_batch(
     for i in range(config.num_runs):
         if output_dir is not None:
             path = _cached_run_path(output_dir, config, i)
-            if is_valid_cached_result(path):
+            if is_valid_cached_result(
+                path,
+                expected_transfer_bank_hash=config.transfer_bank_hash or None,
+            ):
                 cached_runs.append(i)
                 continue
         missing_runs.append(i)
@@ -817,16 +885,19 @@ def _validate_result(result: RunResult) -> None:
 
 
 def save_result(result: RunResult, output_dir: Path):
-    """Validate and write a single result JSON. Filenames and the serialised
-    config use enum `.value` strings so cross-lookup by run name works."""
+    """Validate and write a single result JSON.
+
+    Layout (per results-layout requirement): the file lands at
+    <output_dir>/<condition>/<NNNN>.json. The serialised config still
+    coerces enum values to their `.value` strings so cross-lookup by
+    config field works regardless of nesting.
+    """
     _validate_result(result)
-    output_dir.mkdir(parents=True, exist_ok=True)
     cfg = result.config
-    model = model_slug(cfg["model_name"])
     cond = enum_value(cfg["condition"])
-    exp = enum_value(cfg["experiment_type"])
-    name = f"{model}_{cond}_{exp}_{result.run_number:04d}.json"
-    path = output_dir / name
+    cond_dir = output_dir / cond
+    cond_dir.mkdir(parents=True, exist_ok=True)
+    path = cond_dir / f"{result.run_number:04d}.json"
     payload = asdict(result)
     payload["config"] = {k: enum_value(v) for k, v in payload["config"].items()}
     path.write_text(json.dumps(payload, indent=2, default=str))
@@ -855,4 +926,4 @@ def load_results(results_dir: Path, verify: bool = False) -> list[dict]:
     results_dir = Path(results_dir)
     if not results_dir.exists():
         return []
-    return [load_result(p, verify=verify) for p in sorted(results_dir.glob("*.json"))]
+    return [load_result(p, verify=verify) for p in sorted(results_dir.rglob("*.json"))]

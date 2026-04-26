@@ -109,6 +109,7 @@ async def run_exp3c(
                 expected=item["expected"],
                 stated_confidence=None,
                 refused=_is_refusal(response),
+                expected_aliases=list(item.get("answer_aliases") or []),
             )
             result = RunResult(
                 config=asdict(config),
