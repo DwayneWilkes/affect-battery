@@ -185,9 +185,10 @@ stopping_rules:
       base-vs-instruct test to exploratory; primary family shrinks to 4.
 
 amendment_chain:
-  # Append-only per design.md D4. Each entry MUST cite the rationale +
-  # the SHA-256 of the YAML at the time of amendment so the audit trail
-  # is reconstructible from the git history alone.
+  # Append-only. Each entry records the rationale + affected sections.
+  # When finalize_v1 runs, it appends a fresh entry with a `sha` field
+  # capturing the YAML state at finalize time; existing entries below
+  # were not produced via finalize_v1 and so do not carry that hash.
   - amendment_id: 1
     date: 2026-04-24
     rationale: |
@@ -197,7 +198,6 @@ amendment_chain:
       analysis pipeline confirmed all six paper-aligned experiments
       route through to the per-experiment + cross-experiment reports.
       Subsequent amendments are append-only.
-    content_sha: TBD_at_finalize  # filled in by prereg.finalize_v1
     affected_sections: [hypotheses, mdes, correction_families, stopping_rules]
 
   - amendment_id: 2
@@ -237,7 +237,6 @@ amendment_chain:
       time (e.g., `claude-opus-4-7-2026-04-15`) in config so cross-run
       drift can be detected at analysis time.
 
-    content_sha: TBD_at_finalize  # filled in by prereg.finalize_v1
     affected_sections: [model_panel, h4_disposition, reproducibility_caveats]
     h4_disposition: retain  # default; override at run time
     additional_providers:

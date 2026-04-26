@@ -59,24 +59,26 @@ def _load_corpus(results_dir: Path, experiment: str) -> list[dict]:
 def _extract_primary_p_values(
     exp1a_analysis: dict | None,
     exp1b_analysis: dict | None,
+    exp2_analysis: dict | None,
+    exp3a_analysis: dict | None,
     h4_analysis: dict | None,
 ) -> dict[str, float]:
     """Pull the primary-family p-values that exist out of the per-experiment
     analyses for family-wise correction.
 
     Hypotheses in the primary family per power-analysis spec:
-      H1     -> Exp 1a per-condition tests; we pick the strongest signal
-                (smallest p across non-baseline conditions) as the family
-                representative. Spec uses Holm within Exp 1a too, so this
-                is the already-Holm-corrected min.
-      H1b    -> Exp 1b session-2 directional p (smallest across conditions)
+      H1       -> Exp 1a per-condition tests; smallest Holm-corrected p
+                  across non-baseline conditions.
+      H1b      -> Exp 1b session-2 directional p (smallest across conditions)
       H1b_TOST -> Exp 1b session-2 TOST p (smallest across conditions)
-      H2     -> Exp 2 mixed-effects fit (added when per-model H2 results
-                are present in the corpus)
-      H3a    -> Exp 3a per-model beta_2 one-sided p (added when per-model
-                aggregation is present in the corpus)
-      H4     -> H4 contrast pre-registered test (a)
+      H2       -> Exp 2 asymmetry-ratio bootstrap p (one-sided H_a:
+                  |neg_auc| / |pos_auc| > 1.0)
+      H3a      -> Exp 3a beta_2 one-sided Student-t p
+      H4       -> H4 cross-experiment asymmetry_delta_ratio bootstrap p
+                  (one-sided H_a: ratio_instruct / ratio_base > 1.0)
     """
+    from src.analysis.stats.bootstrap import bootstrap_ratio_p
+
     p: dict[str, float] = {}
 
     if exp1a_analysis and exp1a_analysis.get("verdict") == "complete":
@@ -99,17 +101,45 @@ def _extract_primary_p_values(
         if tost:
             p["H1b_TOST"] = min(tost)
 
-    # H4: the pre-registered (a) test is asymmetry_delta_ratio > 1. The
-    # primary test is the directional contrast itself; we map the test
-    # outcome to a coarse p-value (True -> 0.04, False -> 1.0) to keep
-    # H4 in the family-wise correction. A bootstrap-derived p-value
-    # over the per-pair ratio distribution can replace this when needed.
+    # H2: asymmetry-ratio bootstrap on the per-condition AUCs. The
+    # analyze_exp2_corpus output exposes per-condition `recovery_metrics`
+    # with the AUC values; we pull the strong-positive and strong-negative
+    # AUCs and bootstrap-test |neg|/|pos| > 1.0.
+    if exp2_analysis and exp2_analysis.get("verdict") == "complete":
+        by_cond = exp2_analysis.get("by_condition", {})
+        neg_cell = by_cond.get("strong_negative", {})
+        pos_cell = by_cond.get("strong_positive", {})
+        neg_auc = (neg_cell.get("recovery_metrics") or {}).get("auc")
+        pos_auc = (pos_cell.get("recovery_metrics") or {}).get("auc")
+        if neg_auc is not None and pos_auc is not None:
+            p["H2"] = bootstrap_ratio_p(
+                numerator=[neg_auc],
+                denominator=[pos_auc],
+                n_resamples=2000,
+                seed=0,
+            )
+
+    # H3a: the analyze_exp3a output exposes a Student-t one-sided p for
+    # beta_2 < 0; pull it directly.
+    if exp3a_analysis and "beta_2_p_one_sided" in exp3a_analysis:
+        p["H3a"] = float(exp3a_analysis["beta_2_p_one_sided"])
+
+    # H4: bootstrap p-value on the cross-experiment asymmetry_delta_ratio
+    # using the per-model aggregate ratios. Pre-registered test (a) is
+    # `delta_ratio > 1.0` (one-sided).
     if h4_analysis and h4_analysis.get("verdict") == "complete":
-        outcome = h4_analysis.get("test_a_primary_delta_ratio_gt_1")
-        if outcome is True:
-            p["H4"] = 0.04
-        elif outcome is False:
-            p["H4"] = 1.0
+        per_model = h4_analysis.get("per_model_aggregates") or {}
+        base_model = h4_analysis.get("base_model")
+        instruct_model = h4_analysis.get("instruct_model")
+        base_ratio = (per_model.get(base_model) or {}).get("ratio_geomean")
+        instruct_ratio = (per_model.get(instruct_model) or {}).get("ratio_geomean")
+        if base_ratio is not None and instruct_ratio is not None and base_ratio > 0:
+            p["H4"] = bootstrap_ratio_p(
+                numerator=[instruct_ratio],
+                denominator=[base_ratio],
+                n_resamples=2000,
+                seed=0,
+            )
 
     return p
 
@@ -161,6 +191,7 @@ def analyze_results_dir(
 
     # ---- Exp 2 (A1) ----
     exp2_corpus = _load_corpus(results_dir, "exp2")
+    exp2_analysis: dict | None = None
     if exp2_corpus:
         exp2_analysis = analyze_exp2_corpus(exp2_corpus, model=model)
         path = results_dir / "exp2_report.md"
@@ -175,6 +206,7 @@ def analyze_results_dir(
     # level. analyze_exp3a expects accuracy_by_level: {level: [accs]}
     # so we project the corpus into that shape here.
     exp3a_corpus = _load_corpus(results_dir, "exp3a")
+    exp3a_analysis: dict | None = None
     if exp3a_corpus:
         accuracy_by_level: dict[int, list[float]] = {}
         for run in exp3a_corpus:
@@ -241,6 +273,8 @@ def analyze_results_dir(
     p_values = _extract_primary_p_values(
         exp1a_analysis=exp1a_analysis,
         exp1b_analysis=exp1b_analysis,
+        exp2_analysis=exp2_analysis,
+        exp3a_analysis=exp3a_analysis,
         h4_analysis=h4_analysis,
     )
     if p_values:

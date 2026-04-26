@@ -9,217 +9,38 @@ difficulty_profile:
     sub: 0.3
     mul: 0.15
     div: 0.05
-  notes: Same-task-type / hard cell of the 2x2 transfer design (see design.md D5). Items share the conditioning bank's operator
-    taxonomy but are disjoint by seed (conditioning=20260421, transfer=20260422) so memorization can't bleed from conditioning
+  notes: Same-task-type / hard cell of the 2x2 transfer design (see design.md D5).
+    Items share the conditioning bank's operator taxonomy but are disjoint by seed
+    (conditioning=20260421, transfer=20260422) so memorization can't bleed from conditioning
     into transfer. Question rendering matches the default_prompt_fn in src/calibration/pipeline.py.
 items:
-- id: transfer_hard_arithmetic_v1_0001
-  question: What is 9571 + 3027?
-  expected_answer: '12598'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0002
-  question: What is 4813 + 2963?
-  expected_answer: '7776'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0003
-  question: What is 6720 + 8699?
-  expected_answer: '15419'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0004
-  question: What is 8318 + 4870?
-  expected_answer: '13188'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0005
-  question: What is 6961 + 6360?
-  expected_answer: '13321'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0006
-  question: What is 5905 + 6108?
-  expected_answer: '12013'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0007
-  question: What is 3417 + 9477?
-  expected_answer: '12894'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0008
-  question: What is 7499 + 7210?
-  expected_answer: '14709'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0009
-  question: What is 4468 + 4941?
-  expected_answer: '9409'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0010
-  question: What is 8064 + 3825?
-  expected_answer: '11889'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0011
-  question: What is 2974 + 3816?
-  expected_answer: '6790'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0012
-  question: What is 7654 + 2258?
-  expected_answer: '9912'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0013
-  question: What is 5527 + 1369?
-  expected_answer: '6896'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0014
-  question: What is 9864 + 4345?
-  expected_answer: '14209'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0015
-  question: What is 6322 + 7806?
-  expected_answer: '14128'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: add
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0016
-  question: What is 4801 - 2942?
-  expected_answer: '1859'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0017
-  question: What is 4522 - 3551?
-  expected_answer: '971'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0018
-  question: What is 4714 - 3205?
-  expected_answer: '1509'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0019
-  question: What is 5495 - 2581?
-  expected_answer: '2914'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0020
-  question: What is 6038 - 3739?
-  expected_answer: '2299'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0021
-  question: What is 9372 - 7236?
-  expected_answer: '2136'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0022
-  question: What is 2890 - 2752?
-  expected_answer: '138'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0023
-  question: What is 5472 - 5274?
-  expected_answer: '198'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 2
-- id: transfer_hard_arithmetic_v1_0024
-  question: What is 7792 - 6023?
-  expected_answer: '1769'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: sub
-  n_carries: 1
-- id: transfer_hard_arithmetic_v1_0025
-  question: What is 478 * 79?
-  expected_answer: '37762'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: mul
-  n_carries: 6
-- id: transfer_hard_arithmetic_v1_0026
-  question: What is 549 * 15?
-  expected_answer: '8235'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: mul
-  n_carries: 5
-- id: transfer_hard_arithmetic_v1_0027
-  question: What is 555 * 34?
-  expected_answer: '18870'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: mul
-  n_carries: 6
-- id: transfer_hard_arithmetic_v1_0028
-  question: What is 937 * 26?
-  expected_answer: '24362'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: mul
-  n_carries: 7
-- id: transfer_hard_arithmetic_v1_0029
-  question: What is 616 / 44?
-  expected_answer: '14'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: div
-  n_carries: 3
-- id: transfer_hard_arithmetic_v1_0030
-  question: What is 2052 / 54?
-  expected_answer: '38'
-  task_type: arithmetic
-  difficulty_class: hard
-  operator: div
-  n_carries: 5
+- {difficulty_class: hard, expected_answer: '12598', id: transfer_hard_arithmetic_v1_0001, n_carries: 1, operator: add, question: 'What is 9571 + 3027?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '7776', id: transfer_hard_arithmetic_v1_0002, n_carries: 1, operator: add, question: 'What is 4813 + 2963?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '15419', id: transfer_hard_arithmetic_v1_0003, n_carries: 3, operator: add, question: 'What is 6720 + 8699?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '13188', id: transfer_hard_arithmetic_v1_0004, n_carries: 2, operator: add, question: 'What is 8318 + 4870?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '13321', id: transfer_hard_arithmetic_v1_0005, n_carries: 3, operator: add, question: 'What is 6961 + 6360?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '12013', id: transfer_hard_arithmetic_v1_0006, n_carries: 3, operator: add, question: 'What is 5905 + 6108?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '12894', id: transfer_hard_arithmetic_v1_0007, n_carries: 2, operator: add, question: 'What is 3417 + 9477?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '14709', id: transfer_hard_arithmetic_v1_0008, n_carries: 2, operator: add, question: 'What is 7499 + 7210?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '9409', id: transfer_hard_arithmetic_v1_0009, n_carries: 2, operator: add, question: 'What is 4468 + 4941?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '11889', id: transfer_hard_arithmetic_v1_0010, n_carries: 1, operator: add, question: 'What is 8064 + 3825?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '6790', id: transfer_hard_arithmetic_v1_0011, n_carries: 2, operator: add, question: 'What is 2974 + 3816?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '9912', id: transfer_hard_arithmetic_v1_0012, n_carries: 2, operator: add, question: 'What is 7654 + 2258?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '6896', id: transfer_hard_arithmetic_v1_0013, n_carries: 1, operator: add, question: 'What is 5527 + 1369?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '14209', id: transfer_hard_arithmetic_v1_0014, n_carries: 3, operator: add, question: 'What is 9864 + 4345?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '14128', id: transfer_hard_arithmetic_v1_0015, n_carries: 2, operator: add, question: 'What is 6322 + 7806?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '1859', id: transfer_hard_arithmetic_v1_0016, n_carries: 3, operator: sub, question: 'What is 4801 - 2942?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '971', id: transfer_hard_arithmetic_v1_0017, n_carries: 2, operator: sub, question: 'What is 4522 - 3551?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '1509', id: transfer_hard_arithmetic_v1_0018, n_carries: 1, operator: sub, question: 'What is 4714 - 3205?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '2914', id: transfer_hard_arithmetic_v1_0019, n_carries: 1, operator: sub, question: 'What is 5495 - 2581?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '2299', id: transfer_hard_arithmetic_v1_0020, n_carries: 3, operator: sub, question: 'What is 6038 - 3739?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '2136', id: transfer_hard_arithmetic_v1_0021, n_carries: 1, operator: sub, question: 'What is 9372 - 7236?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '138', id: transfer_hard_arithmetic_v1_0022, n_carries: 1, operator: sub, question: 'What is 2890 - 2752?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '198', id: transfer_hard_arithmetic_v1_0023, n_carries: 2, operator: sub, question: 'What is 5472 - 5274?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '1769', id: transfer_hard_arithmetic_v1_0024, n_carries: 1, operator: sub, question: 'What is 7792 - 6023?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '37762', id: transfer_hard_arithmetic_v1_0025, n_carries: 6, operator: mul, question: 'What is 478 * 79?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '8235', id: transfer_hard_arithmetic_v1_0026, n_carries: 5, operator: mul, question: 'What is 549 * 15?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '18870', id: transfer_hard_arithmetic_v1_0027, n_carries: 6, operator: mul, question: 'What is 555 * 34?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '24362', id: transfer_hard_arithmetic_v1_0028, n_carries: 7, operator: mul, question: 'What is 937 * 26?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '14', id: transfer_hard_arithmetic_v1_0029, n_carries: 3, operator: div, question: 'What is 616 / 44?', task_type: arithmetic}
+- {difficulty_class: hard, expected_answer: '38', id: transfer_hard_arithmetic_v1_0030, n_carries: 5, operator: div, question: 'What is 2052 / 54?', task_type: arithmetic}

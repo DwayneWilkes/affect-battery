@@ -4,10 +4,10 @@
 # Design: D4 (deterministic YAML-driven verdict)
 #
 # The `pre_registration_tag` and `pre_registration_sha` below are sentinel
-# placeholders; task 12.7 replaces them with the real git tag + commit SHA
-# BEFORE the gated calibration pilot runs. The load_config() validator
-# accepts the sentinel with a UserWarning so infrastructure tests run
-# offline; `cmd_run` rejects the sentinel at invocation time.
+# values that MUST be replaced with the real git tag + commit SHA before
+# any gated calibration run. The load_config() validator accepts the
+# sentinel with a UserWarning so infrastructure tests run offline; the
+# `affect-battery run` invocation rejects the sentinel at runtime.
 
 baseline_window:
   min: 0.60

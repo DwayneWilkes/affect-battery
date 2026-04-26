@@ -98,11 +98,10 @@ def _check_pre_registration_not_sentinel(
     if tag == PRE_REGISTRATION_SENTINEL or sha == PRE_REGISTRATION_SENTINEL:
         raise PreflightError(
             f"gate config's pre-registration fields still carry the "
-            f"'{PRE_REGISTRATION_SENTINEL}' placeholder. Per design D4 the "
-            f"sweep MUST NOT run until the gate config has been tagged in "
-            f"git (tag: gate-prereg-<bank_id>-<YYYY-MM-DD>) and the tag "
-            f"commit SHA recorded in configs/calibration-gate.yaml. "
-            f""
+            f"'{PRE_REGISTRATION_SENTINEL}' sentinel. Per design D4 the "
+            f"sweep MUST NOT run until the gate config has been tagged "
+            f"in git (tag: gate-prereg-<bank_id>-<YYYY-MM-DD>) and the "
+            f"tag commit SHA recorded in configs/calibration-gate.yaml."
         )
 
 
