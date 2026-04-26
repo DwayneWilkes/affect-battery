@@ -29,6 +29,8 @@ OVERWRITE=""
 SKIP_PREREG=""
 DRY_RUN=""
 PARALLEL=""
+MAX_CONCURRENT=""  # if unset, run_anthropic_pilot.sh's default applies (16)
+RATE_LIMIT_RPS=""  # if unset, run_anthropic_pilot.sh's default applies (20)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +43,8 @@ while [[ $# -gt 0 ]]; do
     --skip-prereg)  SKIP_PREREG="--skip-prereg"; shift ;;
     --dry-run)      DRY_RUN="--dry-run"; shift ;;
     --parallel)     PARALLEL="1"; shift ;;
+    --max-concurrent) MAX_CONCURRENT="$2"; shift 2 ;;
+    --rate-limit-rps) RATE_LIMIT_RPS="$2"; shift 2 ;;
     -h|--help)
       grep '^# ' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -62,6 +66,16 @@ declare -A EXTRA_FLAGS=(
   [exp3b]="--runner-config configs/exp3b_runner.yaml"
   [exp3c]="--runner-config configs/exp3c_runner.yaml"
 )
+
+# Build optional concurrency flags so empty values don't pass through
+# as empty strings (the CLI argparser would reject them).
+CONCURRENCY_FLAGS=""
+if [[ -n "${MAX_CONCURRENT}" ]]; then
+  CONCURRENCY_FLAGS+="--max-concurrent ${MAX_CONCURRENT} "
+fi
+if [[ -n "${RATE_LIMIT_RPS}" ]]; then
+  CONCURRENCY_FLAGS+="--rate-limit-rps ${RATE_LIMIT_RPS} "
+fi
 
 START_TIME=$(date +%s)
 FAILED=()
@@ -87,7 +101,8 @@ run_one_experiment() {
         ${ESTIMATE} \
         ${OVERWRITE} \
         ${SKIP_PREREG} \
-        ${DRY_RUN} > "${log}" 2>&1; then
+        ${DRY_RUN} \
+        ${CONCURRENCY_FLAGS} > "${log}" 2>&1; then
     echo "  ✓ ${exp} complete (log: ${log})"
     return 0
   else
@@ -141,7 +156,8 @@ else
           ${ESTIMATE} \
           ${OVERWRITE} \
           ${SKIP_PREREG} \
-          ${DRY_RUN} 2>&1 | tee "${LOG_DIR}/${exp}.log"; then
+          ${DRY_RUN} \
+          ${CONCURRENCY_FLAGS} 2>&1 | tee "${LOG_DIR}/${exp}.log"; then
       echo "  ✓ ${exp} complete"
     else
       echo "  ✗ ${exp} FAILED" >&2

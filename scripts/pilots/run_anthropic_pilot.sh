@@ -40,6 +40,16 @@ RUNNER_CONFIG=""
 NEUTRAL_TURNS=0
 OVERWRITE=""
 ESTIMATE=""
+# Concurrency + rate limit. Defaults tuned for typical tier-2 API
+# accounts (Anthropic / OpenAI both allow 1000+ RPM on small models
+# at this tier). The SDKs handle 429 with built-in retry +
+# Retry-After honor, so a high static cap is safe — the SDK throttles
+# us back if we hit the wall. For tier-1 accounts or large-context
+# models, lower these via flags. For tier-3+ accounts you can go
+# higher; cmd_pilot will saturate whichever ceiling is lower
+# (concurrency × inverse-latency vs rate-limit-rps).
+MAX_CONCURRENT=16
+RATE_LIMIT_RPS=20
 # Default to the alias-aware TriviaQA hard subset so frontier models don't
 # saturate on the legacy 6-item hardcoded pool. Override with
 # --transfer-bank '' to use the legacy pool, or with another bank path.
@@ -60,6 +70,8 @@ while [[ $# -gt 0 ]]; do
     --neutral-turns)  NEUTRAL_TURNS="$2"; shift 2 ;;
     --overwrite)      OVERWRITE="--overwrite"; shift ;;
     --estimate)       ESTIMATE="--estimate"; shift ;;
+    --max-concurrent) MAX_CONCURRENT="$2"; shift 2 ;;
+    --rate-limit-rps) RATE_LIMIT_RPS="$2"; shift 2 ;;
     -h|--help)
       grep '^# ' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
@@ -167,6 +179,7 @@ echo "  output_dir:    ${OUTPUT_DIR}"
 echo "  transfer_bank: ${TRANSFER_BANK:-<legacy hardcoded pool>}"
 echo "  runner_config: ${RUNNER_CONFIG:-<none, only required for exp3a/3b/3c>}"
 echo "  overwrite:     ${OVERWRITE:-no (resume-by-default)}"
+echo "  concurrency:   max=${MAX_CONCURRENT}, rate=${RATE_LIMIT_RPS} RPS"
 echo ""
 
 # Note: `affect-battery pilot` runs all 7 conditions × num_runs.
@@ -220,8 +233,8 @@ uv run affect-battery pilot \
   --seed "${SEED}" \
   --neutral-turns "${NEUTRAL_TURNS}" \
   --output-dir "${OUTPUT_DIR}" \
-  --max-concurrent 4 \
-  --rate-limit-rps 5 \
+  --max-concurrent "${MAX_CONCURRENT}" \
+  --rate-limit-rps "${RATE_LIMIT_RPS}" \
   --budget-max-calls 500 \
   ${COST_PER_CALL_FLAG} \
   ${TRANSFER_BANK_FLAG} \
