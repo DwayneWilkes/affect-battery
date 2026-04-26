@@ -1316,6 +1316,28 @@ def cmd_pilot(args):
     # to the SDK exit code (cmd_pilot returns 0 in both cases) but the
     # yielded count is the truth.
     expected_results = len(conditions) * (per_cond_yield_for_est or args.num_runs)
+    # Recompute cost using token-based pricing for the [RUN_SUMMARY] —
+    # ignoring any --cost-per-call override the bash script passes
+    # (that's a conservative blended rate for the budget guard, not
+    # an accurate cost number). _estimate_pilot honors --cost-per-call
+    # by default; we need to bypass it for honest post-hoc reporting.
+    try:
+        # Build a shadow-args namespace with cost_per_call=None so the
+        # estimator uses tier-based input/output pricing.
+        from types import SimpleNamespace as _SN
+        shadow = _SN(**{
+            k: getattr(args, k) for k in dir(args)
+            if not k.startswith("_") and not callable(getattr(args, k, None))
+        })
+        shadow.cost_per_call = None
+        token_est = _estimate_pilot(
+            shadow, conditions, extra_kwargs, per_cond_yield_for_est,
+        )
+        cost_str = f"cost_usd={token_est['total_cost_usd']:.4f}"
+    except Exception:
+        # If shadow-args trick fails, fall back to the blended-rate
+        # post-hoc number (still better than nothing).
+        pass
     print(
         f"[RUN_SUMMARY] {cost_str} wall_clock_sec={elapsed:.1f} "
         f"yielded={n_total} expected={expected_results} "

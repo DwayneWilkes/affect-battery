@@ -31,15 +31,22 @@ EMBEDDING_MODEL_VERSION = "v2.0.0"
 _embedder_cache = None
 
 
-def _default_embedder(texts: list[str]) -> list[list[float]]:
+def _default_embedder(texts: list[str]) -> list[list[float]] | None:
     """Lazy-load the pinned embedding model and embed `texts`.
 
-    The model is cached at module level so repeated calls don't reload.
-    Tests should pass a `fake_embedder` to avoid the heavy load.
+    Returns None when sentence_transformers isn't installed (the
+    package is in the `[embeddings]` optional extra). Callers should
+    fall back to non-embedding diversity metrics (n-gram only) when
+    None is returned. This lets the analyzer complete on installs
+    without the optional ML dependency, at the cost of dropping the
+    embedding-variance dimension of the cognitive-scope analysis.
     """
     global _embedder_cache
     if _embedder_cache is None:
-        from sentence_transformers import SentenceTransformer  # type: ignore[import]
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore[import]
+        except ImportError:
+            return None
         _embedder_cache = SentenceTransformer(EMBEDDING_MODEL)
     embeddings = _embedder_cache.encode(texts, normalize_embeddings=True)
     return [list(e) for e in embeddings]
@@ -61,13 +68,21 @@ def _cosine_distance(a: list[float], b: list[float]) -> float:
 
 def compute_embedding_variance(
     generations: list[str],
-    embedder: Callable[[list[str]], list[list[float]]] | None = None,
-) -> float:
-    """Mean cosine distance from generation embeddings to their centroid."""
+    embedder: Callable[[list[str]], list[list[float]] | None] | None = None,
+) -> float | None:
+    """Mean cosine distance from generation embeddings to their centroid.
+
+    Returns None when the embedder is unavailable (sentence_transformers
+    not installed). Callers should treat None as "embedding metric
+    skipped" and rely on n-gram diversity alone.
+    """
     if not generations:
         return 0.0
     embed_fn = embedder if embedder is not None else _default_embedder
     embeddings = embed_fn(list(generations))
+    if embeddings is None:
+        # sentence_transformers not installed; embedding metric skipped.
+        return None
     n = len(embeddings)
     if n == 0:
         return 0.0
