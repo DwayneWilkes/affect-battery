@@ -17,6 +17,14 @@
 
 set -euo pipefail
 
+# Unset any inherited VIRTUAL_ENV so uv silently uses this project's
+# .venv instead of warning about the mismatch when the parent shell
+# has another project's venv activated. This is the right behavior
+# anyway: project venvs should win over ambient activation, otherwise
+# running this script from inside another project's shell would pick
+# up the wrong dependency set.
+unset VIRTUAL_ENV
+
 # Default to Haiku for cheapest validation. Override with --model
 # claude-sonnet-4-6 or --model claude-opus-4-7 once the harness is
 # verified end-to-end on Haiku.
