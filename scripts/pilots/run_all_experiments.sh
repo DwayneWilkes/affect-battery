@@ -63,6 +63,11 @@ declare -A EXTRA_FLAGS=(
 
 START_TIME=$(date +%s)
 FAILED=()
+# Per-experiment aggregation: collect cost + wall-clock from the
+# [ESTIMATE_SUMMARY] / [RUN_SUMMARY] line each pilot subprocess
+# emits. Sum at the end for the headline grand-total.
+SUMMARY_LOG="$(mktemp)"
+trap "rm -f '${SUMMARY_LOG}'" EXIT
 
 for exp in "${EXPERIMENTS[@]}"; do
   echo ""
@@ -70,6 +75,8 @@ for exp in "${EXPERIMENTS[@]}"; do
   echo "  Pilot: ${exp}"
   echo "===================================="
 
+  # tee the subprocess output to the user's terminal AND to a log we
+  # can grep for the machine-readable summary lines after.
   if bash scripts/pilots/run_anthropic_pilot.sh \
         --provider "${PROVIDER}" \
         --model "${MODEL}" \
@@ -80,7 +87,7 @@ for exp in "${EXPERIMENTS[@]}"; do
         ${ESTIMATE} \
         ${OVERWRITE} \
         ${SKIP_PREREG} \
-        ${DRY_RUN}; then
+        ${DRY_RUN} 2>&1 | tee -a "${SUMMARY_LOG}"; then
     echo "  ✓ ${exp} complete"
   else
     echo "  ✗ ${exp} FAILED" >&2
@@ -93,19 +100,51 @@ done
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 
+# Sum cost + wall-clock from the per-experiment summary lines.
+# Both [ESTIMATE_SUMMARY] (estimate mode) and [RUN_SUMMARY] (real
+# run) use the same `cost_usd=N wall_clock_sec=M` shape.
+TOTAL_COST=$(grep -oE '\[(ESTIMATE|RUN)_SUMMARY\] cost_usd=[0-9.]+' "${SUMMARY_LOG}" \
+  | sed 's/.*cost_usd=//' \
+  | awk '{ s += $1 } END { printf "%.4f", s }')
+TOTAL_WALL_SEC=$(grep -oE 'wall_clock_sec=[0-9.]+' "${SUMMARY_LOG}" \
+  | sed 's/wall_clock_sec=//' \
+  | awk '{ s += $1 } END { printf "%.1f", s }')
+
 echo ""
 echo "===================================="
 echo "  Multi-experiment pilot summary"
 echo "===================================="
-echo "  model:         ${MODEL}"
-echo "  num_runs:      ${NUM_RUNS}"
-echo "  experiments:   ${#EXPERIMENTS[@]} attempted"
-echo "  succeeded:     $((${#EXPERIMENTS[@]} - ${#FAILED[@]}))"
-echo "  failed:        ${#FAILED[@]}"
+echo "  provider:        ${PROVIDER}"
+echo "  model:           ${MODEL}"
+echo "  num_runs:        ${NUM_RUNS}"
+echo "  experiments:     ${#EXPERIMENTS[@]} attempted"
+echo "  succeeded:       $((${#EXPERIMENTS[@]} - ${#FAILED[@]}))"
+echo "  failed:          ${#FAILED[@]}"
 if [[ ${#FAILED[@]} -gt 0 ]]; then
   echo "    -> ${FAILED[*]}"
 fi
-echo "  total_elapsed: $((ELAPSED / 60))m $((ELAPSED % 60))s"
+# Wall-clock: orchestrator-measured (sequential), and sum of
+# per-experiment wall-clocks (which would be the lower bound if
+# experiments could run in parallel).
+echo "  orchestrator_elapsed: $((ELAPSED / 60))m $((ELAPSED % 60))s"
+if [[ -n "${TOTAL_WALL_SEC}" && "${TOTAL_WALL_SEC}" != "0.0" ]]; then
+  TOTAL_WALL_MIN=$(awk -v s="${TOTAL_WALL_SEC}" 'BEGIN { printf "%.1f", s / 60 }')
+  if [[ -n "${ESTIMATE}" ]]; then
+    echo "  estimated wall:  ${TOTAL_WALL_MIN}m (sum across experiments; sequential)"
+  else
+    echo "  per-pilot wall:  ${TOTAL_WALL_MIN}m (sum of per-experiment elapsed)"
+  fi
+fi
+# Cost: sum across experiments. Same line for both --estimate and
+# real-run because cmd_pilot's [RUN_SUMMARY] uses the estimator
+# post-hoc (we don't track real token usage at runtime today).
+if [[ -n "${TOTAL_COST}" && "${TOTAL_COST}" != "0.0000" ]]; then
+  if [[ -n "${ESTIMATE}" ]]; then
+    echo "  estimated cost:  \$${TOTAL_COST} (sum across experiments)"
+  else
+    echo "  estimated cost:  \$${TOTAL_COST} (post-hoc estimate; real usage may differ)"
+  fi
+fi
 echo ""
 
 # Aggregate cost / time across pilot manifests when not in --estimate

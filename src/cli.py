@@ -782,6 +782,13 @@ def _print_estimate(est: dict) -> None:
         f"(~{est['effective_rps']:.1f} calls/s effective)"
     )
     print(f"  max-concurrent:     {est['max_concurrent']}")
+    # Machine-readable summary line so orchestrators can aggregate
+    # cost + wall-clock across multiple per-experiment estimates.
+    print(
+        f"[ESTIMATE_SUMMARY] cost_usd={est['total_cost_usd']:.4f} "
+        f"wall_clock_sec={est['wall_clock_sec']:.1f} "
+        f"experiment={est['experiment']} model={est['model']}"
+    )
     print()
 
 
@@ -1230,6 +1237,21 @@ def cmd_pilot(args):
     print(
         f"  {'TOTAL':<20} {n_total:>5}  {elapsed:>7.1f}s  "
         f"{elapsed / max(n_total, 1):>7.2f}s"
+    )
+    # Machine-readable summary so the multi-experiment orchestrator can
+    # aggregate elapsed + estimated cost across all 5 experiments. We
+    # call the estimator post-hoc with the same config to get the cost
+    # number; wall-clock is the actual measured value.
+    try:
+        post_est = _estimate_pilot(
+            args, conditions, extra_kwargs, per_cond_yield_for_est,
+        )
+        cost_str = f"cost_usd={post_est['total_cost_usd']:.4f}"
+    except Exception:
+        cost_str = "cost_usd=unknown"
+    print(
+        f"[RUN_SUMMARY] {cost_str} wall_clock_sec={elapsed:.1f} "
+        f"experiment={args.experiment} model={args.model}"
     )
     print(f"\nResults in {output_dir}/")
 
