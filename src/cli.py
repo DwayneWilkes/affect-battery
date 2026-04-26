@@ -185,6 +185,111 @@ def _validate_github_commit_ref(ref: str) -> None:
         )
 
 
+def _write_pilot_manifest(
+    pilot_root: Path,
+    args,
+    conditions: list,
+    bank_id: str,
+    bank_hash: str,
+    started_utc: str,
+    completed_utc: str,
+    per_cond_elapsed: dict[str, float],
+    per_cond_count: dict[str, int],
+) -> Path:
+    """Write a manifest.yaml at the pilot root capturing everything needed
+    to reproduce the run from disk alone: model, experiment, conditions,
+    n, seed, transfer/stimulus banks, prereg refs, timing.
+
+    The manifest is the canonical answer to 'what was in this pilot dir?'
+    so consumers don't have to crack a JSON to find out.
+    """
+    import subprocess as _sp
+
+    import yaml as _yaml
+
+    manifest_path = pilot_root / "manifest.yaml"
+    pilot_root.mkdir(parents=True, exist_ok=True)
+
+    # git SHA: best-effort. If not in a repo (or git missing), record None
+    # rather than crashing the pilot.
+    try:
+        sha = _sp.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=Path.cwd(), text=True,
+            stderr=_sp.DEVNULL,
+        ).strip()
+    except (_sp.CalledProcessError, FileNotFoundError, OSError):
+        sha = None
+
+    # Build prereg / power_report sections so they're informative rather
+    # than emitting null subfields. When the gate is skipped, surface a
+    # `status: "skipped (...)"` string; when it's set, surface the ref.
+    osf = getattr(args, "pre_registration_osf_url", None)
+    gh = getattr(args, "pre_registration_github_commit", None)
+    if osf or gh:
+        prereg = {"osf_url": osf, "github_commit": gh}
+    elif getattr(args, "skip_prereg_gate", False):
+        prereg = "skipped (--skip-prereg-gate)"
+    elif getattr(args, "dry_run", False):
+        prereg = "skipped (--dry-run)"
+    else:
+        prereg = "missing (gate would have failed)"
+
+    power_path = getattr(args, "power_report_path", None)
+    power_sha = getattr(args, "power_report_sha", None)
+    if power_path or power_sha:
+        power = {"path": power_path, "sha": power_sha}
+    elif getattr(args, "skip_power_gate", False):
+        power = "skipped (--skip-power-gate)"
+    elif getattr(args, "dry_run", False):
+        power = "skipped (--dry-run)"
+    else:
+        power = "missing (gate would have failed)"
+
+    transfer_bank = getattr(args, "transfer_bank", None) or None
+    if transfer_bank is None:
+        transfer_bank = "hardcoded_factual_qa_v0_legacy (no --transfer-bank set)"
+
+    payload: dict = {
+        "pilot_kind": "exp1a_pilot" if args.experiment == "exp1a" else f"{args.experiment}_pilot",
+        "model": args.model,
+        "provider": getattr(args, "provider", None),
+        "experiment": args.experiment,
+        "conditions": [c.value if hasattr(c, "value") else str(c) for c in conditions],
+        "num_runs": args.num_runs,
+        "seed": args.seed,
+        "temperature": getattr(args, "temperature", None),
+        "is_base_model": getattr(args, "base_model", False),
+        "stimulus_bank": {"id": bank_id, "sha256": bank_hash},
+        "transfer_bank": transfer_bank,
+        "pre_registration": prereg,
+        "power_report": power,
+        "git_sha": sha if sha else "unknown (not in a git repo)",
+        "started_utc": started_utc,
+        "completed_utc": completed_utc,
+        "timing_per_condition": {
+            cond: {
+                "runs": per_cond_count.get(cond, 0),
+                "total_seconds": round(per_cond_elapsed.get(cond, 0.0), 3),
+            }
+            for cond in (c.value if hasattr(c, "value") else str(c) for c in conditions)
+        },
+    }
+    manifest_path.write_text(_yaml.safe_dump(payload, sort_keys=False))
+    return manifest_path
+
+
+def _hash_transfer_bank(bank_path: str | None) -> str:
+    """SHA-256 over the transfer-bank file contents. Returns "" when no
+    bank is set (the runner falls back to the legacy hardcoded pool).
+    Used for cache identity so re-piloting with a different bank
+    invalidates cached results from the prior bank.
+    """
+    if not bank_path:
+        return ""
+    import hashlib
+    return hashlib.sha256(Path(bank_path).read_bytes()).hexdigest()
+
+
 def _quiet_per_run_logger() -> None:
     """Demote per-API-call INFO logs to DEBUG so the tqdm progress bar
     isn't interleaved with one log line per run. The runner module's
@@ -301,11 +406,18 @@ def cmd_run(args):
         neutral_turns=args.neutral_turns,
         stimulus_bank=bank_id,
         stimulus_bank_hash=bank_hash,
+        transfer_bank=getattr(args, "transfer_bank", None) or "",
+        transfer_bank_hash=_hash_transfer_bank(getattr(args, "transfer_bank", None)),
     )
 
     client = _build_client(args)
 
-    output_dir = Path(args.output_dir)
+    # Pilot-root layout: <output_dir> is the pilot root. Data lives under
+    # <output_dir>/data/<experiment>/ so it sits alongside reports/ and
+    # manifest.yaml. Same shape cmd_pilot uses; this gives full-experiment
+    # runs the same on-disk structure as quick pilots.
+    pilot_root = Path(args.output_dir)
+    output_dir = pilot_root / "data" / args.experiment
     budget = _build_budget(args)
     cancel_event = asyncio.Event()
     _install_sigint_handler(cancel_event)
@@ -369,12 +481,16 @@ def cmd_run(args):
     # tqdm's rate-of-progress display handle the actual count via
     # `total=None` overflow semantics for the multi-axis experiments.
     import time as _time
+    from datetime import datetime, timezone
     from tqdm import tqdm
     _quiet_per_run_logger()
     bar_total = args.num_runs if args.experiment in {"exp1a", "exp1b", "exp2"} else None
     started = _time.time()
+    started_utc = datetime.now(timezone.utc).isoformat()
+    runs_completed = 0
 
     async def _run():
+        nonlocal runs_completed
         with tqdm(
             total=bar_total,
             desc=f"{args.experiment}/{args.condition}",
@@ -388,11 +504,28 @@ def cmd_run(args):
                 **batch_kwargs,
             ):
                 bar.update(1)
+                runs_completed += 1
         if hasattr(client, 'close'):
             await client.close()
 
     asyncio.run(_run())
     elapsed = _time.time() - started
+    completed_utc = datetime.now(timezone.utc).isoformat()
+
+    # Write a manifest at the pilot root. cmd_run is single-condition,
+    # so the conditions list has exactly one entry; timing is per-run-batch
+    # (not per-condition aggregate) since there's only one condition.
+    _write_pilot_manifest(
+        pilot_root=pilot_root,
+        args=args,
+        conditions=[Condition(args.condition)],
+        bank_id=bank_id,
+        bank_hash=bank_hash,
+        started_utc=started_utc,
+        completed_utc=completed_utc,
+        per_cond_elapsed={args.condition: elapsed},
+        per_cond_count={args.condition: runs_completed},
+    )
     print(f"\nRun complete in {elapsed:.1f}s. Results in {output_dir}/")
 
 
@@ -437,11 +570,11 @@ def cmd_pilot(args):
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
     conditions = list(DEFAULT_PILOT_CONDITIONS)
-    # Write into the experiment-specific subdir so analyze_results_dir
-    # finds the corpus at <results_dir>/<experiment>/. Previously this
-    # was hard-coded to "pilot" which made the pilot output invisible
-    # to the analyzer.
-    output_dir = Path(args.output_dir) / args.experiment
+    # Pilot-root layout: <output_dir> is the pilot root. Data lives under
+    # <output_dir>/data/<experiment>/ so it can sit alongside reports/
+    # (written by analyze) and manifest.yaml (written below).
+    pilot_root = Path(args.output_dir)
+    output_dir = pilot_root / "data" / args.experiment
 
     client = _build_client(args)
 
@@ -454,18 +587,25 @@ def cmd_pilot(args):
     # demoted to DEBUG via _quiet_per_run_logger() so it doesn't
     # interleave with the bar.
     import time as _time
+    from datetime import datetime, timezone
     from tqdm import tqdm
     _quiet_per_run_logger()
 
     total = len(conditions) * args.num_runs
     started = _time.time()
+    started_utc = datetime.now(timezone.utc).isoformat()
+    # Per-condition timing for the end-of-run summary table.
+    per_cond_elapsed: dict[str, float] = {}
+    per_cond_count: dict[str, int] = {}
 
     async def _run():
         with tqdm(total=total, desc="pilot", unit="run", dynamic_ncols=True) as bar:
             for cond in conditions:
                 if cancel_event.is_set():
                     break
-                bar.set_postfix_str(cond.value, refresh=False)
+                cond_started = _time.time()
+                cond_completed = 0
+                bar.set_postfix_str(f"cond={cond.value}", refresh=True)
                 config = ExperimentConfig(
                     model_name=args.model,
                     condition=cond,
@@ -476,6 +616,10 @@ def cmd_pilot(args):
                     is_base_model=args.base_model,
                     stimulus_bank=bank_id,
                     stimulus_bank_hash=bank_hash,
+                    transfer_bank=getattr(args, "transfer_bank", None) or "",
+                    transfer_bank_hash=_hash_transfer_bank(
+                        getattr(args, "transfer_bank", None)
+                    ),
                 )
                 async for _result in run_batch(
                     config, client,
@@ -487,16 +631,58 @@ def cmd_pilot(args):
                     cancel_event=cancel_event,
                 ):
                     bar.update(1)
+                    cond_completed += 1
+                cond_elapsed = _time.time() - cond_started
+                per_cond_elapsed[cond.value] = cond_elapsed
+                per_cond_count[cond.value] = cond_completed
+                # Persist a per-condition summary line above the bar so
+                # the user sees timing per-feature as it accumulates.
+                avg = cond_elapsed / max(cond_completed, 1)
+                tqdm.write(
+                    f"  done {cond.value:<20} {cond_completed} runs "
+                    f"in {cond_elapsed:5.1f}s ({avg:.2f}s/run)"
+                )
         if hasattr(client, 'close'):
             await client.close()
 
     asyncio.run(_run())
     elapsed = _time.time() - started
-    print(
-        f"\nPilot complete in {elapsed:.1f}s "
-        f"({total} runs, {elapsed / max(total, 1):.2f}s/run avg). "
-        f"Results in {output_dir}/"
+    completed_utc = datetime.now(timezone.utc).isoformat()
+
+    # Persist a manifest at the pilot root so the run is self-documenting.
+    _write_pilot_manifest(
+        pilot_root=pilot_root,
+        args=args,
+        conditions=conditions,
+        bank_id=bank_id,
+        bank_hash=bank_hash,
+        started_utc=started_utc,
+        completed_utc=completed_utc,
+        per_cond_elapsed=per_cond_elapsed,
+        per_cond_count=per_cond_count,
     )
+
+    # Aggregate timing table: per-condition + total. Aligned columns make
+    # this scannable when conditions vary in cost (e.g. strong_negative
+    # tends to be longer than no_conditioning because the model writes
+    # more in negative-affect states).
+    print()
+    print(f"  {'condition':<20} {'runs':>5}  {'total':>8}  {'per-run':>8}")
+    print(f"  {'-' * 20} {'-' * 5}  {'-' * 8}  {'-' * 8}")
+    for cond in conditions:
+        c = cond.value
+        if c not in per_cond_elapsed:
+            continue
+        n = per_cond_count[c]
+        t = per_cond_elapsed[c]
+        print(f"  {c:<20} {n:>5}  {t:>7.1f}s  {t / max(n, 1):>7.2f}s")
+    print(f"  {'-' * 20} {'-' * 5}  {'-' * 8}  {'-' * 8}")
+    n_total = sum(per_cond_count.values())
+    print(
+        f"  {'TOTAL':<20} {n_total:>5}  {elapsed:>7.1f}s  "
+        f"{elapsed / max(n_total, 1):>7.2f}s"
+    )
+    print(f"\nResults in {output_dir}/")
 
 
 def cmd_score(args):
@@ -651,6 +837,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--bank", default=None,
                        help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
                             f"Must exist in configs/banks/<bank>.yaml.")
+    p_run.add_argument(
+        "--transfer-bank", default=None, dest="transfer_bank",
+        help="Path to a transfer-question bank YAML "
+             "(e.g. configs/banks/exp1a_factual_qa_hard_v1.yaml). "
+             "When unset, the runner falls back to the hardcoded "
+             "factual_qa pool — fine for legacy parity, but will "
+             "ceiling out on frontier models.",
+    )
     _add_guardrail_args(p_run)
     p_run.set_defaults(func=cmd_run)
 
@@ -675,6 +869,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_pilot.add_argument("--bank", default=None,
                          help=f"Stimulus bank id (default: {DEFAULT_BANK_ID}). "
                               f"Must exist in configs/banks/<bank>.yaml.")
+    p_pilot.add_argument(
+        "--transfer-bank", default=None, dest="transfer_bank",
+        help="Path to a transfer-question bank YAML "
+             "(e.g. configs/banks/exp1a_factual_qa_hard_v1.yaml). "
+             "When unset, the runner falls back to the hardcoded "
+             "factual_qa pool — fine for legacy parity, but will "
+             "ceiling out on frontier models.",
+    )
     _add_prereg_gate_args(p_pilot)
     _add_guardrail_args(p_pilot)
     p_pilot.set_defaults(func=cmd_pilot)

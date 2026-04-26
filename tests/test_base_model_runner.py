@@ -148,7 +148,7 @@ class TestSaveRoundtrip:
 class TestCLISelectsCompletionPath:
     """Spec scenario: --base-model flag selects VLLMCompletionClient."""
 
-    def test_cli_pilot_base_model_flag_uses_completion_client(self, monkeypatch):
+    def test_cli_pilot_base_model_flag_uses_completion_client(self, monkeypatch, tmp_path):
         """When --base-model is set, cmd_pilot must construct a
         VLLMCompletionClient and set is_base_model on the config."""
         from src import cli
@@ -185,7 +185,7 @@ class TestCLISelectsCompletionPath:
             num_runs = 5
             seed = 42
             temperature = 0.7
-            output_dir = "/tmp/test"
+            output_dir = str(tmp_path)
             bank = None
             max_concurrent = 1
             budget_max_calls = None

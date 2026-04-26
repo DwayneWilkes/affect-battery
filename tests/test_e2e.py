@@ -45,10 +45,11 @@ class TestCliPilotDryRun:
         args.func(args)
 
         # 7 conditions × 5 runs = 35 result files (plus events.jsonl)
-        # cmd_pilot writes into <output_dir>/<experiment>/ so analyze_results_dir
-        # finds the corpus at the canonical per-experiment subdir.
-        result_files = list((tmp_path / "exp1a").rglob("*.json"))
+        # Pilot-root layout: cmd_pilot writes into <output_dir>/data/<experiment>/.
+        result_files = list((tmp_path / "data" / "exp1a").rglob("*.json"))
         assert len(result_files) >= 30, f"expected >=30 results; got {len(result_files)}"
+        # Manifest written at the pilot root.
+        assert (tmp_path / "manifest.yaml").exists()
         # Each result has the expected base shape
         sample = json.loads(result_files[0].read_text())
         assert "config" in sample

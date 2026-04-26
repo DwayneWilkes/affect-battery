@@ -52,7 +52,7 @@ class TestCmdPilotUsesSevenConditionsByDefault:
     default. Exercised by monkey-patching the batch runner and capturing what
     conditions the CLI iterates over."""
 
-    def test_cmd_pilot_iterates_all_seven_conditions(self, monkeypatch):
+    def test_cmd_pilot_iterates_all_seven_conditions(self, monkeypatch, tmp_path):
         from src import cli
 
         captured_conditions: list = []
@@ -107,7 +107,7 @@ class TestCmdPilotUsesSevenConditionsByDefault:
             num_runs = 5
             seed = 42
             temperature = 0.7
-            output_dir = "/tmp/pilot-default-conds-test"
+            output_dir = str(tmp_path)
             bank = None
             max_concurrent = 1
             budget_max_calls = None
