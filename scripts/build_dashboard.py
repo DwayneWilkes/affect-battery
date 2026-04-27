@@ -6,8 +6,8 @@ data embedded inline (no external data fetches; works via file://).
 
 Usage:
     uv run python scripts/build_dashboard.py \
-        --pilot-dir results/pilots/2026-04-27_gpt-5.4-nano \
-        --output     results/pilots/2026-04-27_gpt-5.4-nano/dashboard.html
+        --pilot-dir results/pilots/<DATE>_<MODEL_SLUG> \
+        --output    results/pilots/<DATE>_<MODEL_SLUG>/dashboard.html
 """
 from __future__ import annotations
 
