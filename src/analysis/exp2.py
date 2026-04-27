@@ -114,7 +114,16 @@ def analyze_exp2_corpus(corpus: list[dict], model: str) -> dict:
         decay_baseline = (
             no_cond_baseline if no_cond_baseline is not None else mean(control_curve)
         )
-        decay_fit = compare_decay_models(ns_present, curve, baseline=decay_baseline)
+        # Decay fit needs >=3 N points to identify amplitude+tau (exp) or
+        # slope+intercept-with-curvature (lin) without a degenerate fit.
+        # With fewer points, surface decay_fit=None instead of crashing
+        # so the rest of the report (control + AUC + ttb) still renders.
+        # This path is hit by partial sweeps and by date-stamp drift
+        # bugs that scatter sub-pilots across pilot dirs.
+        if len(ns_present) >= 3:
+            decay_fit = compare_decay_models(ns_present, curve, baseline=decay_baseline)
+        else:
+            decay_fit = None
         ttb = time_to_baseline_against_control(
             curve, ns_present, control_curve=control_curve, ratio=0.95,
         )
@@ -142,9 +151,21 @@ def analyze_exp2_corpus(corpus: list[dict], model: str) -> dict:
     else:
         asym = None
 
+    # `complete` requires that every per-condition curve had a real
+    # decay_fit — i.e. >=3 N points. With fewer points the analyzer
+    # produced a partial report (AUC + ttb computable, decay omitted),
+    # and the verdict reflects that so downstream consumers can branch
+    # on it. This is distinct from `unavailable_no_control` (no NEUTRAL
+    # arm at all, in which case we returned early above).
+    has_any_decay_fit = any(
+        cond_data.get("decay_fit") is not None
+        for cond_data in by_condition.values()
+    )
+    verdict = "complete" if has_any_decay_fit else "complete_no_decay_fit"
+
     return {
         "model": model,
-        "verdict": "complete",
+        "verdict": verdict,
         "n_values": n_values,
         "by_condition": by_condition,
         "asymmetry_ratio": asym,

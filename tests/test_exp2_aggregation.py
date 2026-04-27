@@ -71,3 +71,48 @@ class TestAnalyzeExp2Corpus:
 
         analysis = analyze_exp2_corpus([], model="dry-run")
         assert analysis["verdict"] == "unavailable_no_control"
+
+    def test_two_n_values_degrades_gracefully(self):
+        """When the corpus has exactly 2 N points (e.g. partial sweep,
+        or — as we hit on 2026-04-26 — a midnight-UTC date-stamp drift
+        that scattered N values across two pilot dirs), the analyzer
+        must NOT crash on the decay-fit. It should produce a partial
+        report with a clear verdict: control + AUC + ttb still computable,
+        but decay_fit=None (since exp/lin both need >=3 points to
+        identify amplitude+tau or slope+intercept reliably).
+
+        Pre-fix this raised ValueError("need >= 3 points to fit
+        exponential; got 2") and crashed the orchestrator's analyze
+        step entirely."""
+        from src.analysis.exp2 import analyze_exp2_corpus
+
+        corpus: list[dict] = []
+        # Only 2 distinct N values to trigger the partial-report path.
+        for cond, accs_by_n in [
+            ("no_conditioning", {1: 0.85, 5: 0.85}),
+            ("neutral", {1: 0.85, 5: 0.85}),
+            ("strong_negative", {1: 0.20, 5: 0.60}),
+        ]:
+            for n, mean_acc in accs_by_n.items():
+                for _ in range(2):
+                    corpus.append(_make_run(cond, n, [mean_acc] * n))
+
+        analysis = analyze_exp2_corpus(corpus, model="dry-run")
+
+        # Sanity: 2 N points is enough for control + AUC, just not for decay.
+        assert analysis["verdict"] in {
+            "complete_no_decay_fit",  # ideal verdict
+            "complete",                # acceptable too if the rest is fine
+        }, f"unexpected verdict: {analysis['verdict']!r}"
+        assert analysis["n_values"] == [1, 5]
+        assert "strong_negative" in analysis["by_condition"]
+        sn = analysis["by_condition"]["strong_negative"]
+        # Decay fit should be None (or absent), NOT a crash and NOT a
+        # bogus 2-point fit that the model would over-interpret.
+        assert sn.get("decay_fit") is None, (
+            "decay_fit must be None for <3 N points (got "
+            f"{sn.get('decay_fit')!r}); a 2-point fit is degenerate."
+        )
+        # Recovery metrics (AUC, ttb) only need 2 points so should still work.
+        assert "recovery_metrics" in sn
+        assert sn["recovery_metrics"]["auc"] is not None

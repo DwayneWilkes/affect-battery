@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Run a contemporary-Anthropic pilot end-to-end.
+# Run a single-experiment pilot end-to-end against any supported provider
+# (anthropic, openai, vllm). Default provider is anthropic for legacy
+# parity, but --provider openai / --provider vllm work too.
 #
 # Steps:
-#   1. Verify ANTHROPIC_API_KEY is set
+#   1. Verify the appropriate API key is set for the chosen --provider
 #   2. Verify a pre-registration tag was created (or accept --skip-prereg)
-#   3. Run affect-battery pilot via --provider anthropic
+#   3. Run affect-battery pilot via the configured provider
 #   4. Run affect-battery analyze on the produced results
 #
 # Usage:
-#   bash scripts/pilots/run_anthropic_pilot.sh
-#   bash scripts/pilots/run_anthropic_pilot.sh --model claude-opus-4-7
-#   bash scripts/pilots/run_anthropic_pilot.sh --dry-run     # offline smoke test
-#   bash scripts/pilots/run_anthropic_pilot.sh --skip-prereg # pilot under existing pre-reg
+#   bash scripts/pilots/run_pilot.sh
+#   bash scripts/pilots/run_pilot.sh --model claude-opus-4-7
+#   bash scripts/pilots/run_pilot.sh --provider openai --model gpt-5.4-nano
+#   bash scripts/pilots/run_pilot.sh --dry-run     # offline smoke test
+#   bash scripts/pilots/run_pilot.sh --skip-prereg # pilot under existing pre-reg
 #
 # Output: results/pilots/<YYYY-MM-DD>_<model_slug>/<experiment>/
 
@@ -97,7 +100,12 @@ case "${EXPERIMENT}" in
     ;;
 esac
 
-DATE_STAMP=$(date -u +%Y-%m-%d)
+# Date stamp: honor PILOT_DATE_STAMP env var if the orchestrator (or
+# the user) has set one. This is critical for multi-step orchestrators
+# that cross midnight UTC — without it, sub-pilots launched on different
+# sides of midnight write to different pilot dirs, scattering related
+# data (e.g. exp2's N-sweep) across two roots and breaking analysis.
+DATE_STAMP="${PILOT_DATE_STAMP:-$(date -u +%Y-%m-%d)}"
 # Pilot directory is `<date>_<model_slug>_<experiment>/` so each
 # (date, model, experiment) triple lives in its own dir — no collisions
 # between pilots of different experiments or models. Slashes in the
@@ -174,7 +182,7 @@ fi
 # ---- Run ----
 
 echo ""
-echo "Running Anthropic pilot:"
+echo "Running ${PROVIDER} pilot:"
 echo "  model:         ${MODEL}"
 echo "  experiment:    ${EXPERIMENT}"
 echo "  num_runs:      ${NUM_RUNS}"

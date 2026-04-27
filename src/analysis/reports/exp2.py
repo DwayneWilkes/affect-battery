@@ -60,10 +60,20 @@ def render_exp2_report(analysis: dict, output_path: Path) -> Path:
 
     lines.append("## Decay-model fits (exponential vs linear)")
     lines.append("")
+    # Note in-table when fewer than 3 N points were swept (decay fit
+    # needs >=3 to identify amplitude+tau without degeneracy).
+    if analysis.get("verdict") == "complete_no_decay_fit":
+        lines.append(
+            "_Decay fits omitted: fewer than 3 distinct N values present in "
+            "the corpus. Recovery metrics (AUC, ttb) above are still valid; "
+            "decay-shape inference requires a wider sweep._"
+        )
+        lines.append("")
     lines.append("| Condition | Exp amplitude | Exp tau | Exp AIC | Exp BIC | Lin slope | Lin AIC | Lin BIC |")
     lines.append("|---|---|---|---|---|---|---|---|")
     for cond, cell in sorted(by_cond.items()):
-        df = cell.get("decay_fit", {})
+        # decay_fit may be None (insufficient N points) or absent.
+        df = cell.get("decay_fit") or {}
         exp_fit = df.get("exponential", {})
         lin_fit = df.get("linear", {})
         lines.append(

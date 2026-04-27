@@ -4,7 +4,7 @@
 # the runner accepts a pilot_seed_path. See spec for details.)
 #
 # Each experiment lands in its own pilot dir per the per-experiment
-# naming convention in run_anthropic_pilot.sh:
+# naming convention in run_pilot.sh:
 #   results/pilots/<YYYY-MM-DD>_<model_slug>_<experiment>/
 #
 # Usage:
@@ -14,7 +14,7 @@
 #   bash scripts/pilots/run_all_experiments.sh --estimate               # cost preview, no API spend
 #   bash scripts/pilots/run_all_experiments.sh --dry-run                # offline smoke
 #
-# All flags are forwarded to run_anthropic_pilot.sh; check that
+# All flags are forwarded to run_pilot.sh; check that
 # script's --help for the full list.
 
 set -euo pipefail
@@ -30,7 +30,7 @@ SKIP_PREREG=""
 DRY_RUN=""
 PARALLEL=""
 YES=""
-MAX_CONCURRENT=""  # if unset, run_anthropic_pilot.sh's default applies (16)
+MAX_CONCURRENT=""  # if unset, run_pilot.sh's default applies (16)
 # Default aggregate rate-limit budget. In sequential mode this passes
 # through to one pilot. In --parallel mode the orchestrator divides
 # this across N experiments to keep aggregate at this ceiling. Tuned
@@ -119,9 +119,16 @@ fi
 # (explicit override for CI / scripts). For all other modes, present a
 # full preview of the run and require an explicit y/yes from stdin.
 # Refuses to proceed in non-interactive sessions without --yes.
-DATE_STAMP_PREVIEW=$(date -u +%Y-%m-%d)
+#
+# Compute the pilot DATE_STAMP exactly ONCE here and export it so every
+# sub-pilot honors the same root directory, even if the orchestrator
+# crosses midnight UTC mid-run. Without this, a multi-hour run that
+# spans midnight ends up with sub-pilots writing to different date
+# stamps — e.g. exp2's N-sweep gets split across two pilot dirs and
+# the analyzer only sees a partial sweep.
+export PILOT_DATE_STAMP="$(date -u +%Y-%m-%d)"
 MODEL_SLUG_PREVIEW="${MODEL//\//_}"
-PILOT_ROOT_PREVIEW="results/pilots/${DATE_STAMP_PREVIEW}_${MODEL_SLUG_PREVIEW}"
+PILOT_ROOT_PREVIEW="results/pilots/${PILOT_DATE_STAMP}_${MODEL_SLUG_PREVIEW}"
 
 if [[ -z "${DRY_RUN}" && -z "${ESTIMATE}" && -z "${YES}" ]]; then
   echo ""
@@ -233,7 +240,7 @@ run_one_experiment() {
     for n in "${EXP2_N_SWEEP[@]}"; do
       i=$(( i + 1 ))
       echo "[orchestrator] exp2 sub-pilot ${i}/${total_n} at neutral_turns=${n}" >> "${log}"
-      bash scripts/pilots/run_anthropic_pilot.sh \
+      bash scripts/pilots/run_pilot.sh \
             --provider "${PROVIDER}" \
             --model "${MODEL}" \
             --experiment "exp2" \
@@ -264,7 +271,7 @@ run_one_experiment() {
     fi
   fi
 
-  if bash scripts/pilots/run_anthropic_pilot.sh \
+  if bash scripts/pilots/run_pilot.sh \
         --provider "${PROVIDER}" \
         --model "${MODEL}" \
         --experiment "${exp}" \
@@ -451,9 +458,11 @@ echo ""
 # Aggregate cost / time across pilot manifests when not in --estimate
 # or --dry-run mode (those don't produce manifests with real timings).
 if [[ -z "${ESTIMATE}" && -z "${DRY_RUN}" ]]; then
-  DATE_STAMP=$(date -u +%Y-%m-%d)
+  # Use the SAME DATE_STAMP we exported at orchestrator start so the
+  # summary path matches the actual sub-pilot dirs even when the run
+  # crosses midnight UTC.
   MODEL_SLUG="${MODEL//\//_}"
-  PILOT_ROOT="results/pilots/${DATE_STAMP}_${MODEL_SLUG}"
+  PILOT_ROOT="results/pilots/${PILOT_DATE_STAMP}_${MODEL_SLUG}"
   echo "  Pilot root:    ${PILOT_ROOT}/"
   echo "  Per-experiment dirs:"
   for exp in "${EXPERIMENTS[@]}"; do
