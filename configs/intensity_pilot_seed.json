@@ -1,0 +1,18 @@
+{
+  "axis_id": "intensity_axis_v1",
+  "irr_validated": false,
+  "n_levels": 7,
+  "pilot_date": "2026-04-27",
+  "rater_id": "rater_PI",
+  "ratings": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "sha256": "f2a31fa59df5200dea0157d397d0ec4f8642d8afbca3052c0d011e57f6609063",
+  "solo_rater": true
+}
