@@ -469,6 +469,16 @@ def _estimate_call_token_sequence(args, extra_kwargs: dict) -> list[tuple[int, i
 
     calls: list[tuple[int, int]] = []
 
+    # Exp 3a is single-turn per pre-reg §3.4.1: each cell sends a
+    # system message (intensity stimulus, ~22 tokens) + one user
+    # question, with no conditioning prefix and no neutral buffers.
+    # Short-circuit before the multi-turn conditioning accumulator
+    # builds up.
+    if args.experiment == "exp3a":
+        levels = extra_kwargs.get("intensity_levels") or [1]
+        ta = _TOKENS_PER_TURN["transfer_a_qa"]
+        return [(sys_tok + tq, ta) for _ in levels]
+
     # Phase 1: conditioning. Each turn adds Q + A + feedback to the
     # accumulated context. Input on turn N includes the system prompt
     # plus all of turns 0..N-1.
@@ -502,14 +512,6 @@ def _estimate_call_token_sequence(args, extra_kwargs: dict) -> list[tuple[int, i
         for _ in range(n_transfer):
             calls.append((transfer_acc + tq, ta))
             transfer_acc += tq + ta
-    elif args.experiment == "exp3a":
-        # One transfer call per intensity level, sharing the same
-        # post-conditioning context (per-level, the conditioning
-        # accumulator stays at its end state).
-        levels = extra_kwargs.get("intensity_levels") or [1]
-        ta = _TOKENS_PER_TURN["transfer_a_qa"]
-        for _ in levels:
-            calls.append((accumulated + tq, ta))
     elif args.experiment == "exp3b":
         # n_generations per prompt, each independent (re-uses the same
         # conditioning prefix; doesn't accumulate across generations).
