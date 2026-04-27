@@ -1,18 +1,25 @@
 # H3a power analysis
 
-Once the variance probe has produced per-intensity-level variance
-estimates, run the simulation-based power analysis to obtain a
-recommended n-per-level for the H3a quadratic test.
+Once the variance probe (`scripts/probes/h3a_variance_probe.py`) has
+produced per-intensity-level variance estimates, run the
+simulation-based power analysis to obtain a recommended `n_per_level`
+for the H3a quadratic test.
 
 ## Variance JSON input format
+
+The variance probe emits this shape directly. Sigma values reflect
+binary-outcome standard deviations (`σ = √(p(1-p))`), so they typically
+sit in the 0.30-0.51 range for accuracies between 0.1 and 0.9.
 
 ```json
 {
   "model": "gpt-5.4-nano",
   "task": "GSM8K + GSM-Hard",
   "n_levels": 7,
-  "sigma_per_level": [0.12, 0.12, 0.10, 0.10, 0.10, 0.12, 0.13],
-  "icc": 0.20,
+  "n_per_level": 15,
+  "sigma_per_level": [0.507, 0.258, 0.458, 0.516, 0.458, 0.414, 0.488],
+  "mean_per_level": [0.400, 0.067, 0.267, 0.467, 0.267, 0.200, 0.333],
+  "icc": null,
   "notes": "..."
 }
 ```
@@ -21,7 +28,7 @@ recommended n-per-level for the H3a quadratic test.
 measured by the variance probe. Levels are ordered 1-7 (matching
 `INTENSITY_LEVELS`). `icc` is the intra-class correlation estimate; for
 designs with one measurement per cell (the H3a default), ICC is recorded
-but does not affect the simulation.
+but does not affect the simulation, and `null` is acceptable.
 
 ## Run the power analysis
 
@@ -34,7 +41,8 @@ uv run python scripts/probes/h3a_power_report.py \
 Output: a power report JSON containing the recommended n-per-level and
 per-scenario simulation traces. The recommended n is the maximum across
 power scenarios that achieved target power (default 0.80) at α=0.05
-within the search ceiling (default n_max=300).
+within the search ceiling (default `n_max=300`; raise via `--n-max` if
+the smallest target effect needs a wider search).
 
 ## Default power scenarios
 
