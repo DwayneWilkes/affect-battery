@@ -48,18 +48,38 @@ def score_arithmetic(response: str, expected: float) -> bool:
     return abs(extracted - expected) < 0.01
 
 
-def score_factual_qa(response: str, expected_answer: str) -> float:
-    """Score factual QA with fuzzy matching. Returns 0.0 or 1.0."""
+def score_factual_qa(
+    response: str,
+    expected_answer: str,
+    aliases: list[str] | None = None,
+) -> float:
+    """Score factual QA with substring matching against the canonical
+    expected answer and any provided aliases. Returns 0.0 or 1.0.
+
+    Aliases handle benchmark items like ('United States', ['U.S.', 'USA',
+    'America']) where the model may emit any surface form. Matching is
+    case-insensitive and substring-based to tolerate framing prose
+    ('The answer is USA.' matches alias 'USA'). The numeric-fallback
+    branch is preserved so numeric expected values still match via
+    extract_numeric_answer.
+    """
     response_lower = response.lower().strip()
     expected_lower = expected_answer.lower().strip()
 
-    if not expected_lower:
+    candidates: list[str] = []
+    if expected_lower:
+        candidates.append(expected_lower)
+    if aliases:
+        candidates.extend(a.lower().strip() for a in aliases if a and a.strip())
+
+    if not candidates:
         return 0.0
 
-    if expected_lower in response_lower:
-        return 1.0
-    
-    # Check for numeric match
+    for c in candidates:
+        if c and c in response_lower:
+            return 1.0
+
+    # Numeric-match fallback: applies when the canonical expected is numeric.
     try:
         expected_num = float(expected_lower)
         extracted = extract_numeric_answer(response)
@@ -67,5 +87,5 @@ def score_factual_qa(response: str, expected_answer: str) -> float:
             return 1.0
     except ValueError:
         pass
-    
+
     return 0.0

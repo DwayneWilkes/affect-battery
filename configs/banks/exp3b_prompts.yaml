@@ -1,0 +1,153 @@
+# Open-ended generation prompts for Exp 3b (cognitive scope, paper §3.4.2).
+#
+# The cognitive-scope spec calls for open-ended generation tasks across
+# three families (per paper §3.4.2): story-completion, brainstorming,
+# and creative problem-solving. We sample 5 prompts from each family
+# (15 total) so per-condition aggregation has enough variety to detect
+# semantic-diversity differences without the prompt content itself
+# dominating the variance.
+#
+# Each prompt is content-neutral with respect to the conditioning
+# domain (arithmetic). Prompts are deliberately generic so the
+# variation observed downstream reflects model state, not prompt-level
+# steering.
+#
+# Authored for the affect-battery study; not from a published prompt
+# library. If a published library is preferred, swap in the
+# `prompts:` field of a runner-config YAML; the bank schema is just a
+# list of {id, family, text}.
+
+bank_id: exp3b_prompts_v1
+bank_version: 1
+bank_type: transfer
+task_type_subtype: open-ended-generation
+status: active
+alignment_review:
+  reviewer: realignment-author
+  date: 2026-04-26
+  verdict: pass
+  rationale: |
+    Prompts are content-neutral with respect to arithmetic conditioning
+    (no math, no number sequences). Three families chosen per paper
+    §3.4.2; five prompts per family to dampen prompt-level variance.
+
+source_profile:
+  source: original
+  rationale: |
+    No canonical published open-ended-generation prompt library exists
+    for cognitive-scope studies in LLMs. Authored to match paper §3.4.2
+    families. Replace with a published library if one becomes available.
+
+prompts:
+  # ---- Story completion (5) ----
+  - id: story_lighthouse
+    family: story_completion
+    text: |
+      Continue the story in 3-5 sentences:
+      The lighthouse keeper had been alone for forty days when she
+      noticed the light flickering in a pattern she had never seen
+      before...
+
+  - id: story_subway
+    family: story_completion
+    text: |
+      Continue the story in 3-5 sentences:
+      The subway car came to a stop between stations, and when the
+      lights came back on, every passenger was holding the same
+      newspaper...
+
+  - id: story_garden
+    family: story_completion
+    text: |
+      Continue the story in 3-5 sentences:
+      The new tenant noticed that the garden plants leaned toward her
+      whenever she entered the room...
+
+  - id: story_letter
+    family: story_completion
+    text: |
+      Continue the story in 3-5 sentences:
+      The letter had been delivered to the wrong address for thirty
+      years, and today she finally decided to open it...
+
+  - id: story_clock
+    family: story_completion
+    text: |
+      Continue the story in 3-5 sentences:
+      Every clock in the museum chimed at the same instant, even the
+      ones that had been broken for decades...
+
+  # ---- Brainstorming (5) ----
+  - id: brainstorm_paperclip
+    family: brainstorming
+    text: |
+      List 5 unconventional uses for a paperclip. Number each one and
+      give a one-sentence justification.
+
+  - id: brainstorm_silence
+    family: brainstorming
+    text: |
+      List 5 ways a city could become measurably quieter without
+      reducing the number of people or vehicles in it. Number each
+      and give a one-sentence justification.
+
+  - id: brainstorm_school
+    family: brainstorming
+    text: |
+      Imagine a school where attendance is voluntary. List 5 design
+      decisions the school would have to make, and explain each in one
+      sentence.
+
+  - id: brainstorm_sleep
+    family: brainstorming
+    text: |
+      List 5 ways a society could be reorganized if humans only needed
+      to sleep once per week. Number each and give a one-sentence
+      justification.
+
+  - id: brainstorm_proverbs
+    family: brainstorming
+    text: |
+      Invent 5 proverbs that would only make sense in a society without
+      money. Give each in one sentence.
+
+  # ---- Creative problem-solving (5) ----
+  - id: cps_bridge
+    family: creative_problem_solving
+    text: |
+      A community on an island wants to communicate with a community on
+      another island 50 km away. Radio waves are blocked by a magnetic
+      anomaly. They have rope, mirrors, fire, paper, and birds. Propose
+      one approach in 3-5 sentences.
+
+  - id: cps_food
+    family: creative_problem_solving
+    text: |
+      A small village can grow enough food for its 200 residents but
+      cannot transport surplus to the nearest market 80 km away because
+      the road washes out for half the year. Propose one approach to
+      give them income from their surplus food in 3-5 sentences.
+
+  - id: cps_blackout
+    family: creative_problem_solving
+    text: |
+      A hospital experiences a 24-hour power outage with no warning
+      and no fuel for backup generators. Critical patients are on
+      ventilators. Propose one approach to keep them stable in 3-5
+      sentences.
+
+  - id: cps_archive
+    family: creative_problem_solving
+    text: |
+      A library has 100,000 paper records that will degrade in 10
+      years. They have no scanning equipment and a budget of $500.
+      Propose one approach to preserve the most-used records in 3-5
+      sentences.
+
+  - id: cps_traffic
+    family: creative_problem_solving
+    text: |
+      A city's only highway exit collapses, and residents cannot leave
+      for emergency medical care. The exit will take 6 months to
+      rebuild. Propose one approach to provide medical access in 3-5
+      sentences.

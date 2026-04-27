@@ -20,10 +20,12 @@ categories:
   EPISTEMIC:
     - pattern_name: i_think_claim
       regex: "\\bI think\\b(?!\\s+about\\b)"
+      paper_pattern: true
       edge_case_notes: >
         Matches 'I think' followed by a claim. Negative lookahead excludes
         'I think about' which is a non-hedge usage. Does not match 'I was
-        thinking' or 'thinking about' (different tokens).
+        thinking' or 'thinking about' (different tokens). FLAGGED as paper
+        §3.4.3 epistemic pattern; loader requires this entry.
 
     - pattern_name: perhaps
       regex: "\\bperhaps\\b"
@@ -57,10 +59,12 @@ categories:
   UNCERTAINTY:
     - pattern_name: not_sure
       regex: "\\bI(?:'m| am) not (?:entirely |completely |fully )?sure\\b"
+      paper_pattern: true
       edge_case_notes: >
         Matches 'I'm not sure', 'I am not sure', and modified variants
         ('I'm not entirely sure', 'I'm not completely sure', 'I am not
-        fully sure'). Contraction and expansion both covered.
+        fully sure'). Contraction and expansion both covered. FLAGGED as
+        paper §3.4.3 uncertainty pattern; loader requires this entry.
 
     - pattern_name: might_be
       regex: "\\bit might be\\b"
@@ -70,10 +74,12 @@ categories:
 
     - pattern_name: could_be
       regex: "\\bcould be\\b"
+      paper_pattern: true
       edge_case_notes: >
         Standalone 'could be' is a sufficient uncertainty marker. Risk of
         false positives for idiomatic 'could be worse' etc. but rare in
-        the task responses we score.
+        the task responses we score. FLAGGED as paper §3.4.3 uncertainty
+        pattern; loader requires this entry.
 
     - pattern_name: not_certain
       regex: "\\bI(?:'m| am) not (?:entirely |completely )?certain\\b"
@@ -116,9 +122,11 @@ categories:
   CONFIDENCE_DISCLAIMER:
     - pattern_name: cant_be_certain
       regex: "\\bI can(?:'t| not) be (?:entirely |completely )?certain\\b"
+      paper_pattern: true
       edge_case_notes: >
         Matches 'I can't be certain', 'I cannot be certain', and modified
-        variants.
+        variants. FLAGGED as paper §3.4.3 confidence-disclaimer pattern;
+        loader requires this entry.
 
     - pattern_name: not_enough_info
       regex: "\\bI don(?:'t| not) have enough information\\b"

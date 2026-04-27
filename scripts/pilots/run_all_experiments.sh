@@ -1,0 +1,522 @@
+#!/usr/bin/env bash
+# Run all 5 smokeable experiments for a given model in sequence.
+# (exp3a deferred — requires Krippendorff intensity-pilot pass before
+# the runner accepts a pilot_seed_path. See spec for details.)
+#
+# Each experiment lands in its own pilot dir per the per-experiment
+# naming convention in run_pilot.sh:
+#   results/pilots/<YYYY-MM-DD>_<model_slug>_<experiment>/
+#
+# Usage:
+#   bash scripts/pilots/run_all_experiments.sh                          # Haiku, num-runs=2
+#   bash scripts/pilots/run_all_experiments.sh --model claude-sonnet-4-6
+#   bash scripts/pilots/run_all_experiments.sh --num-runs 5
+#   bash scripts/pilots/run_all_experiments.sh --estimate               # cost preview, no API spend
+#   bash scripts/pilots/run_all_experiments.sh --dry-run                # offline smoke
+#
+# All flags are forwarded to run_pilot.sh; check that
+# script's --help for the full list.
+
+set -euo pipefail
+unset VIRTUAL_ENV  # let direnv pick this project's venv
+
+PROVIDER="anthropic"
+MODEL="claude-haiku-4-5"
+NUM_RUNS=2
+SEED=42
+ESTIMATE=""
+OVERWRITE=""
+SKIP_PREREG=""
+DRY_RUN=""
+PARALLEL=""
+YES=""
+MAX_CONCURRENT=""  # if unset, run_pilot.sh's default applies (16)
+# Default aggregate rate-limit budget. In sequential mode this passes
+# through to one pilot. In --parallel mode the orchestrator divides
+# this across N experiments to keep aggregate at this ceiling. Tuned
+# for tier-1/tier-2 accounts (~200-500 RPM); tier-3+ can override.
+RATE_LIMIT_RPS=8
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --provider)     PROVIDER="$2"; shift 2 ;;
+    --model)        MODEL="$2"; shift 2 ;;
+    --num-runs)     NUM_RUNS="$2"; shift 2 ;;
+    --seed)         SEED="$2"; shift 2 ;;
+    --estimate)     ESTIMATE="--estimate"; shift ;;
+    --overwrite)    OVERWRITE="--overwrite"; shift ;;
+    --skip-prereg)  SKIP_PREREG="--skip-prereg"; shift ;;
+    --dry-run)      DRY_RUN="--dry-run"; shift ;;
+    --parallel)     PARALLEL="1"; shift ;;
+    --yes|-y)       YES="1"; shift ;;
+    --max-concurrent) MAX_CONCURRENT="$2"; shift 2 ;;
+    --rate-limit-rps) RATE_LIMIT_RPS="$2"; shift 2 ;;
+    -h|--help)
+      grep '^# ' "$0" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Five smokeable experiments. exp3a is deliberately omitted; its runner
+# refuses to start without a Krippendorff-validated intensity pilot
+# seed, which is a separate prerequisite workflow.
+EXPERIMENTS=(exp1a exp1b exp2 exp3b exp3c)
+
+# Per-experiment extra flags. exp2 sweeps neutral_turns over multiple
+# N values (recovery-curve fit needs ≥2 distinct N to compute);
+# exp3b/3c need --runner-config. Everything else inherits the script
+# defaults.
+#
+# exp2 is special: the spec calls for sweeping N to fit the persistence
+# decay curve. A single N value yields verdict='unavailable_no_control'.
+# The orchestrator launches one sub-pilot per N value; results all
+# land in the same exp2/data/ dir tagged by config.neutral_turns,
+# and the analyzer groups by (condition, n_value) cells.
+declare -A EXTRA_FLAGS=(
+  [exp1a]=""
+  [exp1b]=""
+  [exp2]="--neutral-turns 5"  # placeholder; real sweep happens below
+  [exp3b]="--runner-config configs/exp3b_runner.yaml"
+  [exp3c]="--runner-config configs/exp3c_runner.yaml"
+)
+# Sweep values for exp2's neutral_turns parameter. ≥2 distinct N
+# required for the recovery-curve fit. Default sweep covers short
+# (N=1) through long (N=10) buffer windows so the analyzer can
+# distinguish exponential decay from linear.
+EXP2_N_SWEEP=(1 3 5 10)
+
+# Build optional concurrency flags so empty values don't pass through
+# as empty strings (the CLI argparser would reject them).
+#
+# Critical for --parallel: each subprocess has its own client-side
+# rate limiter; they don't share state. So if you ask for 20 RPS per
+# pilot and run 5 in parallel, you get 100 RPS aggregate to the
+# provider — way over typical tier-1/tier-2 RPM caps. Auto-divide
+# the rate budget across N parallel experiments so the aggregate
+# stays at the user-set ceiling. Concurrency cap (sockets) is
+# per-process so doesn't need division.
+EFFECTIVE_RATE_LIMIT_RPS="${RATE_LIMIT_RPS}"
+if [[ -n "${PARALLEL}" && -n "${RATE_LIMIT_RPS}" ]]; then
+  N_EXP=${#EXPERIMENTS[@]}
+  EFFECTIVE_RATE_LIMIT_RPS=$(awk -v r="${RATE_LIMIT_RPS}" -v n="${N_EXP}" \
+    'BEGIN { printf "%.2f", r / n }')
+  echo ""
+  echo "  [parallel] dividing --rate-limit-rps ${RATE_LIMIT_RPS} across "
+  echo "  ${N_EXP} parallel experiments → ${EFFECTIVE_RATE_LIMIT_RPS} RPS each"
+  echo "  (aggregate stays at ${RATE_LIMIT_RPS} RPS)"
+fi
+CONCURRENCY_FLAGS=""
+if [[ -n "${MAX_CONCURRENT}" ]]; then
+  CONCURRENCY_FLAGS+="--max-concurrent ${MAX_CONCURRENT} "
+fi
+if [[ -n "${EFFECTIVE_RATE_LIMIT_RPS}" ]]; then
+  CONCURRENCY_FLAGS+="--rate-limit-rps ${EFFECTIVE_RATE_LIMIT_RPS} "
+fi
+
+# ---- Pre-launch confirmation gate ----
+# Skip in --dry-run (no API spend), --estimate (no API spend), or --yes
+# (explicit override for CI / scripts). For all other modes, present a
+# full preview of the run and require an explicit y/yes from stdin.
+# Refuses to proceed in non-interactive sessions without --yes.
+#
+# Compute the pilot DATE_STAMP exactly ONCE here and export it so every
+# sub-pilot honors the same root directory, even if the orchestrator
+# crosses midnight UTC mid-run. Without this, a multi-hour run that
+# spans midnight ends up with sub-pilots writing to different date
+# stamps — e.g. exp2's N-sweep gets split across two pilot dirs and
+# the analyzer only sees a partial sweep.
+#
+# CRITICAL: respect a caller-provided PILOT_DATE_STAMP. Unconditional
+# `export PILOT_DATE_STAMP="$(date ...)"` would clobber the user's
+# value, breaking resume-into-existing-pilot-dir. The `${VAR:-default}`
+# form keeps the user's choice if set.
+export PILOT_DATE_STAMP="${PILOT_DATE_STAMP:-$(date -u +%Y-%m-%d)}"
+MODEL_SLUG_PREVIEW="${MODEL//\//_}"
+PILOT_ROOT_PREVIEW="results/pilots/${PILOT_DATE_STAMP}_${MODEL_SLUG_PREVIEW}"
+
+if [[ -z "${DRY_RUN}" && -z "${ESTIMATE}" && -z "${YES}" ]]; then
+  echo ""
+  echo "===================================================="
+  echo "  Confirmation required (real API spend ahead)"
+  echo "===================================================="
+  echo ""
+  echo "  Provider:       ${PROVIDER}"
+  echo "  Model:          ${MODEL}"
+  echo "  Experiments:    ${EXPERIMENTS[*]}"
+  echo "  Num runs/cell:  ${NUM_RUNS}"
+  echo "  Seed:           ${SEED}"
+  echo "  Mode:           $([[ -n "${PARALLEL}" ]] && echo "parallel (5 subprocesses)" || echo "sequential")"
+  echo "  Concurrency:    max=${MAX_CONCURRENT:-(default 16)} rps=${RATE_LIMIT_RPS}"
+  echo "                  (parallel divides aggregate rps by experiment count)"
+  echo "  exp2 N-sweep:   ${EXP2_N_SWEEP[*]}  (4 sub-pilots)"
+  echo "  exp3b config:   configs/exp3b_runner.yaml"
+  echo "  exp3c config:   configs/exp3c_runner.yaml"
+  echo "  Output:         ${PILOT_ROOT_PREVIEW}/"
+  echo "  Skip-prereg:    ${SKIP_PREREG:-no}"
+  echo "  Overwrite:      ${OVERWRITE:-no (resume-by-default; cache hits skip cells)}"
+  echo ""
+  echo "  Tip: re-run with --estimate (no flags changed) to preview"
+  echo "       expected cost + wall-clock before committing."
+  echo ""
+  if [[ ! -t 0 ]]; then
+    # Non-interactive (piped, scripted): refuse without explicit --yes.
+    echo "  ERROR: stdin is not a terminal. Pass --yes to confirm" >&2
+    echo "         non-interactively (e.g. 'echo y | bash ...' is NOT" >&2
+    echo "         enough — the orchestrator deliberately requires" >&2
+    echo "         the explicit flag to prevent accidental spending)." >&2
+    exit 2
+  fi
+  read -r -p "  Proceed with real API spend? [y/N] " confirm
+  case "${confirm}" in
+    y|Y|yes|YES) echo "  Confirmed. Launching..." ;;
+    *) echo "  Aborted (no API calls made)." ; exit 0 ;;
+  esac
+  echo ""
+fi
+
+START_TIME=$(date +%s)
+FAILED=()
+# Per-experiment aggregation: each pilot subprocess emits an
+# [ESTIMATE_SUMMARY] / [RUN_SUMMARY] line we grep for at the end.
+# In parallel mode each subprocess writes to its own log; in
+# sequential mode all output goes to one shared log.
+LOG_DIR="$(mktemp -d)"
+# Track child PIDs so SIGINT can forward to all of them. Bash's
+# default backgrounded-job handling does NOT reliably forward
+# SIGINT — the orchestrator gets it, the children don't, and the
+# user has to kill -9 to stop them.
+declare -a CHILD_PIDS=()
+
+cleanup_on_signal() {
+  local signal_name="${1:-INT}"
+  echo "" >&2
+  echo "[orchestrator] ${signal_name} received; forwarding to ${#CHILD_PIDS[@]} child experiments..." >&2
+  for pid in "${CHILD_PIDS[@]}"; do
+    kill -INT "${pid}" 2>/dev/null || true
+  done
+  # Give them up to 10s to drain in-flight API calls cleanly.
+  local deadline=$(( $(date +%s) + 10 ))
+  while [[ $(date +%s) -lt ${deadline} ]]; do
+    local alive=0
+    for pid in "${CHILD_PIDS[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        alive=$(( alive + 1 ))
+      fi
+    done
+    if [[ ${alive} -eq 0 ]]; then break; fi
+    sleep 0.5
+  done
+  # Anyone still alive after grace gets SIGKILL.
+  for pid in "${CHILD_PIDS[@]}"; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      echo "[orchestrator] PID ${pid} didn't drain; force-killing." >&2
+      kill -KILL "${pid}" 2>/dev/null || true
+    fi
+  done
+  rm -rf "${LOG_DIR}" 2>/dev/null
+  exit 130
+}
+
+trap 'cleanup_on_signal INT' INT
+trap 'cleanup_on_signal TERM' TERM
+trap "rm -rf '${LOG_DIR}'" EXIT
+
+# Per-experiment runner. Captures stdout+stderr to a per-exp log and
+# echoes a status marker on completion. Designed to be backgrounded.
+#
+# exp2 is special: it requires sweeping neutral_turns over multiple N
+# values for the recovery-curve fit. We loop over EXP2_N_SWEEP and
+# call the underlying pilot script once per N. All sub-runs land in
+# the same exp2/data/<cond>/ dir, distinguished by `n<N>_` filename
+# prefix, so the analyzer can group results by (condition, n_value)
+# cells without further restructuring.
+run_one_experiment() {
+  local exp="$1"
+  local log="${LOG_DIR}/${exp}.log"
+  if [[ "${exp}" == "exp2" ]]; then
+    # exp2 sweep: intermediate sub-pilots' analyze-step verdicts are
+    # 'unavailable_no_control' (need ≥2 distinct N for the recovery
+    # curve fit). Don't treat that as failure — only the FINAL
+    # sub-pilot's exit code matters for "did the full sweep complete?"
+    local final_rc=0
+    local total_n=${#EXP2_N_SWEEP[@]}
+    local i=0
+    for n in "${EXP2_N_SWEEP[@]}"; do
+      i=$(( i + 1 ))
+      echo "[orchestrator] exp2 sub-pilot ${i}/${total_n} at neutral_turns=${n}" >> "${log}"
+      bash scripts/pilots/run_pilot.sh \
+            --provider "${PROVIDER}" \
+            --model "${MODEL}" \
+            --experiment "exp2" \
+            --num-runs "${NUM_RUNS}" \
+            --seed "${SEED}" \
+            --neutral-turns "${n}" \
+            ${ESTIMATE} \
+            ${OVERWRITE} \
+            ${SKIP_PREREG} \
+            ${DRY_RUN} \
+            ${CONCURRENCY_FLAGS} >> "${log}" 2>&1
+      local rc=$?
+      if [[ ${i} -eq ${total_n} ]]; then
+        # Final sub-pilot's exit code is what defines sweep success
+        # (its analyze sees all N values and produces the real report).
+        final_rc=${rc}
+      fi
+      # Only the first sub-run honors --overwrite; subsequent runs
+      # would otherwise wipe the prior N's data. Strip after first.
+      OVERWRITE=""
+    done
+    if [[ ${final_rc} -eq 0 ]]; then
+      echo "  ✓ ${exp} complete (sweep: N=${EXP2_N_SWEEP[*]}; log: ${log})"
+      return 0
+    else
+      echo "  ✗ ${exp} FAILED (final sub-pilot non-zero; log: ${log})" >&2
+      return 1
+    fi
+  fi
+
+  if bash scripts/pilots/run_pilot.sh \
+        --provider "${PROVIDER}" \
+        --model "${MODEL}" \
+        --experiment "${exp}" \
+        --num-runs "${NUM_RUNS}" \
+        --seed "${SEED}" \
+        ${EXTRA_FLAGS[$exp]} \
+        ${ESTIMATE} \
+        ${OVERWRITE} \
+        ${SKIP_PREREG} \
+        ${DRY_RUN} \
+        ${CONCURRENCY_FLAGS} > "${log}" 2>&1; then
+    echo "  ✓ ${exp} complete (log: ${log})"
+    return 0
+  else
+    echo "  ✗ ${exp} FAILED (log: ${log})" >&2
+    return 1
+  fi
+}
+
+# Pretty-printer for per-experiment logs after run completion. Flattens
+# tqdm \r-history (otherwise the terminal replays ~600 progress-bar
+# updates per experiment when we cat the file), keeps only the FINAL
+# tqdm line per contiguous block, and passes everything else through
+# verbatim (banners, condition tables, [RUN_SUMMARY], manifest paths).
+print_clean_log() {
+  local log="$1"
+  awk '
+    { gsub(/\r/, "\n", $0); }
+    {
+      n = split($0, lines, "\n")
+      for (i = 1; i <= n; i++) {
+        ln = lines[i]
+        if (ln ~ /^pilot: /) {
+          pending_pilot = ln
+        } else {
+          if (pending_pilot != "") {
+            print pending_pilot
+            pending_pilot = ""
+          }
+          print ln
+        }
+      }
+    }
+    END {
+      if (pending_pilot != "") print pending_pilot
+    }
+  ' "${log}"
+}
+
+if [[ -n "${PARALLEL}" ]]; then
+  echo ""
+  echo "Running ${#EXPERIMENTS[@]} experiments IN PARALLEL."
+  echo "Per-experiment output streams to ${LOG_DIR}/<exp>.log;"
+  echo "wall-clock will be bounded by the slowest experiment, not the sum."
+  echo ""
+  declare -A PIDS
+  for exp in "${EXPERIMENTS[@]}"; do
+    echo "  ▶ launching ${exp}..."
+    run_one_experiment "${exp}" &
+    PIDS[$exp]=$!
+    # Also track in CHILD_PIDS so cleanup_on_signal can find these
+    # without needing to declare -A access from inside the trap.
+    CHILD_PIDS+=("$!")
+  done
+  echo ""
+  echo "  waiting for all experiments to complete (Ctrl-C to abort)..."
+  echo "  (heartbeat below shows progress every 30s; full per-experiment"
+  echo "   logs at ${LOG_DIR}/<exp>.log — \`tail -F ${LOG_DIR}/*.log\` to live-tail)"
+  echo ""
+
+  # Heartbeat: ONE LINE per check-in. Prior versions printed the last
+  # tqdm line per experiment, which over a 30+ min run stacks ~5 lines
+  # × ~70 check-ins = ~350 partial progress-bar fragments on the
+  # orchestrator's stdout. Now the heartbeat is a single coarse status
+  # line showing elapsed time, which experiments are still running, and
+  # a compact "<exp>:NN%" tag per running experiment parsed from the
+  # tqdm percentage. tail -F LOG_DIR/*.log is still the way to see
+  # detailed progress.
+  heartbeat_loop() {
+    while true; do
+      sleep 30
+      local now elapsed mins secs
+      now=$(date +%s)
+      elapsed=$(( now - START_TIME ))
+      mins=$(( elapsed / 60 ))
+      secs=$(( elapsed % 60 ))
+      local still_running=()
+      for e in "${EXPERIMENTS[@]}"; do
+        if kill -0 "${PIDS[$e]}" 2>/dev/null; then
+          still_running+=("${e}")
+        fi
+      done
+      if [[ ${#still_running[@]} -eq 0 ]]; then return 0; fi
+      # Per-exp compact percent. tqdm prints "pilot:  NN%|..." with the
+      # \r overwrite, so we tr CRs and grep the most recent line that
+      # has the percentage for each running experiment.
+      local progress_tags=""
+      for e in "${still_running[@]}"; do
+        local pct
+        pct=$(tr '\r' '\n' < "${LOG_DIR}/${e}.log" 2>/dev/null \
+              | grep -oE 'pilot: *[0-9]+%' | tail -1 | grep -oE '[0-9]+')
+        if [[ -n "${pct}" ]]; then
+          progress_tags+=" ${e}:${pct}%"
+        else
+          progress_tags+=" ${e}:--"
+        fi
+      done
+      echo "  [+${mins}m${secs}s]${progress_tags}"
+    done
+  }
+  heartbeat_loop &
+  HEARTBEAT_PID=$!
+  CHILD_PIDS+=("${HEARTBEAT_PID}")  # also kill on SIGINT
+
+  for exp in "${EXPERIMENTS[@]}"; do
+    if ! wait "${PIDS[$exp]}"; then
+      FAILED+=("${exp}")
+    fi
+  done
+
+  # Stop the heartbeat now that all experiments have completed.
+  kill "${HEARTBEAT_PID}" 2>/dev/null || true
+  wait "${HEARTBEAT_PID}" 2>/dev/null || true
+  for exp in "${EXPERIMENTS[@]}"; do
+    echo ""
+    echo "===================================="
+    echo "  Output: ${exp}"
+    echo "===================================="
+    print_clean_log "${LOG_DIR}/${exp}.log"
+  done
+else
+  # Sequential mode. Use run_one_experiment so the exp2 N-sweep
+  # (and any other multi-step experiments added later) is applied
+  # consistently between sequential and parallel modes. We tee the
+  # per-experiment log to the live terminal here for streaming UX;
+  # the helper itself writes the same log via redirect, so we
+  # rely on tail -F afterward instead of dual-redirecting.
+  for exp in "${EXPERIMENTS[@]}"; do
+    echo ""
+    echo "===================================="
+    echo "  Pilot: ${exp}"
+    echo "===================================="
+    if run_one_experiment "${exp}"; then
+      # Print the log AFTER cleanup so the terminal isn't flooded with
+      # tqdm \r-replays. run_one_experiment redirects to the log file,
+      # not stdout, so the live terminal stayed quiet during the run.
+      print_clean_log "${LOG_DIR}/${exp}.log"
+    else
+      print_clean_log "${LOG_DIR}/${exp}.log"
+      FAILED+=("${exp}")
+    fi
+  done
+fi
+
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+
+# Sum cost + wall-clock from the per-experiment log files.
+TOTAL_COST=$(cat "${LOG_DIR}"/*.log 2>/dev/null \
+  | grep -oE '\[(ESTIMATE|RUN)_SUMMARY\] cost_usd=[0-9.]+' \
+  | sed 's/.*cost_usd=//' \
+  | awk '{ s += $1 } END { printf "%.4f", s }')
+TOTAL_WALL_SEC=$(cat "${LOG_DIR}"/*.log 2>/dev/null \
+  | grep -oE 'wall_clock_sec=[0-9.]+' \
+  | sed 's/wall_clock_sec=//' \
+  | awk '{ s += $1 } END { printf "%.1f", s }')
+# In parallel mode, the per-experiment max is the bound on real
+# wall-clock (not the sum, which is what the experiments would have
+# taken sequentially).
+MAX_WALL_SEC=$(cat "${LOG_DIR}"/*.log 2>/dev/null \
+  | grep -oE 'wall_clock_sec=[0-9.]+' \
+  | sed 's/wall_clock_sec=//' \
+  | awk 'BEGIN { m = 0 } { if ($1 > m) m = $1 } END { printf "%.1f", m }')
+
+echo ""
+echo "===================================="
+echo "  Multi-experiment pilot summary"
+echo "===================================="
+echo "  provider:        ${PROVIDER}"
+echo "  model:           ${MODEL}"
+echo "  num_runs:        ${NUM_RUNS}"
+echo "  experiments:     ${#EXPERIMENTS[@]} attempted"
+echo "  succeeded:       $((${#EXPERIMENTS[@]} - ${#FAILED[@]}))"
+echo "  failed:          ${#FAILED[@]}"
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+  echo "    -> ${FAILED[*]}"
+fi
+# Wall-clock: orchestrator-measured (sequential), and sum of
+# per-experiment wall-clocks (which would be the lower bound if
+# experiments could run in parallel).
+echo "  mode:            $([[ -n "${PARALLEL}" ]] && echo "parallel" || echo "sequential")"
+echo "  orchestrator_elapsed: $((ELAPSED / 60))m $((ELAPSED % 60))s"
+if [[ -n "${TOTAL_WALL_SEC}" && "${TOTAL_WALL_SEC}" != "0.0" ]]; then
+  TOTAL_WALL_MIN=$(awk -v s="${TOTAL_WALL_SEC}" 'BEGIN { printf "%.1f", s / 60 }')
+  MAX_WALL_MIN=$(awk -v s="${MAX_WALL_SEC}" 'BEGIN { printf "%.1f", s / 60 }')
+  if [[ -n "${PARALLEL}" ]]; then
+    if [[ -n "${ESTIMATE}" ]]; then
+      echo "  estimated wall:  ${MAX_WALL_MIN}m parallel  (vs ${TOTAL_WALL_MIN}m sequential)"
+    else
+      echo "  per-pilot wall:  max ${MAX_WALL_MIN}m  (sum across: ${TOTAL_WALL_MIN}m)"
+    fi
+  else
+    if [[ -n "${ESTIMATE}" ]]; then
+      echo "  estimated wall:  ${TOTAL_WALL_MIN}m sequential  (would be ~${MAX_WALL_MIN}m with --parallel)"
+    else
+      echo "  per-pilot wall:  ${TOTAL_WALL_MIN}m (sum of per-experiment elapsed)"
+    fi
+  fi
+fi
+# Cost: sum across experiments. Same line for both --estimate and
+# real-run because cmd_pilot's [RUN_SUMMARY] uses the estimator
+# post-hoc (we don't track real token usage at runtime today).
+if [[ -n "${TOTAL_COST}" && "${TOTAL_COST}" != "0.0000" ]]; then
+  if [[ -n "${ESTIMATE}" ]]; then
+    echo "  estimated cost:  \$${TOTAL_COST} (sum across experiments)"
+  else
+    echo "  estimated cost:  \$${TOTAL_COST} (post-hoc estimate; real usage may differ)"
+  fi
+fi
+echo ""
+
+# Aggregate cost / time across pilot manifests when not in --estimate
+# or --dry-run mode (those don't produce manifests with real timings).
+if [[ -z "${ESTIMATE}" && -z "${DRY_RUN}" ]]; then
+  # Use the SAME DATE_STAMP we exported at orchestrator start so the
+  # summary path matches the actual sub-pilot dirs even when the run
+  # crosses midnight UTC.
+  MODEL_SLUG="${MODEL//\//_}"
+  PILOT_ROOT="results/pilots/${PILOT_DATE_STAMP}_${MODEL_SLUG}"
+  echo "  Pilot root:    ${PILOT_ROOT}/"
+  echo "  Per-experiment dirs:"
+  for exp in "${EXPERIMENTS[@]}"; do
+    DIR="${PILOT_ROOT}/${exp}"
+    if [[ -d "${DIR}" ]]; then
+      echo "    ${DIR}/"
+    fi
+  done
+fi
+
+# Exit non-zero if any experiment failed so CI catches it.
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+  exit 1
+fi

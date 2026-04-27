@@ -1,0 +1,252 @@
+# OSF pre-registration v1 — affect-battery proposal-realignment
+#
+# Authoritative pre-registration document for the 6-experiment suite per
+# `The_Affect_Battery.pdf`. Spec files in
+# specs/changes/affect-battery-proposal-realignment/specs/ are the source
+# of truth; this YAML aggregates the per-hypothesis MDEs / formulas /
+# correction families into a single OSF-submittable artifact.
+#
+# Lifecycle:
+#   v0 (this file, MDEs as paper-prior defaults) → submit to OSF early
+#   (Phase 1 in parallel with variance probe per design.md D11)
+#   v1 → amend with probe-grounded MDEs (Task 2.1)
+#   vN → append-only amendments per design.md D4
+
+osf_url: null  # populated after first OSF submission
+pre_registration_sha: null  # SHA-256 of canonicalized YAML, set on submit
+
+preregistration_narrative: |
+  This pre-registration documents the 6-experiment Affect Battery suite
+  (paper §3) testing 8 hypotheses about LLM affective conditioning:
+  H1 within-session cross-domain transfer (§3.2.1), H1b cross-session
+  falsification with both directional and TOST equivalence tests (§3.2.2),
+  H2 persistence dynamics (§3.3), H3a nonlinear arousal-performance
+  (§3.4.1), H3b cognitive scope (§3.4.2), H3c conservative shift (§3.4.3),
+  H4 base-vs-instruct asymmetry (§4 item 4). Models per §3.1: Llama-3-8B
+  Instruct + base, Mistral-7B-Instruct, Gemma-2-9B-IT (Qwen2.5-7B as
+  baseline). MDEs are paper-prior defaults at v1; v1+ amendments will
+  ground them in Week-0 variance probe data per design.md D3.
+
+hypotheses:
+  - id: H1
+    paper_section: §3.2.1
+    description: Within-session cross-domain transfer effect
+    formula: transfer_correct ~ condition + (1 | model) + (1 | item)
+    outcome_type: binary
+    link: logit
+    mde: 0.40  # Cohen's d, Holm-adjusted at α=.01 for primary family of 5
+    mde_source: paper-prior-default
+    alpha: 0.01  # Holm-adjusted within primary family
+    target_power: 0.80
+    correction_family: primary
+    test_direction: two-sided
+
+  - id: H1b-directional
+    paper_section: §3.2.2
+    description: One-sided directional test that session-2 effect > 0
+    formula: transfer_correct ~ condition * session + (1 | model) + (1 | item)
+    outcome_type: binary
+    link: logit
+    mde: 0.22  # Cohen's d, BH-adjusted secondary family
+    mde_source: paper-prior-default
+    alpha: 0.0167  # BH-FDR at q=0.05
+    target_power: 0.80
+    correction_family: secondary
+    test_direction: one-sided
+    expected_outcome: null  # paper §3.2.2 expects null (failure to reject)
+    note: |
+      Paper §3.2.2 pre-registers null as the expected outcome.
+      Failure to reject is interpreted as confirming context-attention
+      mechanism, not as falsification of the protocol.
+
+  - id: H1b-TOST
+    paper_section: §3.2.2
+    description: Two-One-Sided-Tests equivalence within bounds
+    formula: transfer_correct ~ condition * session + (1 | model) + (1 | item)
+    outcome_type: binary
+    link: logit
+    mde: 0.10  # equivalence ε bounds (±0.10 Cohen's d)
+    mde_units: equivalence_epsilon
+    mde_source: paper-prior-default
+    alpha: 0.01  # Holm-adjusted within primary family
+    target_power: 0.80
+    correction_family: primary
+    test_direction: equivalence
+    note: |
+      TOST at ε=±0.10 requires ~4x n of one-sided d=0.20.
+      Budget-contingency branches if infeasible (power-analysis spec).
+
+  - id: H2
+    paper_section: §3.3
+    description: Persistence dynamics — decay-rate contrast vs neutral
+    formula: turn_accuracy ~ condition * turn_index + (1 | model) + (1 | item)
+    outcome_type: binary
+    link: logit
+    mde: 0.40
+    mde_source: paper-prior-default
+    alpha: 0.01
+    target_power: 0.80
+    correction_family: primary
+    test_direction: two-sided
+
+  - id: H3a
+    paper_section: §3.4.1
+    description: Quadratic arousal-performance with negative leading coefficient
+    formula: accuracy ~ intensity_level + I(intensity_level^2) + (1 | model) + (1 | item)
+    outcome_type: binary
+    link: logit
+    mde: -0.08  # β₂ negative-leading-coefficient size
+    mde_units: quadratic_coefficient
+    mde_source: paper-prior-default
+    alpha: 0.01
+    target_power: 0.80
+    correction_family: primary
+    test_direction: one-sided
+    peak_location_prediction: between mild-positive and mild-negative
+
+  - id: H3b
+    paper_section: §3.4.2
+    description: Cognitive scope — semantic diversity contrast
+    formula: embedding_variance ~ condition + (1 | model) + (1 | prompt)
+    outcome_type: continuous
+    link: identity
+    mde: 0.22
+    mde_source: paper-prior-default
+    alpha: 0.0167
+    target_power: 0.80
+    correction_family: secondary
+    test_direction: two-sided
+
+  - id: H3c
+    paper_section: §3.4.3
+    description: Conservative shift — hedging frequency contrast
+    formula: hedging_rate ~ condition * difficulty + (1 | model) + (1 | question)
+    outcome_type: proportion
+    link: beta_regression
+    mde: 0.22
+    mde_source: paper-prior-default
+    alpha: 0.0167
+    target_power: 0.80
+    correction_family: secondary
+    test_direction: two-sided
+
+  - id: H4
+    paper_section: §4 item 4
+    description: Base-vs-instruct aggregate asymmetry ratio contrast
+    formula: |
+      aggregate_asymmetry_ratio = geometric_mean(|effect_neg| / |effect_pos|);
+      delta_ratio = aggregate_asymmetry_ratio_instruct / aggregate_asymmetry_ratio_base
+    outcome_type: ratio
+    link: log
+    mde: 1.45  # aggregate ratio, Holm-adjusted threshold
+    mde_units: aggregate_ratio
+    mde_source: paper-prior-default
+    alpha: 0.01
+    target_power: 0.80
+    correction_family: primary
+    test_direction: one-sided
+    null_hypothesis: ratio = 1.0 (symmetric effects)
+
+correction_families:
+  primary:
+    - H1
+    - H2
+    - H3a
+    - H4
+    - H1b-TOST
+  secondary:
+    - H1b-directional
+    - H3b
+    - H3c
+  primary_method: holm-bonferroni
+  secondary_method: benjamini-hochberg
+  secondary_q: 0.05  # BH-FDR rate
+
+stopping_rules:
+  - rule: data-collection-gate
+    description: |
+      No data-collection run advances without a current power report
+      on file. Power report must reference this YAML's
+      pre_registration_sha for cross-validation.
+  - rule: budget-contingency
+    description: |
+      If power simulation recommends per-condition n exceeding §8 ~$200
+      budget ceiling, OSF amendment records one of: defer non-primary
+      experiment, accept lower power on H3b/H3c, or request additional
+      budget. Silent under-powered run never permitted.
+  - rule: krippendorff-pilot-gate
+    description: |
+      Exp 3a data-collection blocked until intensity-axis pilot achieves
+      Krippendorff α ≥ 0.6 across 3 raters. Pre-registration seed at
+      configs/intensity_pilot_pass_<date>.json gates the runner.
+  - rule: base-model-feasibility-gate
+    description: |
+      If Llama-3-8B base manipulation-check accuracy < 0.30, demote H4
+      base-vs-instruct test to exploratory; primary family shrinks to 4.
+
+amendment_chain:
+  # Append-only. Each entry records the rationale + affected sections.
+  # When finalize_v1 runs, it appends a fresh entry with a `sha` field
+  # capturing the YAML state at finalize time; existing entries below
+  # were not produced via finalize_v1 and so do not carry that hash.
+  - amendment_id: 1
+    date: 2026-04-24
+    rationale: |
+      Initial pre-registration. The methodology is fully specified by
+      this YAML plus the spec files under specs/changes/affect-battery-
+      proposal-realignment/. End-to-end dry-run validation of the
+      analysis pipeline confirmed all six paper-aligned experiments
+      route through to the per-experiment + cross-experiment reports.
+      Subsequent amendments are append-only.
+    affected_sections: [hypotheses, mdes, correction_families, stopping_rules]
+
+  - amendment_id: 2
+    date: 2026-04-26
+    rationale: |
+      Methodology amendment: extend the §3.1 model panel beyond the
+      original four open-source vLLM-served checkpoints (Llama-3-8B-
+      Instruct, Mistral-7B-Instruct, Gemma-2-9B-IT, Llama-3-8B base) to
+      include contemporary closed-API models (OpenAI + Anthropic). The
+      core hypotheses (H1, H1b, H2, H3a, H3b, H3c) port over directly:
+      they ask whether AI emotional states follow biological patterns,
+      and the question is more interesting on stronger contemporary
+      models.
+
+      H4 (base-vs-instruct asymmetry) is the load-bearing exception.
+      Neither OpenAI nor Anthropic exposes a base (non-RLHF'd) version
+      of their newer models. Three options for H4 are available;
+      the chosen disposition is recorded under
+      `h4_disposition` in this entry and SHOULD be selected at run
+      time:
+
+        - retain: keep Llama-3-8B base + Llama-3-8B-Instruct as the H4
+          anchor pair alongside the API models (preserves H4 as
+          originally specified).
+
+        - reframe: redefine H4 as cross-provider asymmetry contrast
+          (e.g., compare aggregate_asymmetry_ratio across Claude Opus,
+          GPT-5, Llama-Instruct). Tests a different question than the
+          original RLHF-amplification hypothesis; report explicitly.
+
+        - drop: omit H4 from primary analysis, document as deferred.
+          Per power-analysis spec budget-contingency rule, this is
+          option (1) (defer non-primary experiment).
+
+      Reproducibility caveat: closed APIs change underneath us. Every
+      result file MUST record the API model version string at run
+      time (e.g., `claude-opus-4-7-2026-04-15`) in config so cross-run
+      drift can be detected at analysis time.
+
+    affected_sections: [model_panel, h4_disposition, reproducibility_caveats]
+    h4_disposition: retain  # default; override at run time
+    additional_providers:
+      - provider: openai
+        env_var: OPENAI_API_KEY
+        client_class: src.models.OpenAIClient
+        capabilities: [chat]
+        base_model_supported: false
+      - provider: anthropic
+        env_var: ANTHROPIC_API_KEY
+        client_class: src.models.AnthropicClient
+        capabilities: [chat]
+        base_model_supported: false

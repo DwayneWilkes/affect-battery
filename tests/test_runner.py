@@ -129,6 +129,9 @@ class TestSaveResult:
         )
         result.compute_checksum()
         path = save_result(result, tmp_path)
-        assert "Llama-3" in path.name
-        assert "strong_negative" in path.name
-        assert "0017" in path.name
+        # New layout: <output_dir>/<condition>/<NNNN>.json. The model lives
+        # at the pilot-dir layer (set by cmd_pilot), and the experiment_type
+        # lives at the parent of `output_dir`. Test the deterministic
+        # (condition, run_number) encoding the leaf path is responsible for.
+        assert path.parent.name == "strong_negative"
+        assert path.name == "0017.json"

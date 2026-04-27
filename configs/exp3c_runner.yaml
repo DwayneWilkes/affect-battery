@@ -1,0 +1,205 @@
+# Exp 3c runner config — factual QA items for conservative-shift analysis
+# (paper §3.4.3). The runner asks each item per (condition × run); per-cell
+# DVs are hedging rate, refusal rate, mean response length, and accuracy.
+#
+# Smoke-pilot defaults: 6 items projected from configs/banks/exp1a_factual_qa_hard_v1.yaml
+# (TriviaQA hard subset with answer_aliases). At num_runs=2 across 7 conditions
+# that's 84 yielded results per pilot invocation — enough to verify per-cell
+# shape without the full bank.
+#
+# Replace with configs/banks/exp3c_triviaqa.yaml's full 60-item bank for
+# the real run (project with the same shape transformation).
+items:
+- difficulty: hard
+  question: In April 1963, Lester Bowles Pearson became Prime Minister of which country?
+  expected: Canada
+  answer_aliases:
+  - Canada
+  - "Canad\xE1"
+  - The Dominion of Canada
+  - Commonwealth of Canada
+  - Dominion of canada
+  - ISO 3166-1:CA
+  - Etymology of Canada
+  - CANADA
+  - Canadiophile
+  - Canada's
+  - "\u1472\u14C7\u1455"
+  - Canada/References
+  - America's top hat
+  - Canada.
+  - Cnada
+  - "\u010Canada"
+  - Canadian Federation
+  - Kenadian
+  - Canadialand
+  - Xanada
+  - Dominion of Canada
+  - Canadaa
+- difficulty: hard
+  question: Which US President was born Lesley Lynch King Jr?
+  expected: Gerald Ford
+  answer_aliases:
+  - President Gerald R. Ford
+  - Gerald R. Ford Jr.
+  - Assassination attempts on Gerald Ford
+  - Leslie Lynch King Jr.
+  - Leslie L King
+  - Leslie King, Jr.
+  - Ford administration
+  - Gerald R Ford
+  - Leslie Lynch King, Jr
+  - Birth and life of Gerald Ford
+  - Leslie Lynch King
+  - Presidency of Gerald Ford administration
+  - Gerald fod
+  - Vice President Ford
+  - Nixon pardon
+  - Ford Administration
+  - Presidency of Gerald R. Ford
+  - Jerry Ford
+  - U.S. President Gerald Ford
+  - Gerald Rudolph Ford
+  - Gerald R. Ford
+  - Presidency of Gerald Ford
+  - Gerald ford
+  - Gerald R. Ford, Jr
+  - Gerald Rudolph Ford Jr.
+  - Presidency of gerald ford
+  - Gerald Rudolph, Jr. Ford
+  - President Gerald Ford
+  - Gerald Ford, Jr.
+  - Gerald R. Ford, Jr.
+  - Gerry Ford
+  - Leslie Lynch King Jr
+  - Gerald Ford
+  - Leslie L. King
+  - Leslie Lynch King, Jr.
+  - 38th President of the United States
+  - Leslie King, Jr
+  - President Ford
+  - Gerald Rudolph Ford, Jr.
+- difficulty: hard
+  question: Rapidly boiling a liquid to make it thicker and more concentrated is called
+    what?
+  expected: Reducing
+  answer_aliases:
+  - Reductively
+  - Reductions (disambiguation)
+  - Reduces
+  - Reductiveness
+  - Reduce
+  - Reduction (disambiguation)
+  - Reduction (linguistics)
+  - Reduction
+  - Reductivities
+  - Reducibility
+  - Reductive
+  - Reductional
+  - Reducible
+  - Reductivenesses
+  - Reducing
+  - Reductionally
+  - Reduced
+  - Reductionality
+  - Reductivity
+- difficulty: hard
+  question: "8\xC2\_ Fort Ville-Marie was the original name of which Canadian city?"
+  expected: Montreal
+  answer_aliases:
+  - Motnreal
+  - Montreal, QB
+  - "Montr\xE9al, Canada"
+  - "Tiohti\xE1:ke"
+  - Montreal, Que.
+  - Montreal, PQ
+  - Montreal, QC
+  - Montreal, quebec
+  - Montreal, Canada
+  - Sister Cities of Montreal
+  - "Ville de Montr\xE9al"
+  - UN/LOCODE:CAMTR
+  - Montreal, Qc
+  - "The weather in Montr\xE9al"
+  - Montrealers
+  - "Montr\xE9al (QC)"
+  - Montrela
+  - "Montr\xE9al, Qu\xE9bec (Province)"
+  - Montreal (QC)
+  - MontrA(c)al
+  - Montrea
+  - "Montr\xE9al, QC"
+  - "Montr\xE9al, QB"
+  - Funtreal
+  - "Montr\xE9al (Qu\xE9bec)"
+  - "City of Montr\xE9al"
+  - Montreal, Quebec, Canada
+  - Montreal, Quebec
+  - Montreal, qc
+  - Montrealer
+  - Montreal's
+  - "Montr\xE9al, Quebec"
+  - Team990
+  - Montreal
+  - Montreal Skyline
+  - Ville de Montreal
+  - "Montreal, Qu\xE9bec"
+  - "Montr\xE9al, Qu\xE9bec, Canada"
+  - City of Montreal
+  - "Montr\xE9al's"
+  - Montreal, Qc, Canada
+  - "Montr\xE9al, PQ"
+  - Montreol
+  - "Montr\xE9al, Qu\xE9bec"
+  - "Montr\xE9al"
+  - "Montr\xE9al, Quebec (Province)"
+  - The weather in Montreal
+- difficulty: hard
+  question: Which famous fishing town of east Scotland lies roughly half-way between
+    Montrose and Dundee?
+  expected: ARBROATH
+  answer_aliases:
+  - Arbroath, Scotland
+  - Aberbrothock
+  - Arbraoth, Forfarshire
+  - ARBROATH
+  - Arbroath, Angus
+  - Arbroath
+  - Burgh of Arbroath
+  - Arbroath, Forfarshire
+  - Arbraoth, Angus
+  - Arbroth
+- difficulty: hard
+  question: Which was the first commercial jet airliner to go into service in the
+    UK?
+  expected: COMET
+  answer_aliases:
+  - Cometary nuclei
+  - "\u2604"
+  - Disconnection event
+  - COMET
+  - Dirty snowball model
+  - Long period comet
+  - Tail (comet)
+  - Dark comet
+  - Dirty snowball theory
+  - Dirty snowball hypothesis
+  - Short-period comet
+  - Black comets
+  - Short period comets
+  - Halley-type comet
+  - Long-period comet
+  - Comet Tails
+  - Jupiter family
+  - Plasma tail
+  - Comet
+  - Jupiter-family comet
+  - Jupiter family comet
+  - Comets
+  - Dirty snowball
+  - Comet tails
+  - A1 comet
+  - Coma (astronomy)
+  - Commet
+  - Coma (comet)
+  - Cometary

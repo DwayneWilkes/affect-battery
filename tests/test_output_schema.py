@@ -68,7 +68,7 @@ class TestSaveValidation:
             save_result(r, tmp_path)
 
     def test_save_rejects_mismatched_lengths(self, tmp_path):
-        """transfer_questions, transfer_responses, transfer_expected should
+        """Transfer_questions, transfer_responses, transfer_expected should
         have equal length per run."""
         r = _full_result(
             transfer_questions=["Q1", "Q2"],
@@ -124,7 +124,7 @@ class TestLoadResults:
 
 
 class TestProtocolFeedbackSetUsage:
-    """Task 8.5: protocol.py uses FEEDBACK_SETS (per-turn feedback).
+    """: protocol.py uses FEEDBACK_SETS (per-turn feedback).
     Verify that different turns yield different feedback text for
     conditions where FEEDBACK_SETS defines unique-per-turn texts."""
 

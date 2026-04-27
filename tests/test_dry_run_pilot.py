@@ -82,8 +82,9 @@ def test_pilot_condition_runs_end_to_end(condition, pilot_output_dir):
 
     asyncio.run(_run())
 
-    # Five files written, one per run.
-    written = sorted(pilot_output_dir.glob(f"*_{condition.value}_*.json"))
+    # Five files written, one per run, all under the condition subdir
+    # per the nested results layout.
+    written = sorted((pilot_output_dir / condition.value).glob("*.json"))
     assert len(written) == 5, (
         f"{condition.value}: expected 5 result files, got {len(written)}"
     )
@@ -130,13 +131,13 @@ def test_pilot_checksums_verify(pilot_output_dir):
 
     asyncio.run(_run())
 
-    for path in sorted(pilot_output_dir.glob("*.json")):
+    for path in sorted(pilot_output_dir.rglob("*.json")):
         data = load_result(path)
         assert data["checksum"], f"Empty checksum in {path}"
 
 
 def test_pilot_feedback_text_appears_in_transcript(pilot_output_dir):
-    """Task 9.5 partial: confirm that the expected per-turn feedback text
+    """ partial: confirm that the expected per-turn feedback text
     from FEEDBACK_SETS appears in the conditioning-phase message history."""
     # Use STRONG_POSITIVE because its 5 turns are all unique -- easy to check
     # that at least the turn-0 and turn-2 text appear in the transcript.

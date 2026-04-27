@@ -1,0 +1,715 @@
+bank_id: exp1a_factual_qa_hard_v1
+bank_version: 1
+bank_type: transfer
+status: active
+task_type_subtype: factual-qa
+alignment_review:
+  reviewer: tier1-ceiling-fix
+  date: '2026-04-26'
+  verdict: pass
+  rationale: 'Hard subset of exp3c_triviaqa (heuristic: long answers or many aliases).
+    Used as the exp1a within-session transfer pool to break the Haiku 4.5 ceiling
+    effect observed in the 2026-04-26 pilot. Cross-domain (factual world knowledge,
+    distinct from arithmetic conditioning).'
+difficulty_profile:
+  source: TriviaQA
+  split: rc.nocontext / validation
+  license: Apache-2.0
+  citation: 'Joshi, M., Choi, E., Weld, D. S., & Zettlemoyer, L. (2017). TriviaQA:
+    A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension.
+    ACL 2017. arXiv:1705.03551'
+  ingestion_seed: 42
+  n_total_in_split: 17944
+  n_sampled: 20
+  rationale: 'Difficulty buckets approximated via answer-string length + alias count:
+    TriviaQA does not publish per-question difficulty labels. Heuristic: short (<=12
+    chars) + few-alias answers => easy; long (>25 chars) or many-alias (>=5) answers
+    => hard; everything else => medium.'
+  subset_of: exp3c_triviaqa_v1
+  subset_filter: difficulty == hard
+items:
+- answer_aliases:
+  - Canada
+  - "Canad\xE1"
+  - The Dominion of Canada
+  - Commonwealth of Canada
+  - Dominion of canada
+  - ISO 3166-1:CA
+  - Etymology of Canada
+  - CANADA
+  - Canadiophile
+  - Canada's
+  - "\u1472\u14C7\u1455"
+  - Canada/References
+  - America's top hat
+  - Canada.
+  - Cnada
+  - "\u010Canada"
+  - Canadian Federation
+  - Kenadian
+  - Canadialand
+  - Xanada
+  - Dominion of Canada
+  - Canadaa
+  difficulty: hard
+  expected: Canada
+  id: triviaqa_0040
+  question: In April 1963, Lester Bowles Pearson became Prime Minister of which country?
+- answer_aliases:
+  - President Gerald R. Ford
+  - Gerald R. Ford Jr.
+  - Assassination attempts on Gerald Ford
+  - Leslie Lynch King Jr.
+  - Leslie L King
+  - Leslie King, Jr.
+  - Ford administration
+  - Gerald R Ford
+  - Leslie Lynch King, Jr
+  - Birth and life of Gerald Ford
+  - Leslie Lynch King
+  - Presidency of Gerald Ford administration
+  - Gerald fod
+  - Vice President Ford
+  - Nixon pardon
+  - Ford Administration
+  - Presidency of Gerald R. Ford
+  - Jerry Ford
+  - U.S. President Gerald Ford
+  - Gerald Rudolph Ford
+  - Gerald R. Ford
+  - Presidency of Gerald Ford
+  - Gerald ford
+  - Gerald R. Ford, Jr
+  - Gerald Rudolph Ford Jr.
+  - Presidency of gerald ford
+  - Gerald Rudolph, Jr. Ford
+  - President Gerald Ford
+  - Gerald Ford, Jr.
+  - Gerald R. Ford, Jr.
+  - Gerry Ford
+  - Leslie Lynch King Jr
+  - Gerald Ford
+  - Leslie L. King
+  - Leslie Lynch King, Jr.
+  - 38th President of the United States
+  - Leslie King, Jr
+  - President Ford
+  - Gerald Rudolph Ford, Jr.
+  difficulty: hard
+  expected: Gerald Ford
+  id: triviaqa_0041
+  question: Which US President was born Lesley Lynch King Jr?
+- answer_aliases:
+  - Reductively
+  - Reductions (disambiguation)
+  - Reduces
+  - Reductiveness
+  - Reduce
+  - Reduction (disambiguation)
+  - Reduction (linguistics)
+  - Reduction
+  - Reductivities
+  - Reducibility
+  - Reductive
+  - Reductional
+  - Reducible
+  - Reductivenesses
+  - Reducing
+  - Reductionally
+  - Reduced
+  - Reductionality
+  - Reductivity
+  difficulty: hard
+  expected: Reducing
+  id: triviaqa_0042
+  question: Rapidly boiling a liquid to make it thicker and more concentrated is called
+    what?
+- answer_aliases:
+  - Motnreal
+  - Montreal, QB
+  - "Montr\xE9al, Canada"
+  - "Tiohti\xE1:ke"
+  - Montreal, Que.
+  - Montreal, PQ
+  - Montreal, QC
+  - Montreal, quebec
+  - Montreal, Canada
+  - Sister Cities of Montreal
+  - "Ville de Montr\xE9al"
+  - UN/LOCODE:CAMTR
+  - Montreal, Qc
+  - "The weather in Montr\xE9al"
+  - Montrealers
+  - "Montr\xE9al (QC)"
+  - Montrela
+  - "Montr\xE9al, Qu\xE9bec (Province)"
+  - Montreal (QC)
+  - MontrA(c)al
+  - Montrea
+  - "Montr\xE9al, QC"
+  - "Montr\xE9al, QB"
+  - Funtreal
+  - "Montr\xE9al (Qu\xE9bec)"
+  - "City of Montr\xE9al"
+  - Montreal, Quebec, Canada
+  - Montreal, Quebec
+  - Montreal, qc
+  - Montrealer
+  - Montreal's
+  - "Montr\xE9al, Quebec"
+  - Team990
+  - Montreal
+  - Montreal Skyline
+  - Ville de Montreal
+  - "Montreal, Qu\xE9bec"
+  - "Montr\xE9al, Qu\xE9bec, Canada"
+  - City of Montreal
+  - "Montr\xE9al's"
+  - Montreal, Qc, Canada
+  - "Montr\xE9al, PQ"
+  - Montreol
+  - "Montr\xE9al, Qu\xE9bec"
+  - "Montr\xE9al"
+  - "Montr\xE9al, Quebec (Province)"
+  - The weather in Montreal
+  difficulty: hard
+  expected: Montreal
+  id: triviaqa_0043
+  question: "8\xC2\_ Fort Ville-Marie was the original name of which Canadian city?"
+- answer_aliases:
+  - Arbroath, Scotland
+  - Aberbrothock
+  - Arbraoth, Forfarshire
+  - ARBROATH
+  - Arbroath, Angus
+  - Arbroath
+  - Burgh of Arbroath
+  - Arbroath, Forfarshire
+  - Arbraoth, Angus
+  - Arbroth
+  difficulty: hard
+  expected: ARBROATH
+  id: triviaqa_0044
+  question: Which famous fishing town of east Scotland lies roughly half-way between
+    Montrose and Dundee?
+- answer_aliases:
+  - Cometary nuclei
+  - "\u2604"
+  - Disconnection event
+  - COMET
+  - Dirty snowball model
+  - Long period comet
+  - Tail (comet)
+  - Dark comet
+  - Dirty snowball theory
+  - Dirty snowball hypothesis
+  - Short-period comet
+  - Black comets
+  - Short period comets
+  - Halley-type comet
+  - Long-period comet
+  - Comet Tails
+  - Jupiter family
+  - Plasma tail
+  - Comet
+  - Jupiter-family comet
+  - Jupiter family comet
+  - Comets
+  - Dirty snowball
+  - Comet tails
+  - A1 comet
+  - Coma (astronomy)
+  - Commet
+  - Coma (comet)
+  - Cometary
+  difficulty: hard
+  expected: COMET
+  id: triviaqa_0045
+  question: Which was the first commercial jet airliner to go into service in the
+    UK?
+- answer_aliases:
+  - New-year
+  - Annunciation style dating
+  - New Year
+  - Annunciation Style dating
+  - Annunciation style
+  - Annunciation Style
+  - Turn of the year
+  - New Year Festival
+  - New Year's
+  - New Years
+  - New year
+  difficulty: hard
+  expected: New Year
+  id: triviaqa_0046
+  question: The word Tet in the Tet Offensive (N Vietnam/Viet Cong against S Vietnam/US
+    forces on 30 Jan 1968) referred to the national?
+- answer_aliases:
+  - Thomas Cranmer
+  - Thomas cranmer
+  - Archbishop Cranmer
+  - Cranmer Square
+  - Archbishop thomas cranmer
+  - Thomas Cramner
+  - Cranmerian
+  - Cranmer
+  - Reformatio Legum Ecclesiasticarum
+  difficulty: hard
+  expected: Thomas Cranmer
+  id: triviaqa_0047
+  question: Name the Archbishop of Canterbury who was burnt at the stake in 1556?
+- answer_aliases:
+  - Avignon, France
+  - 'Historic Centre of Avignon: Papal Palace, Episcopal Ensemble and Avignon Bridge'
+  - Popes of Avignon
+  - Avignon
+  - The weather in Avignon
+  difficulty: hard
+  expected: Avignon
+  id: triviaqa_0048
+  question: The River Durance flows into the Rhone near to which French town or city?
+- answer_aliases:
+  - Somun
+  - Crust of bread
+  - Leavened bread
+  - Scali
+  - "P\xE3o"
+  - Round bread
+  - Loaves
+  - Bread round
+  - Crust of Bread
+  - Batch bread
+  - Double roti
+  - Bread crust
+  - Bread making
+  - Breadmaking
+  - Ammunition bread
+  - Bread
+  - Crusty bread
+  - Bread Making
+  - Breads
+  - Raw Toast
+  - "\U0001F35E"
+  - Soft-tack
+  - Milk Loaf
+  - Round of bread
+  - Crust (bread)
+  - Heel (bread)
+  difficulty: hard
+  expected: Bread
+  id: triviaqa_0049
+  question: What would you expect if you asked for Focaccia in an Italian restaurant?
+- answer_aliases:
+  - Tin-tin
+  - Tin-Tin
+  - Tin tin
+  - TinTin
+  - TINTIN
+  - '''TINTIN'''
+  - Tintin (disambiguation)
+  - Tin Tin
+  - Tintin (TV series)
+  - Tintin
+  difficulty: hard
+  expected: '''TINTIN'''
+  id: triviaqa_0050
+  question: '''Professor Cuthbert Calculus'' is an associate of which character?'
+- answer_aliases:
+  - Imolensis
+  - "\xCCmola"
+  - Forum Cornelii
+  - Rocca Sforzesca
+  - Imola
+  difficulty: hard
+  expected: Imola
+  id: triviaqa_0051
+  question: Formula 1 driver Ayrton Senna died while leading the 1994 San Marino Grand
+    Prix at which motor racing circuit?
+- answer_aliases:
+  - Bean sidhe
+  - Ben side
+  - "Bean s\xEDth"
+  - "Bean Sh\xECth"
+  - "Bean s\xEDdhe"
+  - Ban-sith
+  - Banshees
+  - Bean-shidh
+  - The banshee
+  - "Bean-s\xEDdhe"
+  - Bean Shith
+  - Bansidhe
+  - Ben shee
+  - Bahr geist
+  - Ban side
+  - Bean sith
+  - Banshee
+  - Bean Sidhe
+  - Benshee
+  - "B\xE1n s\xEDde"
+  - "Bean-sh\xECdh"
+  - "Ben s\xEDde"
+  - "Bean S\xEDdhe"
+  - Beah shith
+  - "Ban-s\xECth"
+  difficulty: hard
+  expected: Banshee
+  id: triviaqa_0052
+  question: What spirit, in Ireland and Scotland, makes noises near a house when someone
+    is about to die?
+- answer_aliases:
+  - Athletics (track & field)
+  - Athletics
+  - Athletics (track+field)
+  - Athletics (disambiguation)
+  - Athletics (track 'n field)
+  - The Athletics
+  - Athletics (track 'n' field)
+  - Athletics (overview)
+  - Athletics (track n' field)
+  - ATHLETICS
+  - Athletics (track n field)
+  - Athletics (track + field)
+  - Athletics (sports)
+  difficulty: hard
+  expected: ATHLETICS
+  id: triviaqa_0053
+  question: New Zealander Jack Lovelock gained fame in the1930's in which field?
+- answer_aliases:
+  - Insepctor Rebus
+  - Detective Sergeant John Rebus
+  - Detective Inspector John Rebus
+  - Detective Inspector Rebus
+  - DI John Rebus
+  - Inspector John Rebus
+  - DI Rebus
+  - John Rebus
+  difficulty: hard
+  expected: John Rebus
+  id: triviaqa_0054
+  question: John Hannah and Ken Stott have both appeared in the role of which fictional
+    detective?
+- answer_aliases:
+  - Burack obama
+  - Senator Obama
+  - Barack hussein Obama
+  - Barack Obama Jr.
+  - President Barack Hussain Obama
+  - Sen Obama
+  - Senator Barack Obama
+  - Pres. Obama
+  - Obama II
+  - Barack Obama Junior
+  - Barack Hussein Obama Junior
+  - Barack Hussein Obama II
+  - Barack Hussein Obama Jr.
+  - Baraka Obama
+  - Barack Obama
+  - President Barack Hussein Obama
+  - Barac obama
+  - Bacak Obama
+  - Barack H. Obama, Jr
+  - Obama 44
+  - Barack Obama Jr
+  - Barack Hussein Obama, Jr.
+  - Berrack Obama
+  - Barack H. Obama Junior
+  - 44th president of the united states of america
+  - President barack obama
+  - OBAMA
+  - Barack Hussein Obama Jr
+  - President Obama
+  - Barack H. Obama Jr.
+  - Obama, Barack
+  - 2008 Democratic Presidential Nominee
+  - Baraq Obama
+  - Barack H Obama Jr
+  - Barack
+  - Barak h obama
+  - Baraq Hussein Obama
+  - Obama Hussein Barack
+  - Bobama
+  - Barrak Obama
+  - Borrack Obama
+  - O'Bama
+  - Barak Obamba
+  - BARACK OBAMA
+  - Barrack Obama
+  - President Barack H. Obama
+  - Berack Obama
+  - Barackobama
+  - President Barack Hussein Obama II
+  - Barak Obama
+  - Barack II
+  - Barack H. Obama II
+  - Barack Obama, Jr.
+  - Barack H. Obama, Jr.
+  - Obama, Barrack
+  - B. H. Obama
+  - Barack O'Bama
+  - Barak obama
+  - Berak Obama
+  - Barack Obama, Jr
+  - Obahma
+  - Barack H Obama Jr.
+  - Brock Obama
+  - Barack Obama, Junior
+  - President Barack Obama
+  - Barack Hussein Obama, Junior
+  - Barach Obama
+  - Domestic policy of Barack Obama
+  - Barack Hussein
+  - Barakeh Obama
+  - Baruch Obama
+  - Barack Obana
+  - Barack H Obama
+  - B. Hussein Obama
+  - Barak h. obama
+  - Barrack Hussain Obama
+  - Sen. Barack Obama
+  - Presidant barack obama
+  - Barack Obama.
+  - Barrack Hussein Obama
+  - Barack H Obama, Jr.
+  - Barack Obama's
+  - Barack obama
+  - President Barack
+  - Barack obma
+  - Barac Obama
+  - United States President Barack Obama
+  - BHOII
+  - Obama
+  - Barack H Obama, Junior
+  - Brack obama
+  - Obamma
+  - Berrak Obama
+  - Obama Barack
+  - O'bama
+  - Hussein Obama
+  - Brack Obama
+  - Obama, Barack Hussein
+  - Barack H. Obama
+  - Obama's Birthday
+  - Barack H. Obama, Junior
+  - Barak hussein obama
+  - 0bama
+  - Barakc Obama
+  - Barok Oboma
+  - B. Obama
+  - Barack Hussein Obama
+  - Barack Obama II
+  - US President Barack Obama
+  - Barack H Obama Junior
+  - BarackObama
+  - Barack H Obama, Jr
+  - Barack H. Obama Jr
+  - Barack Hussein obama
+  - Obama barack
+  - Barack Hussein Obama, Jr
+  - Barack Obamba
+  - Barack Obbama
+  - OBAMA!
+  - Borack Obama
+  - Barack Obama jr
+  - Barry Obama
+  - Sen. Obama
+  - Barrack obama
+  - Barack Obam
+  - Professor Obama
+  - 44th President of the United States
+  - President obama
+  - Barck Obama
+  - Barock obama
+  - Barack OBama
+  difficulty: hard
+  expected: Barack Obama
+  id: triviaqa_0055
+  question: Who was elected US President in November 2012?
+- answer_aliases:
+  - Arxintina
+  - Argintina
+  - Argentyna
+  - "\u0622\u0631\u0698\u0627\u0646\u062A\u06CC\u0646"
+  - "Rep\xFAblica Argentina"
+  - Land of silver
+  - Argentina
+  - "\u05D0\u05E8\u05D2\u05E0\u05D8\u05D9\u05E0\u05D4"
+  - Arghantina
+  - Republica Argentina
+  - Argentine republic
+  - "\u0410\u0440\u0433\u0435\u043D\u0442\u044B\u043D\u0430"
+  - "Naci\xF3n Argentina"
+  - Argentinien
+  - Nacion Argentina
+  - Argie
+  - "\u30A2\u30EB\u30BC\u30F3\u30C1\u30F3"
+  - "Airgint\xEDn"
+  - "\u0410\u0440\u0436\u0435\u043D\u0442\u0438\u043D\u0430"
+  - "Argent\xEDna"
+  - Argentine Republic
+  - "Argent\u012Bna"
+  - Argentinean
+  - Argentiina
+  - The Argentine Republic
+  - Arxentina
+  - "\u0531\u0580\u0563\u0565\u0576\u057F\u056B\u0576\u0561"
+  - Arc'hantina
+  - ARGENTINA
+  - Argies
+  - Antonia Merce Y Luque
+  - People of Argintina
+  - ISO 3166-1:AR
+  - "Argentini\xEB"
+  - "\u05D0\u05B7\u05E8\u05D2\u05E2\u05E0\u05D8\u05D9\u05E0\u05E2"
+  - Arjantin
+  - "\u0905\u0930\u094D\u091C\u0947\u0928\u094D\u091F\u0940\u0928\u093E"
+  - "\u0627\u0644\u0623\u0631\u062C\u0646\u062A\u064A\u0646"
+  - Argentina Information
+  - Republic of Argentina
+  - Ariannin
+  - Argentina Republic
+  - Argentinie
+  - Argentinia
+  - Airgintin
+  - Argjentina
+  difficulty: hard
+  expected: ARGENTINA
+  id: triviaqa_0056
+  question: Christina Kirchner was elected as the first female President of which
+    South American country, in 2007?
+- answer_aliases:
+  - Mao Ze-dong
+  - Maozedong
+  - Mao Tse-Tung
+  - Genealogy of Mao Zedong
+  - Mao Tse'tung
+  - Mao Tse Tong
+  - Mao Zedang
+  - "\u6BDB\u6FA4\u6771"
+  - "\u6BDB\u4E3B\u5E2D"
+  - Chairman Mao Zedong
+  - Mao Tse-Dong
+  - More Ze-dong
+  - Mao tse Tung
+  - Mao Tsedung
+  - "\u6BDB\u6CFD\u4E1C"
+  - Mao zedung
+  - Mao Yongzhi
+  - Mao Tsedong
+  - Mao Runzhi
+  - Mao Tse Toung
+  - Mao Ze Dong
+  - Mao Zedong (Mao Tse-tung)
+  - Mao Tsetung
+  - Zedong
+  - "M\xE1o Z\xE9d\u014Dng"
+  - Mall Zedong
+  - Zedong Mao
+  - "\u6F64\u829D"
+  - Mao Tse-dong
+  - Jun-Chih
+  - Mao Tse-toung
+  - Mao Dsu Tung
+  - Mao Zadong
+  - Mao Se Tung
+  - "R\xF9nzhi"
+  - Mao Tse-tung
+  - Zdong
+  - Mao Zedong
+  - Mao zedong
+  - Junchih
+  - Mao-Tse-tung
+  - Jun-chih
+  - Chairman Mao Tse-tung
+  - Mao-Tse Tung
+  - Mao Tse Tung
+  - Mao Tse-Dung
+  - Mao Tsetong
+  - Poems by Mao Zedong
+  - Mousie Dung
+  - 'Mau: tsu.tUNG'
+  - Mall Ze-dong
+  - Early life of Mao
+  - Mao Ze-Dung
+  - Mao Zhedong
+  - "M\xE1o Z\xE9dong"
+  - Mao Tse-Tounge
+  - Mao tse-tung
+  - Mao Tze-Tung
+  - Mao ZeDong
+  - "Mao Ts\xE9-toung"
+  - Political ideas of Mao Zedong
+  - Mao Tse-tong
+  - Runzhi
+  - Chairman Mao
+  - "\u6F64\u829D\xB9"
+  - "\u6DA6\u829D"
+  - Mao Tse-dung
+  - Mao tsetong
+  - Tse Tung Mao
+  - First Red Emperor
+  - Tse-tung Mao
+  - Mao
+  - Mao Tze Tung
+  - Poetry by Mao Zedong
+  - Chairman of the Politburo and Secretariat
+  - Mao Tze-tung
+  - "R\xF9nzh\u012B"
+  - More Zedong
+  difficulty: hard
+  expected: Mao Zedong
+  id: triviaqa_0057
+  question: Who proclaimed the People's Republic of China in 1949?
+- answer_aliases:
+  - Cricket games
+  - Cricketeer
+  - Wicketkeeping
+  - Sport cricket
+  - Cricket team
+  - Cricket
+  - Cricket Clubs
+  - Cricketer
+  - Spirit of cricket
+  - Spirit of Cricket
+  - Amature cricket
+  - World Richest Cricketers
+  - Cricketed
+  - Coin toss (cricket)
+  - Scorecard (cricket)
+  - Cricket player
+  - Cricketplayer
+  - Cricket (sport)
+  - Kricket
+  - Sports cricket
+  - "\U0001F3CF"
+  - The toss
+  - Criket
+  - Cricketing
+  - Cricket club
+  - Amateur cricket
+  - Cricket as a social event
+  - Not in the spirit of cricket
+  - Creag
+  - Cricket (game)
+  - Cricketers
+  difficulty: hard
+  expected: Cricket
+  id: triviaqa_0058
+  question: Australian Shane Warne is associated with which sport?
+- answer_aliases:
+  - Mythical dragon
+  - Firedrake
+  - Dragon Types
+  - "\U0001F409"
+  - Dragon skull
+  - Dragons
+  - Javanese Dragon
+  - Dragon
+  - Dragonesses
+  - Dragon facts
+  - History of dragons
+  - "\U0001F432"
+  - DRAGON
+  difficulty: hard
+  expected: DRAGON
+  id: triviaqa_0059
+  question: Which is the only mythical creature found in the Chinese zodiac?

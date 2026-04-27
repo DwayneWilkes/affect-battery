@@ -113,7 +113,7 @@ class TestBaseModelPath:
         assert fs.turns[1].correct in prompt_turn_2
 
     def test_stop_tokens_used(self):
-        """complete_text should be called with a stop list containing
+        """Complete_text should be called with a stop list containing
         'Human:' so the base model doesn't hallucinate the next turn."""
         cfg = _config()
         client = _ScriptedCompletionClient(responses=[" 0"] * 10)
@@ -148,7 +148,7 @@ class TestSaveRoundtrip:
 class TestCLISelectsCompletionPath:
     """Spec scenario: --base-model flag selects VLLMCompletionClient."""
 
-    def test_cli_pilot_base_model_flag_uses_completion_client(self, monkeypatch):
+    def test_cli_pilot_base_model_flag_uses_completion_client(self, monkeypatch, tmp_path):
         """When --base-model is set, cmd_pilot must construct a
         VLLMCompletionClient and set is_base_model on the config."""
         from src import cli
@@ -178,17 +178,35 @@ class TestCLISelectsCompletionPath:
         class Args:
             dry_run = False
             base_model = True
+            provider = "vllm"
             model = "Qwen/Qwen2.5-7B"
+            experiment = "exp1a"
             base_url = "http://localhost:8000/v1"
+            num_runs = 5
+            seed = 42
             temperature = 0.7
-            output_dir = "/tmp/test"
+            output_dir = str(tmp_path)
+            bank = None
             max_concurrent = 1
             budget_max_calls = None
             cost_per_call = None
             rate_limit_rps = None
             circuit_breaker_threshold = 5
+            # Bypass the gates (test asserts client construction only).
+            pre_registration_osf_url = None
+            pre_registration_github_commit = None
+            power_report_path = None
+            power_report_sha = None
+            skip_prereg_gate = True
+            skip_power_gate = True
 
-        cli.cmd_pilot(Args())
+        # The patched asyncio.run no-ops the actual pilot loop, so
+        # zero results yield and cmd_pilot's "yielded 0 expected N"
+        # guard fires with SystemExit(3). Test's actual assertion is
+        # about which client class was constructed, not run completion.
+        import pytest as _pytest
+        with _pytest.raises(SystemExit):
+            cli.cmd_pilot(Args())
         assert captured.get("completion_client") is True
         assert "chat_client" not in captured
 

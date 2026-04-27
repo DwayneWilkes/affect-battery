@@ -1,0 +1,64 @@
+# Anthropic API pilot configuration.
+#
+# Purpose: small-N validation that the harness produces well-formed
+# results on real (non-DryRunClient) inference. NOT primary data
+# collection — the model panel and N below are pilot-scale; the spec
+# pre-registration governs the primary panel + N.
+#
+# Reference: pre-registration amendment 2 (configs/osf_prereg_v1.yaml)
+# authorizes extending the §3.1 model panel to closed-API providers.
+# H4 disposition is "retain" by default (Llama-3-8B base + instruct
+# remain the H4 anchor pair); this Anthropic pilot does NOT contribute
+# to H4 directly.
+
+pilot_id: anthropic_pilot_v1
+provider: anthropic
+
+# Recommended pilot model. Sonnet 4.6 is the cost/capability sweet spot:
+# capable enough that the affective-conditioning protocol fires non-
+# trivially, cheap enough that 35-run pilots are < $5. Swap to
+# claude-opus-4-7 for primary runs after the pilot validates the
+# harness end-to-end.
+model: claude-sonnet-4-6
+api_key_env: ANTHROPIC_API_KEY
+
+# Pilot scale: matches `affect-battery pilot` defaults.
+# 5 runs × 7 conditions = 35 result files per invocation.
+num_runs: 5
+seed: 42
+temperature: 0.7
+
+# Per-experiment dispatch. Exp 1a is the default (within-session
+# transfer). Exp 1b/2 reuse the same protocol shape; exp 3a/3b/3c
+# additionally require --runner-config (intensity_levels / prompts /
+# items, see docs/RUNNING_EXPERIMENTS.md).
+experiment: exp1a
+
+# Transfer-question bank. Default: TriviaQA hard subset (alias-aware,
+# breaks ceiling on frontier models). Set to null to fall back to the
+# legacy 6-item hardcoded factual_qa pool (will saturate Haiku/Sonnet
+# at 1.000 across conditions; not recommended for real scoring).
+transfer_bank: configs/banks/exp1a_factual_qa_hard_v1.yaml
+
+# Cost cap. Pilot at ~10 API calls per run × 35 runs × ~500 tokens
+# = ~175k tokens. At Sonnet 4.6 pricing this is roughly $1-3.
+# Budget cap halts the run if anything goes wrong.
+budget:
+  max_api_calls: 500
+  cost_per_call_usd: 0.015  # rough mid-estimate for Sonnet at ~500 tok
+  hard_cap_usd: 10.0  # script aborts batch if reached
+
+# Pre-registration: GitHub-commit vehicle by default (faster than OSF).
+# Replace <commit-sha> with the output of `scripts/create_prereg_tag.py`.
+pre_registration:
+  vehicle: github  # or "osf"
+  github_commit: DwayneWilkes/affect-battery@TODO_REPLACE_WITH_TAG_SHA
+  # osf_url: https://osf.io/<id>  # used when vehicle: osf
+
+# Output structure: pilot-root layout — see docs/RUNNING_EXPERIMENTS.md.
+#   results/pilots/<YYYY-MM-DD>_<model_slug>/
+#     manifest.yaml
+#     reports/AGGREGATE_REPORT.md
+#     reports/<exp>_report.md
+#     data/<exp>/<condition>/<NNNN>.json
+output_dir: results/pilots/anthropic_pilot

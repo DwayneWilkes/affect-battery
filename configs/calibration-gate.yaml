@@ -1,0 +1,34 @@
+# Pre-registered calibration gate thresholds.
+# Spec: affect-battery-task-difficulty-calibration / Requirement
+#       "Pre-flight go/no-go gate"
+# Design: D4 (deterministic YAML-driven verdict)
+#
+# The `pre_registration_tag` and `pre_registration_sha` below are sentinel
+# values that MUST be replaced with the real git tag + commit SHA before
+# any gated calibration run. The load_config() validator accepts the
+# sentinel with a UserWarning so infrastructure tests run offline; the
+# `affect-battery run` invocation rejects the sentinel at runtime.
+
+baseline_window:
+  min: 0.60
+  max: 0.85
+  applies_to: at_least_one_of [base, instruct]
+
+pipeline_sanity:
+  easy_regression_delta_floor_pp: 8
+  # Rationale: 2026-04-20 pilot observed 12 pp on base x arithmetic_easy_v1 at
+  # n=5. The floor sits below that to allow n=5 slack while still catching a
+  # gross pipeline regression.
+  window_description: "must reproduce 2026-04-20 pilot signal within noise band"
+
+null_acceptance:
+  baseline_window: [0.60, 0.85]
+  delta_ceiling_pp: 5
+  min_n_per_condition: 50
+  interpretation: |
+    If NO_CONDITIONING baseline falls in the window AND manipulation-check
+    |delta| is below 5 pp AND n >= 50, the null is accepted as a real
+    absence-of-effect, not further miscalibration.
+
+pre_registration_tag: "REPLACE_BEFORE_CALIBRATION"
+pre_registration_sha: "REPLACE_BEFORE_CALIBRATION"

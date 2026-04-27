@@ -1,6 +1,6 @@
 """Tests for the MLflow-compatible experiment tracker.
 
-Spec (GAPS.md task 10): mirror the ll/KV-Cache MLOps pattern before RunPod
+Spec: mirror the ll/KV-Cache MLOps pattern before RunPod
 spend. Tracker must:
 - Log params per run (10.2): model, condition, intensity_level, intensity_set,
   seed, temperature, num_runs, num_conditioning_turns.
@@ -119,7 +119,7 @@ class TestTrackerArtifacts:
 
 class TestIdempotency:
     def test_reentry_reuses_same_run_name(self, tmp_path):
-        """Task 10.6: re-entry with identical config resolves to same run."""
+        """: re-entry with identical config resolves to same run."""
         cfg = _config()
         tracker_a = ExperimentTracker(output_dir=tmp_path / "mlruns")
         tracker_a.start_run(cfg)
@@ -156,7 +156,7 @@ class TestIdempotency:
 
 class TestOfflineLoadability:
     def test_run_metadata_is_standalone(self, tmp_path):
-        """Task 10.7 (functional slice): every run directory is a self-contained
+        """ (functional slice): every run directory is a self-contained
         JSON store that can be read without MLflow / network."""
         tracker = ExperimentTracker(output_dir=tmp_path / "mlruns")
         tracker.start_run(_config())
@@ -176,7 +176,7 @@ class TestOfflineLoadability:
 
 class TestConfigCapture:
     def test_start_run_captures_full_config(self, tmp_path):
-        """Task 10.2: every param we care about is serialised on start."""
+        """: every param we care about is serialised on start."""
         cfg = _config()
         tracker = ExperimentTracker(output_dir=tmp_path / "mlruns")
         tracker.start_run(cfg)
