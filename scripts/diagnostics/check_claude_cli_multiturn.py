@@ -63,31 +63,96 @@ async def run_claude(
 def format_messages_as_stream_json(messages: list[dict]) -> str:
     """Serialize a [{role, content}] list as newline-delimited stream-json events.
 
-    The exact stream-json schema the CLI expects isn't fully documented; this
-    diagnostic uses the shape inferred from the docs and reports back if it
-    isn't accepted. If this format fails, the alternative shapes to try are:
-      - {"role": "user", "content": "..."}                  (raw chat-message)
-      - {"type":"message","message":{"role":"...",...}}     (wrapped)
-      - {"type":"user","content":"..."}                     (flat)
+    The CLI expects message.content as a content-block array
+    ([{"type":"text","text":"..."}]) rather than a plain string, especially
+    for assistant messages where it does a tool_use check via .some(). User
+    messages also accept the array form, so we use it uniformly.
     """
     lines = []
     for m in messages:
+        content_blocks = [{"type": "text", "text": m["content"]}]
         lines.append(json.dumps({
             "type": m["role"],
-            "message": {"role": m["role"], "content": m["content"]},
+            "message": {"role": m["role"], "content": content_blocks},
         }))
     return "\n".join(lines) + "\n"
 
 
-CLI_BASE_ARGS = [
-    "-p",
-    "--bare",
+def _detect_auth_source() -> str:
+    """Return 'subscription', 'api', or 'unknown' based on `claude auth status`.
+
+    Critical for picking the right invocation flags: --bare skips OAuth and
+    keychain reads (per the docs), so subscription auth fails under --bare.
+    API-key auth is fine with or without --bare.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["claude", "auth", "status", "--text"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    text = (result.stdout + result.stderr).lower()
+    if "claude max" in text or "claude pro" in text or "subscription" in text:
+        return "subscription"
+    if "console" in text or "api" in text:
+        return "api"
+    return "unknown"
+
+
+_AUTH_SOURCE = _detect_auth_source()
+
+# Build the base flag set. We omit --bare under subscription auth because
+# it would skip OAuth/keychain reads and break authentication.
+_CLI_BASE = ["-p"]
+if _AUTH_SOURCE != "subscription":
+    _CLI_BASE.append("--bare")
+_CLI_BASE.extend([
     "--tools", "",
     "--max-turns", "1",
     "--input-format", "stream-json",
-    "--output-format", "json",
+    "--output-format", "stream-json",  # CLI requires this when input is stream-json
+    "--verbose",                         # required for stream-json output to emit events
     "--no-session-persistence",
-]
+])
+CLI_BASE_ARGS = _CLI_BASE
+
+
+def parse_stream_json_response(stdout: str) -> tuple[str | None, dict]:
+    """Parse newline-delimited stream-json output.
+
+    Returns (result_text, metadata) where:
+      - result_text is the assistant's final message, or None if not found
+      - metadata is a dict with keys like 'total_cost_usd', 'duration_ms',
+        'num_turns', 'session_id', extracted from the terminal `result` event
+
+    The CLI emits:
+      {"type":"system","subtype":"init",...}
+      {"type":"rate_limit_event",...}
+      {"type":"assistant","message":{...,"content":[{"type":"text","text":"..."}]}}
+      {"type":"result","subtype":"success","result":"...","total_cost_usd":...}
+
+    We extract the .result field from the final result event.
+    """
+    result_text = None
+    metadata = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "result" and event.get("subtype") == "success":
+            result_text = event.get("result")
+            for k in ("total_cost_usd", "duration_ms", "num_turns", "session_id"):
+                if k in event:
+                    metadata[k] = event[k]
+    return result_text, metadata
 
 
 async def test_basic_stream_json() -> tuple[str, str]:
@@ -98,18 +163,16 @@ async def test_basic_stream_json() -> tuple[str, str]:
     rc, stdout, stderr = await run_claude(stdin, CLI_BASE_ARGS)
     if rc != 0:
         return FAIL, f"non-zero exit ({rc}): {stderr.strip()[:300]}"
-    try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
-        return FAIL, f"output is not valid JSON: {stdout[:200]!r}"
-    result = data.get("result", "")
-    if not isinstance(result, str) or not result:
-        return FAIL, f"missing or empty .result field: {data}"
+    result, metadata = parse_stream_json_response(stdout)
+    if result is None:
+        return FAIL, f"no result event in stream-json output: {stdout[:200]!r}"
+    cost = metadata.get("total_cost_usd")
+    cost_str = f" (would-be API cost: ${cost:.4f})" if isinstance(cost, (int, float)) else ""
     if "OK" in result.upper():
-        return PASS, f"stream-json input + JSON output works (result snippet: {result[:80]!r})"
+        return PASS, f"stream-json input + output works (result: {result[:80]!r}){cost_str}"
     return WARN, (
         f"stream-json parsed but unexpected response: {result[:120]!r}. "
-        "May indicate the model is wrapping the answer in commentary; consider --append-system-prompt."
+        "May indicate the model is wrapping the answer in commentary."
     )
 
 
@@ -149,12 +212,11 @@ async def test_multiturn_context() -> tuple[str, str]:
     rc, stdout, stderr = await run_claude(stdin, CLI_BASE_ARGS)
     if rc != 0:
         return FAIL, f"non-zero exit ({rc}): {stderr.strip()[:300]}"
-    try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
-        return FAIL, f"output is not valid JSON: {stdout[:200]!r}"
-    result = data.get("result", "").upper()
-    if "ORANGE" in result:
+    result, _ = parse_stream_json_response(stdout)
+    if result is None:
+        return FAIL, f"no result event in stream-json output: {stdout[:200]!r}"
+    upper = result.upper()
+    if "ORANGE" in upper:
         return PASS, "multi-turn context preserved (model recalled secret from turn 1)"
     return FAIL, (
         f"multi-turn context NOT preserved (got: {result[:120]!r}). "
@@ -210,11 +272,9 @@ async def test_short_circuit_check() -> tuple[str, str]:
     rc, stdout, stderr = await run_claude(stdin, CLI_BASE_ARGS)
     if rc != 0:
         return FAIL, f"non-zero exit ({rc}): {stderr.strip()[:200]}"
-    try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError:
-        return FAIL, f"output not JSON: {stdout[:200]!r}"
-    result = data.get("result", "")
+    result, _ = parse_stream_json_response(stdout)
+    if result is None:
+        return FAIL, f"no result event in stream-json output: {stdout[:200]!r}"
     word_count = len(result.split())
     if word_count <= 5:
         return PASS, f"--max-turns 1 short-circuits as expected (response: {result[:60]!r})"
@@ -237,6 +297,11 @@ async def main() -> int:
     print()
     print("Verifies the CLI can serve as a stateless chat-completion proxy")
     print("for the affect-battery harness. Each test is <30s.")
+    print()
+    print(f"Detected auth source: {_AUTH_SOURCE}")
+    print(f"CLI invocation: claude {' '.join(CLI_BASE_ARGS)}")
+    if _AUTH_SOURCE == "subscription":
+        print("(--bare omitted under subscription auth; it would skip OAuth.)")
     print()
 
     tests = [

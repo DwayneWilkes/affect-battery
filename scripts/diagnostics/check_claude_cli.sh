@@ -51,38 +51,62 @@ version=$(claude --version 2>/dev/null | head -1 || echo "unknown")
 report "$PASS" "claude CLI installed (version: $version)"
 
 # ---- Check 2: authentication ----
-auth_output=$(claude auth status --text 2>/dev/null || echo "")
-if [[ -z "$auth_output" ]]; then
-    report "$FAIL" "claude auth status returned no output (not logged in?)"
+# claude auth status exits 0 when logged in, 1 when not. We capture both
+# stdout and exit code rather than grepping for English phrases (which
+# break across versions).
+auth_output=$(claude auth status --text 2>&1)
+auth_rc=$?
+auth_source=""
+if [[ $auth_rc -ne 0 ]]; then
+    report "$FAIL" "claude is not authenticated (auth status exit $auth_rc)"
     echo
     echo "Sign in with:"
     echo "  claude auth login              # subscription billing (Claude Pro/Max)"
     echo "  claude auth login --console    # API billing via Anthropic Console"
     echo
-elif echo "$auth_output" | grep -qi "logged in\|authenticated\|signed in"; then
+else
     report "$PASS" "claude is authenticated"
-    if echo "$auth_output" | grep -qi "console\|api"; then
-        report "$INFO" "Auth source appears to be Anthropic Console (API billing)"
-    elif echo "$auth_output" | grep -qi "claude\|subscription\|pro\|max"; then
-        report "$INFO" "Auth source appears to be Claude subscription"
+    # Detect auth source from the well-known 'Login method:' line:
+    #   "Login method: Claude Max account"     -> subscription
+    #   "Login method: Anthropic Console"      -> API key
+    if echo "$auth_output" | grep -qiE "Login method:.*(Max|Pro|subscription|Claude account)"; then
+        auth_source="subscription"
+        report "$INFO" "Auth source: Claude subscription (Pro/Max)"
+    elif echo "$auth_output" | grep -qiE "Login method:.*(Console|API)"; then
+        auth_source="api"
+        report "$INFO" "Auth source: Anthropic Console (API billing)"
     else
         report "$INFO" "Auth source: see 'claude auth status' for details"
     fi
-else
-    report "$FAIL" "claude appears unauthenticated"
-    echo
-    echo "$auth_output"
-    echo
 fi
 
 # ---- Check 3: basic --print invocation ----
-print_response=$(echo "Reply with only the digits 4 and nothing else." | \
-    timeout 30 claude -p --bare --max-turns 1 --tools "" 2>/dev/null || echo "")
+# CRITICAL: --bare skips OAuth/keychain reads, so it requires an API key
+# in $ANTHROPIC_API_KEY and will fail under subscription auth. We pick the
+# invocation flags based on the detected auth source.
+if [[ "$auth_source" == "subscription" ]]; then
+    # Subscription path: do NOT pass --bare (it would skip OAuth).
+    invocation_flags=(-p --max-turns 1 --tools "")
+    invocation_label="claude -p (subscription path, no --bare)"
+else
+    # API path or unknown: --bare is fine and faster for scripted use.
+    invocation_flags=(-p --bare --max-turns 1 --tools "")
+    invocation_label="claude -p --bare (API path)"
+fi
+print_response=$(echo "Reply with only the digit 4 and nothing else." | \
+    timeout 60 claude "${invocation_flags[@]}" 2>&1 || echo "")
 if [[ -z "$print_response" ]]; then
-    report "$FAIL" "claude -p basic invocation produced no output"
+    report "$FAIL" "$invocation_label produced no output"
+elif echo "$print_response" | grep -qiE "not logged in|please run /login|unauthor"; then
+    report "$FAIL" "$invocation_label returned an auth error: ${print_response:0:120}"
+    echo
+    echo "If your auth source is subscription, --bare cannot be used here"
+    echo "(it skips OAuth reads). The diagnostic should have detected this;"
+    echo "rerun 'claude auth status --text' to confirm auth source."
+    echo
 else
     snippet=$(echo "$print_response" | head -c 80 | tr '\n' ' ')
-    report "$PASS" "claude -p basic invocation works (response: $snippet)"
+    report "$PASS" "$invocation_label works (response: $snippet)"
 fi
 
 # ---- Check 4: long-lived OAuth token availability ----
@@ -95,21 +119,25 @@ else
 fi
 
 # ---- Check 5: model selection ----
+# Use the same auth-source-aware invocation flags as Check 3.
 model_response=$(echo "Reply with only the word ok and nothing else." | \
-    timeout 30 claude -p --bare --max-turns 1 --tools "" --model sonnet 2>/dev/null || echo "")
-if [[ -n "$model_response" ]]; then
-    report "$PASS" "--model sonnet works"
-else
+    timeout 60 claude "${invocation_flags[@]}" --model sonnet 2>&1 || echo "")
+if [[ -z "$model_response" ]]; then
     report "$WARN" "--model sonnet returned empty response"
+elif echo "$model_response" | grep -qiE "not logged in|please run /login|unauthor"; then
+    report "$WARN" "--model sonnet returned an auth error: ${model_response:0:80}"
+else
+    report "$PASS" "--model sonnet works"
 fi
 
 # ---- Check 6: structured output ----
 json_response=$(echo "Reply with only the digit 7." | \
-    timeout 30 claude -p --bare --max-turns 1 --tools "" --output-format json 2>/dev/null || echo "")
+    timeout 60 claude "${invocation_flags[@]}" --output-format json 2>&1 || echo "")
 if [[ -n "$json_response" ]] && echo "$json_response" | grep -q '"result"'; then
     report "$PASS" "--output-format json works (response includes .result field)"
 else
-    report "$WARN" "--output-format json may not be working; got: ${json_response:0:120}"
+    snippet=$(echo "$json_response" | head -c 120 | tr '\n' ' ')
+    report "$WARN" "--output-format json may not be working; got: $snippet"
 fi
 
 # ---- Print results ----

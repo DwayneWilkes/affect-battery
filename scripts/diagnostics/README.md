@@ -96,3 +96,27 @@ For publication-grade results, prefer the Anthropic API path
 and other generation parameters are under explicit control. The CLI path
 is well-suited to exploration and feasibility checks where rough
 parameter control is acceptable.
+
+## CLI architecture findings (verified against Claude Code 2.1.120)
+
+The diagnostics surface four constraints that any `ClaudeCliClient`
+implementation must respect:
+
+1. **`--bare` skips OAuth and keychain reads.** Subscription auth (Claude
+   Pro/Max via `claude auth login`) breaks under `--bare` because the
+   token lives in the keychain. The integration must omit `--bare` when
+   the auth source is subscription. `--bare` is fine when an API key is
+   present in `ANTHROPIC_API_KEY`.
+2. **`--input-format stream-json` requires `--output-format stream-json
+   --verbose`.** The CLI rejects mixed input/output formats and silently
+   drops events without `--verbose`.
+3. **Assistant messages in stream-json input must use content-block
+   arrays.** `{"role":"assistant","content":"..."}` fails with
+   `H.message.content.some is not a function`. Use
+   `{"role":"assistant","content":[{"type":"text","text":"..."}]}`. User
+   messages tolerate string content but the array form is the safer
+   choice; the diagnostic uses arrays uniformly.
+4. **`--temperature` and `--max-tokens` are not exposed at the CLI
+   surface.** Generation defaults apply for any harness call routed
+   through the CLI provider. Methods documentation should record the
+   defaults rather than the experimental settings.
