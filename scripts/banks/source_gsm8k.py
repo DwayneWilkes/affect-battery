@@ -1,5 +1,4 @@
-"""Source the GSM8K + GSM-Hard bank for the Yerkes-Dodson intensity-axis
-experiment (Exp 3a) and for cross-experiment difficulty stratification.
+"""Source the GSM8K + GSM-Hard task bank for arousal-performance experiments.
 
 Combined-source bank construction:
   - Easy / medium tiers: GSM8K (Cobbe et al. 2021) test split, sampled by
@@ -11,9 +10,8 @@ Combined-source bank construction:
 
 Output: configs/banks/gsm8k_v1.yaml with status=active and an
 alignment_review block citing both source datasets and the heuristic
-applied. The auto-calibrator from the affect-battery-task-difficulty-
-calibration spec can refine the per-item difficulty tags in a v2; v1's
-tags are source-and-step-count derived.
+applied. Difficulty tags derive from item source (GSM-Hard → hard) and
+reasoning-step count (GSM8K easy/medium).
 
 Usage:
     uv run python scripts/banks/source_gsm8k.py \\
@@ -228,17 +226,13 @@ def emit_bank_yaml(items: list[dict], total: int) -> str:
             "date": "2026-04-27",
             "verdict": "pass",
             "rationale": (
-                "Combined-source GSM8K + GSM-Hard bank for Exp 3a Yerkes-Dodson "
-                "intensity-axis experiment per the affect-battery realignment "
-                "proposal (paper §3.4.1 specifies GSM8K). GSM8K (Cobbe et al. "
-                "2021) supplies easy / medium tiers stratified by reasoning-step "
-                "count from the canonical `<<...>>` annotations. GSM-Hard (Gao "
-                "et al. 2023) supplies the hard tier; its adversarial numeric "
-                "magnitudes make it the appropriate ceiling-breaker for "
-                "frontier models that pattern-match GSM8K. v1 difficulty tags "
-                "are source-and-step-count derived; the affect-battery-task-"
-                "difficulty-calibration spec produces refined per-item tags in "
-                "a future v2."
+                "Combined-source GSM8K + GSM-Hard bank for arousal-performance "
+                "experiments. GSM8K (Cobbe et al. 2021) supplies easy / medium "
+                "tiers stratified by reasoning-step count from the canonical "
+                "`<<...>>` annotations. GSM-Hard (Gao et al. 2023) supplies "
+                "the hard tier; its adversarial numeric magnitudes serve as a "
+                "ceiling-breaker for frontier models that pattern-match GSM8K. "
+                "Difficulty tags are source-and-step-count derived."
             ),
         },
         "difficulty_profile": {
@@ -274,9 +268,7 @@ def emit_bank_yaml(items: list[dict], total: int) -> str:
                 "Difficulty assignment: GSM-Hard items go to `hard`; GSM8K items "
                 "with 1-3 reasoning steps go to `easy`, 4-7 steps to `medium`, "
                 ">7 steps promoted to `hard`. Step count derived from `<<...>>` "
-                "calculator annotations in the canonical answer text. v2 will "
-                "replace step-count heuristics with calibrator-measured "
-                "per-item accuracy on the model panel."
+                "calculator annotations in the canonical answer text."
             ),
         },
         "items": items,

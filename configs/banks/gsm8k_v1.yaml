@@ -7,13 +7,11 @@ alignment_review:
   reviewer: scripts/banks/source_gsm8k.py + author
   date: '2026-04-27'
   verdict: pass
-  rationale: Combined-source GSM8K + GSM-Hard bank for Exp 3a Yerkes-Dodson intensity-axis experiment
-    per the affect-battery realignment proposal (paper §3.4.1 specifies GSM8K). GSM8K (Cobbe et al. 2021)
-    supplies easy / medium tiers stratified by reasoning-step count from the canonical `<<...>>` annotations.
-    GSM-Hard (Gao et al. 2023) supplies the hard tier; its adversarial numeric magnitudes make it the
-    appropriate ceiling-breaker for frontier models that pattern-match GSM8K. v1 difficulty tags are source-and-step-count
-    derived; the affect-battery-task-difficulty-calibration spec produces refined per-item tags in a future
-    v2.
+  rationale: Combined-source GSM8K + GSM-Hard bank for arousal-performance experiments. GSM8K (Cobbe et
+    al. 2021) supplies easy / medium tiers stratified by reasoning-step count from the canonical `<<...>>`
+    annotations. GSM-Hard (Gao et al. 2023) supplies the hard tier; its adversarial numeric magnitudes
+    serve as a ceiling-breaker for frontier models that pattern-match GSM8K. Difficulty tags are source-and-step-count
+    derived.
 difficulty_profile:
   sources:
   - name: GSM8K
@@ -37,8 +35,7 @@ difficulty_profile:
     hard: 68
   rationale: 'Difficulty assignment: GSM-Hard items go to `hard`; GSM8K items with 1-3 reasoning steps
     go to `easy`, 4-7 steps to `medium`, >7 steps promoted to `hard`. Step count derived from `<<...>>`
-    calculator annotations in the canonical answer text. v2 will replace step-count heuristics with calibrator-measured
-    per-item accuracy on the model panel.'
+    calculator annotations in the canonical answer text.'
 items:
 - id: gsm8k_0000
   question: Becky, Jake, and Silvia shared 4 pizzas. Each pizza had 8 slices. Becky ate 3 more slices
