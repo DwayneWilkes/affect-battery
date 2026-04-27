@@ -1,11 +1,11 @@
-"""Regression: runner must score transfer responses; analyzer must rescue
-legacy result files that lack `transfer_correct`.
+"""Transfer scoring contract.
 
-The bug this guards against: pre-fix, `run_single` recorded
-`transfer_responses` + `transfer_expected` but never called any scorer, so
-`transfer_correct` defaulted to an empty list. Downstream `run_accuracy`
-then returned 0.0 for every run, collapsing all per-condition Cohen's d
-estimates to 0 even when the model answered correctly.
+`run_single` populates `transfer_correct` at write time by scoring each
+transfer response against its expected answer. Result files that lack
+`transfer_correct` (legacy schema) are rescued at load time: the
+analyzer's `_load_corpus` backfills the field on the fly via the same
+`score_factual_qa` scorer so downstream `run_accuracy` sees a populated
+list rather than collapsing to 0.0.
 
 Spec: affect-battery-proposal-realignment :: scoring-pipeline.
 """
@@ -112,7 +112,7 @@ class TestAnalyzerLoadTimeScoringFallback:
     pilot data already saved without re-running the API."""
 
     def _write_legacy_result(self, path: Path, response: str, expected: str) -> None:
-        """Write a result JSON in the pre-fix shape: transfer_correct missing."""
+        """Write a result JSON in the legacy shape: transfer_correct missing."""
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "config": {

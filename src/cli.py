@@ -90,13 +90,12 @@ def _install_sigint_handler(cancel_event: asyncio.Event) -> None:
     so the run drains gracefully (cached cells skipped, in-flight cells
     interrupted). Second SIGINT: hard-exit with the OS default handler.
 
-    Pre-fix this used `signal.signal()` only, which sets the flag but
-    doesn't interrupt active `await` calls — so during a 30s API call,
-    Ctrl-C did nothing for up to 30s. The new handler uses
-    `loop.add_signal_handler()` (asyncio-aware) and additionally
-    cancels in-flight tasks so awaits raise CancelledError immediately.
-    Must be called from within an async context (so a running loop
-    exists).
+    Uses `loop.add_signal_handler()` rather than `signal.signal()` so the
+    handler can interrupt active `await` calls in addition to setting the
+    flag. Combined with explicit task cancellation, awaits raise
+    CancelledError immediately rather than blocking until the in-flight
+    API call returns. Must be called from within an async context (so a
+    running loop exists).
     """
     import os
 

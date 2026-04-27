@@ -1,12 +1,12 @@
-"""Cache identity must include the transfer bank: changing --transfer-bank
-must invalidate any cached results from a previous run with a different
-(or no) transfer bank.
+"""Cache identity includes the transfer bank.
 
-The bug this guards against: pre-fix, the cache key was (output_dir,
-condition, run_number). Two runs of `claude-haiku-4-5 / strong_negative
-/ run 0` with different transfer banks (legacy hardcoded pool vs.
-TriviaQA hard) would write to the same file path, and the second run
-would see the first run's cached file as 'valid' and skip the API call.
+The cache key participates in `transfer_bank_hash` (sha256 over the
+bank file content). A re-run with a different `--transfer-bank` value
+recognizes that the cached cell was produced under a different bank,
+treats the cache as invalid, and re-issues the API calls. Without this
+contract, two runs at the same (output_dir, condition, run_number) but
+with different transfer banks would resolve to the same file path and
+the second run would silently serve stale results from the first.
 
 Spec: affect-battery-proposal-realignment :: scoring-pipeline,
 results-layout.

@@ -347,14 +347,13 @@ if [[ -n "${PARALLEL}" ]]; then
   echo "   logs at ${LOG_DIR}/<exp>.log — \`tail -F ${LOG_DIR}/*.log\` to live-tail)"
   echo ""
 
-  # Heartbeat: ONE LINE per check-in. Prior versions printed the last
-  # tqdm line per experiment, which over a 30+ min run stacks ~5 lines
-  # × ~70 check-ins = ~350 partial progress-bar fragments on the
-  # orchestrator's stdout. Now the heartbeat is a single coarse status
-  # line showing elapsed time, which experiments are still running, and
-  # a compact "<exp>:NN%" tag per running experiment parsed from the
-  # tqdm percentage. tail -F LOG_DIR/*.log is still the way to see
-  # detailed progress.
+  # Heartbeat: one coarse status line per check-in showing elapsed time,
+  # which experiments are still running, and a compact "<exp>:NN%" tag
+  # per running experiment (percentage parsed from each subprocess's
+  # tqdm output). The line is short by design — over a long parallel
+  # run, anything per-experiment per-check-in stacks into hundreds of
+  # lines that crowd the orchestrator's stdout. Use
+  # `tail -F LOG_DIR/*.log` for detailed progress.
   heartbeat_loop() {
     while true; do
       sleep 30

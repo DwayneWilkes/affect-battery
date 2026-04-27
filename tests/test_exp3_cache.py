@@ -1,15 +1,11 @@
-"""exp3b and exp3c runners must skip API calls when results are cached.
+"""exp3b / exp3c per-cell cache contract.
 
-Pre-fix the exp3b/exp3c runners had no cache layer at all — every
-re-run made fresh API calls for every (run_num, axis_idx) cell, even
-when valid result files already existed on disk. The user discovered
-this during a real-API re-run where exp1a/1b cache-hit cleanly but
-exp3b/exp3c made hundreds of unnecessary API calls.
-
-This test pins the contract: when every cell for a given run_num is
-already cached (transfer_bank_hash matches, schema valid, checksum
-verifies), the runner skips conditioning + the per-cell API work and
-yields the cached results from disk.
+Each (run_num, axis_idx) cell is cached independently on disk. When a
+re-run finds a cell whose stored transfer_bank_hash matches, schema
+validates, and checksum verifies, the runner yields it without firing
+the conditioning phase or any per-cell API call. A run_num with at
+least one missing cell runs conditioning once and dispatches only the
+missing cells.
 
 Spec: affect-battery-proposal-realignment :: experiment-dispatch.
 """

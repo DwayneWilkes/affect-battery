@@ -71,9 +71,9 @@ class ExperimentConfig:
     transfer_bank: str = ""
     # SHA-256 over the transfer-bank file content. Participates in cache
     # identity so re-piloting with a different transfer bank invalidates
-    # cached results (which would otherwise silently return stale data
-    # from the prior bank — a subtle correctness bug we hit when adding
-    # the alias-aware bank loader).
+    # cached results; without it, two runs sharing (output_dir, condition,
+    # run_number) but using different banks would resolve to the same path
+    # and the second run would silently serve stale data from the first.
     transfer_bank_hash: str = ""
 
 

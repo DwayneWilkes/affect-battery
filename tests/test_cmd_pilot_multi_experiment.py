@@ -1,13 +1,12 @@
-"""cmd_pilot must respect --experiment for all six experiment types.
+"""cmd_pilot multi-experiment dispatch contract.
 
-Pre-fix bug: cmd_pilot hardcoded ExperimentType.TRANSFER_WITHIN at the
-config-construction site, so `affect-battery pilot --experiment exp1b`
-ran exp1a-shaped batches and misfiled the results under <root>/data/exp1b/.
-
-This test pins the contract: cmd_pilot iterates the 7 default conditions
-and dispatches to RUNNERS[args.experiment] for each, with the correct
-ExperimentType on each ExperimentConfig. exp1a/1b/2 share the run_batch
-shape; exp3a/3b/3c need --runner-config but the same condition iteration.
+cmd_pilot iterates the 7 default conditions and dispatches to
+RUNNERS[args.experiment] for each, attaching the correct ExperimentType
+to each ExperimentConfig. exp1a / exp1b / exp2 share the run_batch
+shape; exp3a / exp3b / exp3c require --runner-config but follow the
+same condition iteration. The ExperimentType on the saved config must
+match args.experiment so result files file under the correct
+<root>/data/<exp>/<condition>/ leaf.
 
 Spec: affect-battery-proposal-realignment :: experiment-dispatch.
 """
@@ -92,9 +91,10 @@ class TestCmdPilotRespectsExperimentType:
         assert manifest["experiment"] == experiment
 
     def test_pilot_result_files_carry_correct_experiment_type(self, tmp_path):
-        """When --experiment exp1b is set, the saved RunResult JSONs
-        must have experiment_type='exp1b' on the top-level field, not
-        'exp1a'. Pre-fix this was the silent-misfile bug."""
+        """When --experiment exp1b is set, every saved RunResult JSON
+        carries experiment_type='exp1b' on the top-level field. Cells
+        whose top-level type doesn't match the directory they're filed
+        under would silently misroute analysis."""
         import json
 
         from src import cli

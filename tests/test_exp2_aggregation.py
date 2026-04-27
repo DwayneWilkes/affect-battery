@@ -73,17 +73,13 @@ class TestAnalyzeExp2Corpus:
         assert analysis["verdict"] == "unavailable_no_control"
 
     def test_two_n_values_degrades_gracefully(self):
-        """When the corpus has exactly 2 N points (e.g. partial sweep,
-        or — as we hit on 2026-04-26 — a midnight-UTC date-stamp drift
-        that scattered N values across two pilot dirs), the analyzer
-        must NOT crash on the decay-fit. It should produce a partial
-        report with a clear verdict: control + AUC + ttb still computable,
-        but decay_fit=None (since exp/lin both need >=3 points to
-        identify amplitude+tau or slope+intercept reliably).
-
-        Pre-fix this raised ValueError("need >= 3 points to fit
-        exponential; got 2") and crashed the orchestrator's analyze
-        step entirely."""
+        """With fewer than 3 N points present, the analyzer produces a
+        partial report instead of raising. Control curve, AUC, and
+        time-to-baseline remain computable; decay_fit is set to None
+        because exponential and linear models both need >=3 points to
+        identify amplitude+tau or slope+intercept reliably. Verdict
+        flips from `complete` to `complete_no_decay_fit` so callers
+        can branch."""
         from src.analysis.exp2 import analyze_exp2_corpus
 
         corpus: list[dict] = []
