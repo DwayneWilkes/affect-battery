@@ -126,7 +126,12 @@ fi
 # spans midnight ends up with sub-pilots writing to different date
 # stamps — e.g. exp2's N-sweep gets split across two pilot dirs and
 # the analyzer only sees a partial sweep.
-export PILOT_DATE_STAMP="$(date -u +%Y-%m-%d)"
+#
+# CRITICAL: respect a caller-provided PILOT_DATE_STAMP. Unconditional
+# `export PILOT_DATE_STAMP="$(date ...)"` would clobber the user's
+# value, breaking resume-into-existing-pilot-dir. The `${VAR:-default}`
+# form keeps the user's choice if set.
+export PILOT_DATE_STAMP="${PILOT_DATE_STAMP:-$(date -u +%Y-%m-%d)}"
 MODEL_SLUG_PREVIEW="${MODEL//\//_}"
 PILOT_ROOT_PREVIEW="results/pilots/${PILOT_DATE_STAMP}_${MODEL_SLUG_PREVIEW}"
 
