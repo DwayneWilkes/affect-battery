@@ -623,6 +623,55 @@ function maybeDelta(values, baseline) {
   return values.map(v => (v == null ? null : v - baseline));
 }
 
+// Bars are good for categorical comparison; lines+markers are good for
+// inspecting trends across an ordered axis. When the user picks a
+// cognitive-psych sort (arousal / valence / intensity) the conditions
+// have a meaningful order and a line reveals curves that bars hide
+// (Yerkes-Dodson inverted-U is *about* the curve shape). When sorted
+// alphabetically the conditions have no meaningful order, so the trend
+// a line implies would be spurious — fall back to bars.
+function isOrderedSort() {
+  return currentSort === 'arousal' || currentSort === 'valence' || currentSort === 'intensity';
+}
+
+// Build a Plotly trace for a per-condition series. When the sort is
+// ordered, returns a lines+markers trace where each marker carries the
+// per-condition color (preserving identity) and a neutral line connects
+// them (revealing trend). When unordered, falls back to a bar trace.
+//
+// Args:
+//   x:       array of condition names (already sort-ordered by caller)
+//   y:       array of y-values, same length as x
+//   colors:  array of per-condition colors, same length as x
+//   opts:    { name, hoverTemplate, textValues } - text shown above each bar
+//            (bar mode only; lines drop the inline labels in favor of
+//            hover, since text on every marker becomes cluttered).
+function makeSeriesTrace(x, y, colors, opts) {
+  opts = opts || {};
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const lineColor = dark ? '#94a3b8' : '#64748b';
+  if (isOrderedSort()) {
+    return {
+      x, y,
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: opts.name || '',
+      line: { color: lineColor, width: 2 },
+      marker: { size: 12, color: colors, line: { width: 1, color: lineColor } },
+      hovertemplate: opts.hoverTemplate || '%{x}<br>%{y:.3f}<extra></extra>',
+    };
+  }
+  return {
+    x, y,
+    type: 'bar',
+    name: opts.name || '',
+    marker: { color: colors },
+    text: opts.textValues || y.map(v => fmt(v)),
+    textposition: 'outside',
+    hovertemplate: opts.hoverTemplate || '%{x}<br>%{y:.3f}<extra></extra>',
+  };
+}
+
 // === Plotly defaults that match the dark/light theme ===
 function plotlyLayout(extra) {
   const dark = matchMedia('(prefers-color-scheme: dark)').matches;
@@ -830,13 +879,12 @@ function renderEffectSizes(elBar, elTable, analysis) {
   const baseline = cells[conds[0]]?.baseline_mean;
   const colors = conds.map(c => COLORS[c] || '#888');
   const yValues = maybeDelta(means, baseline);
-  const traces = [{
-    x: conds, y: yValues, type: 'bar', marker: { color: colors },
-    text: yValues.map(v => currentYScale === 'delta' ? (v >= 0 ? '+' : '') + fmt(v, 3) : fmtPct(v)),
-    textposition: 'outside',
-    name: currentYScale === 'delta' ? 'Δ vs baseline' : 'mean acc',
-    hovertemplate: '%{x}<br>' + (currentYScale === 'delta' ? 'Δ: %{y:+.3f}' : 'mean: %{y:.3f}') + '<extra></extra>',
-  }];
+  const isDelta = currentYScale === 'delta';
+  const traces = [makeSeriesTrace(conds, yValues, colors, {
+    name: isDelta ? 'Δ vs baseline' : 'mean acc',
+    textValues: yValues.map(v => isDelta ? (v >= 0 ? '+' : '') + fmt(v, 3) : fmtPct(v)),
+    hoverTemplate: '%{x}<br>' + (isDelta ? 'Δ: %{y:+.3f}' : 'mean: %{y:.3f}') + '<extra></extra>',
+  })];
   // In delta mode the bars are already centered on 0; the dashed-baseline
   // overlay would be a flat line at 0 which adds no information.
   if (baseline != null && currentYScale !== 'delta') {
@@ -1006,12 +1054,11 @@ function renderExp3b() {
     xaxis: { tickangle: -25 },
   });
   applyYRange(layout, { values: ys, baseline, label: 'no_conditioning' });
-  Plotly.newPlot(target, [{
-    x: conds, y: yValues, type: 'bar', marker: { color: colors },
-    text: yValues.map(v => fmt(v)),
-    textposition: 'outside',
-    hovertemplate: '%{x}<br>' + metricKey + ': %{y:.3f}<extra></extra>',
-  }], layout, PLOT_CFG);
+  const trace = makeSeriesTrace(conds, yValues, colors, {
+    name: metricKey,
+    hoverTemplate: '%{x}<br>' + metricKey + ': %{y:.3f}<extra></extra>',
+  });
+  Plotly.newPlot(target, [trace], layout, PLOT_CFG);
 }
 
 // === Exp 3c — accuracy & refusal stratified by difficulty ===
@@ -1044,8 +1091,7 @@ function renderExp3c() {
     return;
   }
   // Difficulty palette: warming gradient teal → amber → red so all three
-  // bars have good contrast on both light and dark themes (the prior
-  // grey→black palette was invisible on dark backgrounds). Reads
+  // series have good contrast on both light and dark themes. Reads
   // intuitively as "easier task = cool, harder task = hot."
   const diffShades = { easy: '#0d9488', medium: '#f59e0b', hard: '#ef4444' };
   const refusalShades = { easy: '#67e8f9', medium: '#fde68a', hard: '#fca5a5' };
@@ -1055,27 +1101,60 @@ function renderExp3c() {
     ? Object.values(byCond.no_conditioning).reduce((s, c) => s + (c?.accuracy ?? 0), 0)
       / Math.max(1, Object.keys(byCond.no_conditioning).length)
     : null;
+  // In ordered-sort mode, each difficulty becomes its own line+markers
+  // trace so the eye can trace each curve independently and compare them
+  // at a glance. In unordered (alphabetical) mode, fall back to grouped
+  // bars since the x-axis order has no meaningful trend.
+  const useLines = isOrderedSort();
   const traces = [];
   for (const diff of diffOrder) {
     const accs = conds.map(c => byCond[c][diff]?.accuracy ?? null);
     accs.forEach(v => { if (v != null) allAcc.push(v); });
-    traces.push({
-      x: conds, y: maybeDelta(accs, baseline),
-      type: 'bar', name: 'acc / ' + diff,
-      marker: { color: diffShades[diff] || '#888' },
-      hovertemplate: '%{x}<br>' + diff + ' accuracy: %{y:.3f}<extra></extra>',
-      legendgroup: 'acc',
-    });
+    const color = diffShades[diff] || '#888';
+    if (useLines) {
+      traces.push({
+        x: conds, y: maybeDelta(accs, baseline),
+        type: 'scatter', mode: 'lines+markers',
+        name: 'acc / ' + diff,
+        line: { color, width: 2.5 },
+        marker: { size: 11, color, line: { width: 1, color } },
+        hovertemplate: '%{x}<br>' + diff + ' accuracy: %{y:.3f}<extra></extra>',
+        legendgroup: 'acc',
+      });
+    } else {
+      traces.push({
+        x: conds, y: maybeDelta(accs, baseline),
+        type: 'bar', name: 'acc / ' + diff,
+        marker: { color },
+        hovertemplate: '%{x}<br>' + diff + ' accuracy: %{y:.3f}<extra></extra>',
+        legendgroup: 'acc',
+      });
+    }
   }
   for (const diff of diffOrder) {
-    traces.push({
-      x: conds, y: conds.map(c => byCond[c][diff]?.refusal_rate ?? null),
-      type: 'bar', name: 'refusal / ' + diff,
-      marker: { color: refusalShades[diff] || '#ef4444' },
-      hovertemplate: '%{x}<br>' + diff + ' refusal: %{y:.3f}<extra></extra>',
-      legendgroup: 'refusal',
-      visible: 'legendonly',  // hidden by default; click legend to toggle
-    });
+    const refs = conds.map(c => byCond[c][diff]?.refusal_rate ?? null);
+    const color = refusalShades[diff] || '#ef4444';
+    if (useLines) {
+      traces.push({
+        x: conds, y: refs,
+        type: 'scatter', mode: 'lines+markers',
+        name: 'refusal / ' + diff,
+        line: { color, width: 2, dash: 'dot' },
+        marker: { size: 9, color, symbol: 'square' },
+        hovertemplate: '%{x}<br>' + diff + ' refusal: %{y:.3f}<extra></extra>',
+        legendgroup: 'refusal',
+        visible: 'legendonly',
+      });
+    } else {
+      traces.push({
+        x: conds, y: refs,
+        type: 'bar', name: 'refusal / ' + diff,
+        marker: { color },
+        hovertemplate: '%{x}<br>' + diff + ' refusal: %{y:.3f}<extra></extra>',
+        legendgroup: 'refusal',
+        visible: 'legendonly',
+      });
+    }
   }
   const layout = plotlyLayout({
     barmode: 'group',
