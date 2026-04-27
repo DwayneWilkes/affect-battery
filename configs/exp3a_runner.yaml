@@ -1,0 +1,9 @@
+# Exp 3a runner config: intensity-axis arousal-performance test (paper §3.4.1).
+#
+# Single-turn paradigm: each (level, run) cell delivers
+# INTENSITY_LEVELS[level-1].feedback_text as the system message and one
+# disjoint sample from the bank as the user message. The pilot seed is
+# SHA-pinned and verified at runtime.
+
+intensity_levels: [1, 2, 3, 4, 5, 6, 7]
+pilot_seed_path: configs/intensity_pilot_seed.json
