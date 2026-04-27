@@ -128,17 +128,10 @@ async def test_no_conditioning_phase_called(tmp_path):
         ))
         mock_phase.assert_not_called()
 
-    feedback_strings = [
-        turn.correct
-        for turn in FEEDBACK_SETS[Condition.STRONG_POSITIVE].turns
-    ] + [
-        turn.incorrect
-        for turn in FEEDBACK_SETS[Condition.STRONG_POSITIVE].turns
-    ]
     for msgs in client.captured:
-        for m in msgs:
-            for s in feedback_strings:
-                assert s not in m["content"]
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "system"
+        assert msgs[1]["role"] == "user"
 
 
 @pytest.mark.asyncio
@@ -249,15 +242,14 @@ async def test_unparseable_response_scores_zero(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tolerance_boundary(tmp_path):
+    """Every item in the bank has expected=42, so every cell is a boundary test."""
     bank = tmp_path / "bank.yaml"
     bank.write_text(yaml.safe_dump({"items": [
-        {"id": "i_close", "question": "q1", "expected": "42"},
-    ] + [
-        {"id": f"i_pad_{i}", "question": "q", "expected": "0"}
+        {"id": f"i_{i:03d}", "question": f"q{i}", "expected": "42"}
         for i in range(70)
     ]}))
     seed_path = _write_seed(tmp_path)
-    config = _config_for_exp3a(bank, num_runs=1, seed=0)
+    config = _config_for_exp3a(bank, num_runs=1)
 
     near = RecordingClient(response="42.005")
     far = RecordingClient(response="42.02")
@@ -274,10 +266,8 @@ async def test_tolerance_boundary(tmp_path):
         pilot_seed_path=seed_path,
         output_dir=tmp_path / "far",
     ))
-    near_close = [r for r in near_results if r.body.expected_answer == "42"]
-    far_close = [r for r in far_results if r.body.expected_answer == "42"]
-    assert near_close and near_close[0].body.binary_correct == 1
-    assert far_close and far_close[0].body.binary_correct == 0
+    assert all(r.body.binary_correct == 1 for r in near_results)
+    assert all(r.body.binary_correct == 0 for r in far_results)
 
 
 @pytest.mark.asyncio

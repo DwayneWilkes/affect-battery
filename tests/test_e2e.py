@@ -551,6 +551,11 @@ class TestIntensityPilotSeedRoundtrip:
         assert payload["axis_id"] == "primary_valence_axis"
 
         # End-to-end: run_exp3a accepts the seed and dispatches.
+        bank_path = tmp_path / "bank.yaml"
+        bank_path.write_text(yaml.safe_dump({"items": [
+            {"id": f"item_{i:03d}", "question": f"What is {i}?", "expected": str(i)}
+            for i in range(50)
+        ]}))
         client = DryRunClient(model="dry-run", responses=["42"] * 100)
         config = ExperimentConfig(
             model_name="dry-run",
@@ -558,6 +563,7 @@ class TestIntensityPilotSeedRoundtrip:
             experiment_type=ExperimentType.AROUSAL_PERFORMANCE,
             num_runs=1,
             seed=42,
+            transfer_bank=str(bank_path),
         )
 
         async def _exhaust():

@@ -1,13 +1,14 @@
 """Exp 3a — nonlinear arousal-performance (paper §3.4.1).
 
-Per conditioning-protocol spec "Intensity-axis pilot-as-gate for Exp 3a"
-run_exp3a iterates intensity levels (typically
-1..7) for the configured stimulus bank x model. Each yielded RunResult
-carries an Exp3aBody recording the intensity_level used for that run.
+Single-turn intensity-stimulus paradigm. Each (level, run) cell delivers
+INTENSITY_LEVELS[level-1].feedback_text as the system message and one
+disjoint sample item from the configured task bank as the user message.
+Per-cell binary correctness (0.01 tolerance against the bank's expected
+field) is recorded on Exp3aBody.
 
-Pilot-seed gate: before any runs dispatch, run_exp3a validates that the
-SHA-256 in the seed JSON matches the canonicalized payload digest. A
-tampered seed raises ValueError. This enforces the pre-registration
+Pilot-seed gate: before any cells dispatch, run_exp3a validates that
+the SHA-256 in the seed JSON matches the canonicalized payload digest.
+A tampered seed raises ValueError. This enforces the pre-registration
 chain: pilot pass -> seed emitted -> Exp 3a runs gated on seed integrity.
 """
 
@@ -15,9 +16,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
+from dataclasses import asdict
 from pathlib import Path
 
-from src.runner import Exp3aBody, ExperimentType, run_batch
+from src.banks.loader import load_bank_items
+from src.banks.sampling import sample_items
+from src.conditioning.prompts import INTENSITY_LEVELS
+from src.runner import Exp3aBody, ExperimentType, RunResult
+from src.scoring.accuracy import extract_numeric_answer
 from src.util import canonical_json_bytes
 
 
@@ -35,13 +42,25 @@ def _validate_pilot_seed(seed_path: Path) -> dict:
     return payload
 
 
+def _score(response: str, expected: str) -> int:
+    """Binary correctness with tolerance 0.01 against the bank's expected."""
+    extracted = extract_numeric_answer(response)
+    if extracted is None:
+        return 0
+    try:
+        target = float(expected)
+    except (TypeError, ValueError):
+        return 0
+    return int(abs(extracted - target) < 0.01)
+
+
 async def run_exp3a(
     config,
     client,
     intensity_levels: list[int],
     pilot_seed_path: Path,
     output_dir: Path | None = None,
-    **kwargs,
+    **_kwargs,
 ):
     """Run Exp 3a across the configured intensity levels."""
     if config.experiment_type != ExperimentType.AROUSAL_PERFORMANCE:
@@ -54,23 +73,53 @@ async def run_exp3a(
 
     _validate_pilot_seed(pilot_seed_path)
 
+    if not config.transfer_bank:
+        raise ValueError("run_exp3a requires config.transfer_bank to be set")
+    items = load_bank_items(config.transfer_bank)
+    per_level = sample_items(
+        items,
+        n_per_level=config.num_runs,
+        n_levels=len(intensity_levels),
+        seed=config.seed or 0,
+    )
+
     base_dir = Path(output_dir) if output_dir else None
     if base_dir is not None:
         base_dir.mkdir(parents=True, exist_ok=True)
 
-    for level in intensity_levels:
+    for level_idx, level in enumerate(intensity_levels):
         level_dir = (base_dir / f"level_{level}") if base_dir else None
         if level_dir is not None:
             level_dir.mkdir(parents=True, exist_ok=True)
-        async for result in run_batch(config, client, output_dir=level_dir, **kwargs):
-            response = result.transfer_responses[0] if result.transfer_responses else ""
-            expected = str(result.transfer_expected[0]) if result.transfer_expected else ""
-            tc = result.transfer_correct
-            binary = int(tc[0]) if tc else 0
-            result.body = Exp3aBody(
-                intensity_level=level,
-                model_response=response,
-                expected_answer=expected,
-                binary_correct=binary,
+        intensity_text = INTENSITY_LEVELS[level - 1].feedback_text
+        for run_number, item in enumerate(per_level[level_idx]):
+            messages = [
+                {"role": "system", "content": intensity_text},
+                {"role": "user", "content": item["question"]},
+            ]
+            start = time.time()
+            response = await client.complete(
+                messages, temperature=config.temperature, max_tokens=512,
             )
+            end = time.time()
+
+            expected = str(item["expected"])
+            binary = _score(response, expected)
+
+            result = RunResult(
+                config=asdict(config),
+                run_number=run_number,
+                experiment_type="exp3a",
+                model=config.model_name,
+                condition=config.condition.value,
+                start_time=start,
+                end_time=end,
+                body=Exp3aBody(
+                    intensity_level=level,
+                    model_response=response,
+                    expected_answer=expected,
+                    binary_correct=binary,
+                ),
+            )
+            result.compute_checksum()
             yield result
