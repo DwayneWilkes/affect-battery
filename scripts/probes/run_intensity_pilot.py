@@ -36,6 +36,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import random  # noqa: E402
+
+from src.conditioning.prompts import INTENSITY_LEVELS  # noqa: E402
 from src.probes.intensity_pilot import (  # noqa: E402
     emit_seed,
     emit_solo_seed,
@@ -43,52 +46,82 @@ from src.probes.intensity_pilot import (  # noqa: E402
 )
 
 
+def _opaque_to_level_mapping(seed: int) -> dict[str, int]:
+    """Re-derive the opaque-id → canonical-level mapping from a seed.
+
+    Mirrors `build_rating_form.py::build_form`'s shuffling: the same RNG
+    seed produces the same presentation order, and presentation position
+    i (1-indexed) maps to opaque id `stim_{i:03d}`.
+    """
+    rng = random.Random(seed)
+    stimuli = list(INTENSITY_LEVELS)
+    rng.shuffle(stimuli)
+    return {
+        f"stim_{position:03d}": stim.level
+        for position, stim in enumerate(stimuli, start=1)
+    }
+
+
 def load_rater_form(path: Path) -> tuple[str, list[int]]:
     """Parse a filled rater form. Returns (rater_id, ratings_in_canonical_level_order).
 
-    The form may present stimuli in randomized order; we re-sort by level_id
-    so the returned ratings list is always [level_1, level_2, ..., level_7]
-    regardless of presentation order. This keeps the (rater × item) matrix
-    aligned for Krippendorff α.
+    The form's stimulus identifiers are opaque (`stim_001` through
+    `stim_007`); we re-derive the opaque-id → canonical-level mapping
+    from the form's `randomization_seed` and re-sort ratings into
+    canonical level order [level_1, ..., level_7]. This keeps the
+    (rater × item) matrix aligned for Krippendorff α and prevents
+    rater-side inference of the canonical ordering from the form.
     """
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     rater_id = data.get("rater_id")
     if not isinstance(rater_id, str) or not rater_id.strip():
         raise ValueError(f"{path}: missing or invalid rater_id")
+    seed = data.get("randomization_seed")
+    if not isinstance(seed, int):
+        raise ValueError(
+            f"{path}: missing or non-integer randomization_seed (got {seed!r})"
+        )
     raw_ratings = data.get("ratings")
     if not isinstance(raw_ratings, list):
         raise ValueError(f"{path}: ratings field must be a list")
 
-    # Build {level_id: rating} map; check completeness.
-    by_level: dict[str, int] = {}
+    opaque_to_level = _opaque_to_level_mapping(seed)
+
+    by_level: dict[int, int] = {}
     for entry in raw_ratings:
         if not isinstance(entry, dict):
             raise ValueError(f"{path}: ratings entries must be mappings")
-        level_id = entry.get("id")
+        opaque_id = entry.get("id")
         rating = entry.get("rating")
-        if level_id is None:
+        if opaque_id is None:
             raise ValueError(f"{path}: ratings entry missing 'id'")
+        if opaque_id not in opaque_to_level:
+            raise ValueError(
+                f"{path}: unknown stimulus id {opaque_id!r}; expected one of "
+                f"{sorted(opaque_to_level)}. Form may have been generated with "
+                f"a different seed than recorded."
+            )
         if rating is None or not isinstance(rating, int):
             raise ValueError(
-                f"{path}: rating for {level_id!r} is missing or not an integer "
-                f"(got {rating!r})"
+                f"{path}: rating for {opaque_id!r} is missing or not an "
+                f"integer (got {rating!r})"
             )
         if not (1 <= rating <= 7):
             raise ValueError(
-                f"{path}: rating for {level_id!r} out of range "
+                f"{path}: rating for {opaque_id!r} out of range "
                 f"(got {rating}; must be 1-7)"
             )
-        by_level[level_id] = rating
+        level = opaque_to_level[opaque_id]
+        by_level[level] = rating
 
-    expected_ids = {f"level_{i}" for i in range(1, 8)}
-    missing = expected_ids - set(by_level.keys())
+    expected_levels = set(range(1, 8))
+    missing = expected_levels - set(by_level.keys())
     if missing:
-        raise ValueError(f"{path}: missing ratings for {sorted(missing)}")
-    extra = set(by_level.keys()) - expected_ids
-    if extra:
-        raise ValueError(f"{path}: unexpected level ids {sorted(extra)}")
+        raise ValueError(
+            f"{path}: missing ratings for canonical levels {sorted(missing)}"
+        )
 
-    canonical = [by_level[f"level_{i}"] for i in range(1, 8)]
+    canonical = [by_level[i] for i in range(1, 8)]
     return rater_id, canonical
 
 

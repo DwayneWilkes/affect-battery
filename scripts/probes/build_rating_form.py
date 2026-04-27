@@ -52,7 +52,14 @@ FORM_HEADER = """# Intensity-axis rating form
 
 
 def build_form(rater_id: str, seed: int) -> str:
-    """Render a YAML form template with stimuli in seed-randomized order."""
+    """Render a YAML form template with stimuli in seed-randomized order.
+
+    Stimulus identifiers are opaque (`stim_001` through `stim_007`) and
+    assigned in presentation order. The mapping back to canonical
+    INTENSITY_LEVELS is recoverable only by re-running the same seeded
+    shuffle in the driver script. This prevents the rater from inferring
+    the canonical level from the identifier.
+    """
     rng = random.Random(seed)
     stimuli = list(INTENSITY_LEVELS)
     rng.shuffle(stimuli)
@@ -62,8 +69,8 @@ def build_form(rater_id: str, seed: int) -> str:
     lines.append(f"randomization_seed: {seed}")
     lines.append("")
     lines.append("ratings:")
-    for stim in stimuli:
-        lines.append(f"  - id: level_{stim.level}")
+    for position, stim in enumerate(stimuli, start=1):
+        lines.append(f"  - id: stim_{position:03d}")
         # Quote the feedback text to keep YAML safe; preserve any internal quotes.
         safe_text = stim.feedback_text.replace('"', '\\"')
         lines.append(f"    feedback_text: \"{safe_text}\"")
