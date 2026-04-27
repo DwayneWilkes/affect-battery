@@ -118,3 +118,28 @@ Re-run when:
 
 Each re-run requires a fresh recruitment pass; raters should not see
 prior pilot results before rating.
+
+## Single-rater pilot
+
+Pilots run with a single rater are supported via the `--solo-rater`
+flag. The resulting seed records the rater's ordinal ratings, axis ID,
+and a SHA-256 digest; no Krippendorff α is computed. The seed is
+flagged `irr_validated: false` and `solo_rater: true`, and downstream
+gates apply their own acceptance policy on those flags.
+
+```bash
+# Generate one rating form
+uv run python scripts/probes/build_rating_form.py \
+    --rater-id <rater_id> --output ratings/solo.yaml --seed 1
+
+# Fill it out, then run with --solo-rater
+uv run python scripts/probes/run_intensity_pilot.py \
+    --ratings-dir ratings/ \
+    --output configs/intensity_pilot_seed.json \
+    --pilot-date 2026-04-27 --axis-id intensity_axis_v1 \
+    --solo-rater
+```
+
+Methods documentation should record the rater's identity, the absence
+of inter-rater reliability validation, and any pre-registration
+amendment that authorizes the single-rater design.

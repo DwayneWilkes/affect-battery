@@ -103,6 +103,9 @@ def emit_seed(
     alpha_pairwise + a SHA-256 digest over the canonicalized payload.
     The seed is the input to the OSF amendment that opens Exp 3a; downstream
     runners (run_exp3a) re-compute the SHA from the file and compare.
+
+    Sets `irr_validated: true` since this seed comes from a multi-rater pilot
+    that passed the Krippendorff α gate.
     """
     if pilot_result.get("decision") != "proceed":
         raise ValueError(
@@ -113,8 +116,59 @@ def emit_seed(
         "pilot_date": pilot_date,
         "axis_id": axis_id,
         "n_levels": n_levels,
+        "irr_validated": True,
+        "solo_rater": False,
         "alpha_overall": pilot_result["alpha_overall"],
         "alpha_pairwise": pilot_result["alpha_pairwise"],
+    }
+    digest = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    payload["sha256"] = digest
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    return output_path
+
+
+def emit_solo_seed(
+    rater_id: str,
+    ratings: list[int],
+    axis_id: str,
+    n_levels: int,
+    pilot_date: str,
+    output_path: Path,
+) -> Path:
+    """Write a signed pilot-seed JSON for a single-rater pilot.
+
+    Single-rater seeds record one rater's ordinal ratings without
+    computing Krippendorff α. The seed sets `irr_validated: false` and
+    `solo_rater: true`; downstream gates (e.g. the H3a runner) read those
+    flags and decide whether to accept the seed under their own policy.
+
+    Args:
+        rater_id: identifier of the rater.
+        ratings: list of n_levels integer ratings in canonical level order.
+        axis_id: axis identifier.
+        n_levels: number of levels.
+        pilot_date: pilot date as YYYY-MM-DD.
+        output_path: where to write the seed JSON.
+    """
+    if len(ratings) != n_levels:
+        raise ValueError(
+            f"ratings has {len(ratings)} entries; expected {n_levels} "
+            f"(one per level)"
+        )
+    if not all(isinstance(r, int) and 1 <= r <= n_levels for r in ratings):
+        raise ValueError(
+            f"ratings must be integers in [1, {n_levels}]; got {ratings}"
+        )
+    payload = {
+        "pilot_date": pilot_date,
+        "axis_id": axis_id,
+        "n_levels": n_levels,
+        "irr_validated": False,
+        "solo_rater": True,
+        "rater_id": rater_id,
+        "ratings": list(ratings),
     }
     digest = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
     payload["sha256"] = digest

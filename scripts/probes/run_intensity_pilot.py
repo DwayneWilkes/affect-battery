@@ -36,7 +36,11 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.probes.intensity_pilot import emit_seed, run_intensity_pilot  # noqa: E402
+from src.probes.intensity_pilot import (  # noqa: E402
+    emit_seed,
+    emit_solo_seed,
+    run_intensity_pilot,
+)
 
 
 def load_rater_form(path: Path) -> tuple[str, list[int]]:
@@ -100,6 +104,10 @@ def main() -> int:
                     help="Pilot date as YYYY-MM-DD; recorded in the seed")
     ap.add_argument("--axis-id", default="intensity_axis_v1",
                     help="Axis identifier; recorded in the seed")
+    ap.add_argument("--solo-rater", action="store_true",
+                    help="Single-rater pilot. Accepts one form and emits a "
+                         "seed marked irr_validated=false without computing "
+                         "Krippendorff α. Downstream gates read the flag.")
     args = ap.parse_args()
 
     if not args.ratings_dir.is_dir():
@@ -109,9 +117,10 @@ def main() -> int:
     forms = sorted(args.ratings_dir.glob("*.yaml")) + sorted(
         args.ratings_dir.glob("*.yml")
     )
-    if len(forms) < 3:
-        print(f"need at least 3 rater forms; found {len(forms)} in "
-              f"{args.ratings_dir}", file=sys.stderr)
+    min_required = 1 if args.solo_rater else 3
+    if len(forms) < min_required:
+        print(f"need at least {min_required} rater form{'s' if min_required > 1 else ''}; "
+              f"found {len(forms)} in {args.ratings_dir}", file=sys.stderr)
         return 2
 
     ratings: dict[str, list[int]] = {}
@@ -127,7 +136,36 @@ def main() -> int:
             return 1
         ratings[rater_id] = canonical
 
-    # Compute Krippendorff α + decision.
+    # Single-rater path: emit a seed without computing α.
+    if args.solo_rater:
+        if len(ratings) != 1:
+            print(f"--solo-rater requires exactly 1 form; found {len(ratings)}",
+                  file=sys.stderr)
+            return 2
+        rater_id, canonical = next(iter(ratings.items()))
+        print("=" * 50)
+        print("  Single-rater pilot")
+        print("=" * 50)
+        print(f"  Rater:        {rater_id}")
+        print(f"  Items:        {len(canonical)}")
+        print(f"  Ratings:      {canonical}")
+        print()
+        print("  Krippendorff α is not computed for single-rater pilots.")
+        print("  The seed is marked irr_validated=false; downstream gates")
+        print("  read the flag and apply their own acceptance policy.")
+        print()
+        seed_path = emit_solo_seed(
+            rater_id=rater_id,
+            ratings=canonical,
+            axis_id=args.axis_id,
+            n_levels=7,
+            pilot_date=args.pilot_date,
+            output_path=args.output,
+        )
+        print(f"Single-rater seed written to {seed_path}.")
+        return 0
+
+    # Multi-rater path: compute Krippendorff α + decision.
     result = run_intensity_pilot(ratings)
 
     print("=" * 50)
