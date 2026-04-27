@@ -130,11 +130,16 @@ class Exp2Body:
 
 @dataclass
 class Exp3aBody:
-    """Nonlinear arousal-performance (paper §3.4.1 Exp 3a). intensity_level is
-    the pre-registered 1..7 level from the primary_valence_axis."""
+    """Nonlinear arousal-performance (paper §3.4.1 Exp 3a). Single-turn
+    intensity-stimulus paradigm: each cell delivers
+    INTENSITY_LEVELS[level-1].feedback_text as the system message and one
+    bank item as the user message. The model's numeric response, the
+    expected answer, and per-cell binary correctness are recorded for
+    quadratic-fit aggregation."""
     intensity_level: int
-    transfer_responses: list[str]
-    transfer_expected: list[str]
+    model_response: str = ""
+    expected_answer: str = ""
+    binary_correct: int = 0
 
 
 @dataclass

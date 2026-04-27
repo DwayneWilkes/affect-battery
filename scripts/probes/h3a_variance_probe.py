@@ -45,7 +45,6 @@ import argparse
 import asyncio
 import hashlib
 import json
-import random
 import statistics
 import sys
 from datetime import datetime, timezone
@@ -56,6 +55,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from src.banks.loader import load_bank_items  # noqa: E402
+from src.banks.sampling import sample_items  # noqa: E402
 from src.conditioning.prompts import INTENSITY_LEVELS  # noqa: E402
 from src.models import (  # noqa: E402
     AnthropicClient,
@@ -64,23 +65,6 @@ from src.models import (  # noqa: E402
     OpenAIClient,
 )
 from src.scoring.accuracy import extract_numeric_answer  # noqa: E402
-
-
-def load_bank_items(bank_path: Path) -> list[dict]:
-    """Load items from a bank YAML. Returns a list of {id, question, expected}."""
-    data = yaml.safe_load(bank_path.read_text())
-    items = data.get("items")
-    if not isinstance(items, list) or not items:
-        raise ValueError(f"{bank_path}: bank has no `items` array")
-    out = []
-    for item in items:
-        out.append({
-            "id": item["id"],
-            "question": item["question"],
-            "expected": item["expected"],
-            "difficulty": item.get("difficulty"),
-        })
-    return out
 
 
 def score_response(response: str, expected: str) -> int:
@@ -134,26 +118,6 @@ async def probe_one_level(
         )
         scores.append(score_response(response, item["expected"]))
     return scores
-
-
-def sample_items(items: list[dict], n_per_level: int, n_levels: int, seed: int) -> list[list[dict]]:
-    """Deterministically sample n_per_level items per level.
-
-    Each level gets a disjoint random sample so per-level variance is not
-    artificially correlated by sharing items across levels.
-    """
-    rng = random.Random(seed)
-    if len(items) < n_per_level * n_levels:
-        raise ValueError(
-            f"bank has {len(items)} items; need at least "
-            f"{n_per_level * n_levels} for non-overlapping per-level samples"
-        )
-    shuffled = items[:]
-    rng.shuffle(shuffled)
-    return [
-        shuffled[i * n_per_level:(i + 1) * n_per_level]
-        for i in range(n_levels)
-    ]
 
 
 async def run_probe(args) -> dict:

@@ -47,8 +47,8 @@ def _base_args(tmp_path, experiment: str, **overrides):
         skip_power_gate=True,
         # cmd_run-style fields cmd_pilot now also honors:
         runner_config=None,
-        neutral_turns=2,
-        condition="neutral",  # ignored by cmd_pilot but some helpers read it
+        neutral_turns=0 if experiment == "exp3a" else 2,
+        condition=None if experiment == "exp3a" else "neutral",
     )
     for k, v in overrides.items():
         setattr(args, k, v)

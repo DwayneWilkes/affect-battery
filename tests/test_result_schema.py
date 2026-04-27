@@ -104,11 +104,25 @@ def test_exp3a_body_has_intensity_level():
         **_base_kwargs("exp3a"),
         body=Exp3aBody(
             intensity_level=4,
-            transfer_responses=["x"],
-            transfer_expected=["x"],
+            model_response="42",
+            expected_answer="42",
+            binary_correct=1,
         ),
     )
     assert r.body.intensity_level == 4
+    assert r.body.model_response == "42"
+    assert r.body.expected_answer == "42"
+    assert r.body.binary_correct == 1
+
+
+def test_exp3a_body_defaults_to_unscored():
+    r = RunResult(
+        **_base_kwargs("exp3a"),
+        body=Exp3aBody(intensity_level=1),
+    )
+    assert r.body.model_response == ""
+    assert r.body.expected_answer == ""
+    assert r.body.binary_correct == 0
 
 
 def test_exp3b_body_has_generations():
