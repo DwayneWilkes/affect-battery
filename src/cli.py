@@ -991,9 +991,17 @@ def cmd_run(args):
 
     bank_id, bank_hash = _resolve_bank(getattr(args, "bank", None))
 
+    # exp3a's runner ignores condition (single-turn intensity-stimulus
+    # paradigm per pre-reg §3.4.1); _check_exp3a_cli_compat already
+    # rejected --condition for exp3a, so args.condition is None here.
+    # Pick NEUTRAL as a typed placeholder so the ExperimentConfig
+    # construction passes; the runner does not read this value when
+    # constructing messages.
+    condition_value = args.condition if args.condition is not None else "neutral"
+
     config = ExperimentConfig(
         model_name=args.model,
-        condition=Condition(args.condition),
+        condition=Condition(condition_value),
         experiment_type=ExperimentType(args.experiment),
         num_runs=args.num_runs,
         temperature=args.temperature,
@@ -1020,7 +1028,7 @@ def cmd_run(args):
     if getattr(args, "estimate", False):
         est = _estimate_pilot(
             args,
-            conditions=[Condition(args.condition)],
+            conditions=[Condition(condition_value)],
             extra_kwargs=extra_kwargs,
             per_cond_yield=_yield_per_condition(args, extra_kwargs),
         )
@@ -1094,13 +1102,13 @@ def cmd_run(args):
     _write_pilot_manifest(
         pilot_root=pilot_root,
         args=args,
-        conditions=[Condition(args.condition)],
+        conditions=[Condition(condition_value)],
         bank_id=bank_id,
         bank_hash=bank_hash,
         started_utc=started_utc,
         completed_utc=completed_utc,
-        per_cond_elapsed={args.condition: elapsed},
-        per_cond_count={args.condition: runs_completed},
+        per_cond_elapsed={condition_value: elapsed},
+        per_cond_count={condition_value: runs_completed},
     )
     print(f"\nRun complete in {elapsed:.1f}s. Results in {output_dir}/")
 
