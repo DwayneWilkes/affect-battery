@@ -31,13 +31,45 @@ from src.analysis.exp3c import analyze_exp3c_corpus
 # Stable color per condition so the same condition reads the same color
 # across every chart. Picked for distinguishability + colorblind-OK pairs.
 CONDITION_COLORS = {
-    "strong_positive":     "#10b981",  # emerald
-    "mild_negative":       "#f59e0b",  # amber
-    "strong_negative":     "#ef4444",  # red
-    "neutral":             "#6366f1",  # indigo
+    "strong_positive":     "#10b981",  # emerald (positive, cool green)
+    "mild_negative":       "#f97316",  # orange (warmer than amber, separates from cyan)
+    "strong_negative":     "#dc2626",  # red (deep, distinct from orange)
+    "neutral":             "#3b82f6",  # blue (clearly cool, not indigo so distinct from violet)
     "no_conditioning":     "#64748b",  # slate (baseline gets the muted color)
     "accurate_negative":   "#a855f7",  # violet
-    "self_check_neutral":  "#06b6d4",  # cyan
+    "self_check_neutral":  "#0d9488",  # teal (darker than cyan, separates from positive emerald)
+}
+
+# Per-condition coordinates on the two psychological axes the paper uses.
+# These are approximate ordinal positions, not validated psychometric ratings;
+# the dashboard surfaces them as a SORT option so a user can inspect whether
+# the data lines up with Yerkes-Dodson (inverted-U vs arousal) or with the
+# paper's directional-asymmetry hypothesis (asymmetric vs valence).
+#
+# valence: signed direction (-2 most negative, +2 most positive, 0 neutral)
+# arousal: magnitude of activation regardless of direction
+#          (0 = no intervention, 1 = mild, 2 = moderate, 3 = strong)
+#
+# Rationale per condition:
+# - no_conditioning: true control, no affect content at all → 0/0
+# - neutral / self_check_neutral: mild non-affect interventions → 0/1
+# - mild_negative / accurate_negative: gentle / framed negative → -1/2
+# - strong_negative: harsh criticism, high intensity → -2/3
+# - strong_positive: enthusiastic praise, high intensity → +2/3
+#
+# Yerkes-Dodson predicts performance peaks at MODERATE arousal and degrades
+# at high arousal, especially on hard tasks (our TriviaQA hard bank). On
+# arousal-sorted axes that's an inverted-U; on a hard task it tilts left
+# (peak at lower arousal). On valence-sorted axes, the paper's H4 predicts
+# directional asymmetry: negative-side AUC larger than positive-side.
+CONDITION_AXES = {
+    "no_conditioning":     {"valence":  0, "arousal": 0},
+    "neutral":             {"valence":  0, "arousal": 1},
+    "self_check_neutral":  {"valence":  0, "arousal": 1},
+    "mild_negative":       {"valence": -1, "arousal": 2},
+    "accurate_negative":   {"valence": -1, "arousal": 2},
+    "strong_negative":     {"valence": -2, "arousal": 3},
+    "strong_positive":     {"valence":  2, "arousal": 3},
 }
 
 
@@ -232,17 +264,100 @@ header .meta {
 }
 .meta-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px 24px;
-  margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 32px;
+  margin-top: 18px;
   font-size: 12px;
 }
 .meta-grid div {
   color: var(--muted);
+  line-height: 1.4;
 }
 .meta-grid div b {
   color: var(--text);
   font-weight: 500;
+  display: block;
+  margin-bottom: 2px;
+}
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 18px 0 6px;
+}
+.summary-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.summary-card .label {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+.summary-card .value {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.summary-card .sub {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 1px;
+}
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.controls-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.controls-row select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.controls-row select:hover {
+  border-color: var(--accent);
+}
+.controls-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+.chart-error {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@media (prefers-color-scheme: light) {
+  .chart-error {
+    background: rgba(239, 68, 68, 0.06);
+    color: #b91c1c;
+  }
 }
 main {
   max-width: 1280px;
@@ -292,10 +407,11 @@ section .subtitle {
   letter-spacing: 0.06em;
 }
 .kpi .value {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 600;
-  margin-top: 2px;
+  margin-top: 3px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 table {
   width: 100%;
@@ -346,7 +462,17 @@ footer {
 <header>
   <h1>Affect Battery — Pilot Dashboard</h1>
   <div class="meta">__PILOT_LABEL__</div>
+  <div class="summary-row" id="summary-row"></div>
   <div class="meta-grid" id="meta-grid"></div>
+  <div class="controls-row">
+    <label class="controls-label" for="sort-select">Sort conditions on bar charts:</label>
+    <select id="sort-select">
+      <option value="alphabetical">Alphabetical</option>
+      <option value="arousal">Arousal (low → high)</option>
+      <option value="valence">Valence (negative → positive)</option>
+    </select>
+    <span class="controls-hint" id="sort-hint">A neutral default with no implied story.</span>
+  </div>
 </header>
 <main>
   <section>
@@ -400,6 +526,39 @@ footer {
 <script>
 const DATA = __DATA_JSON__;
 const COLORS = __COLORS_JSON__;
+const AXES = __AXES_JSON__;
+
+// === Condition ordering ===
+// Different sort orders surface different stories. Yerkes-Dodson predicts
+// inverted-U vs arousal; the paper's H4 predicts directional asymmetry vs
+// valence; alphabetical is the neutral default for clean comparison.
+//
+// The selector at the top of the page sets `currentSort`; every render
+// function calls sortConds() with the live condition list to get the
+// effective x-axis order before passing it to Plotly.
+let currentSort = 'alphabetical';
+
+function sortConds(conds) {
+  const arr = [...conds];
+  if (currentSort === 'alphabetical') {
+    return arr.sort();
+  }
+  if (currentSort === 'arousal') {
+    // Low → high arousal. Tie-break alphabetically so the order is stable.
+    return arr.sort((a, b) => {
+      const da = (AXES[a]?.arousal ?? 0) - (AXES[b]?.arousal ?? 0);
+      return da !== 0 ? da : a.localeCompare(b);
+    });
+  }
+  if (currentSort === 'valence') {
+    // Most negative → most positive. Tie-break alphabetically.
+    return arr.sort((a, b) => {
+      const dv = (AXES[a]?.valence ?? 0) - (AXES[b]?.valence ?? 0);
+      return dv !== 0 ? dv : a.localeCompare(b);
+    });
+  }
+  return arr.sort();
+}
 
 // === Plotly defaults that match the dark/light theme ===
 function plotlyLayout(extra) {
@@ -420,10 +579,33 @@ function fmt(v, d) { if (v === null || v === undefined || Number.isNaN(v)) retur
 function fmtPct(v) { if (v === null || v === undefined) return '—'; return (Number(v) * 100).toFixed(1) + '%'; }
 function fmtUSD(v) { if (v === null || v === undefined) return '—'; return '$' + Number(v).toFixed(2); }
 
+// Render a small inline error block in the chart container so a single broken
+// renderer does not leave a blank space in the page.
+function showChartError(elId, err) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const msg = (err && err.stack) ? err.stack : String(err);
+  el.innerHTML = '';
+  const block = document.createElement('div');
+  block.className = 'chart-error';
+  block.textContent = 'Render error: ' + msg;
+  el.appendChild(block);
+}
+
+// Wrap a render call so one failure does not abort the rest of DOMContentLoaded.
+function safeRender(name, fn, errorElId) {
+  try {
+    fn();
+  } catch (e) {
+    console.error('[' + name + '] render failed:', e);
+    if (errorElId) showChartError(errorElId, e);
+  }
+}
+
 // === Header / meta ===
 function renderMeta() {
   const grid = document.getElementById('meta-grid');
-  // Use any experiment's manifest as the source of model/seed/etc — they're all the same.
+  // Use any experiment's manifest as the source of model/seed/etc, they're all the same.
   const anyManifest = Object.values(DATA.experiments)[0]?.manifest || {};
   const items = [
     ['Provider', anyManifest.provider],
@@ -435,7 +617,51 @@ function renderMeta() {
     ['git SHA', (anyManifest.git_sha || '').slice(0, 12)],
     ['Transfer bank', (anyManifest.transfer_bank || '').split('/').pop()],
   ].filter(([_, v]) => v != null && v !== '');
-  grid.innerHTML = items.map(([k, v]) => `<div><b>${v}</b><br>${k}</div>`).join('');
+  grid.innerHTML = items.map(([k, v]) => `<div><b>${v}</b>${k}</div>`).join('');
+}
+
+// === Summary cards (top of page) ===
+function renderSummary() {
+  const target = document.getElementById('summary-row');
+  if (!target) return;
+  const exps = Object.values(DATA.experiments);
+  // Total wall-clock across all experiments and all conditions.
+  let totalSec = 0;
+  let totalCells = 0;
+  for (const e of exps) {
+    const t = e.manifest?.timing_per_condition || {};
+    for (const x of Object.values(t)) totalSec += (x.total_seconds || 0);
+    totalCells += (e.n_runs_total || 0);
+  }
+  // Verdict summary: how many experiments per verdict bucket.
+  const verdictCounts = {};
+  for (const e of exps) {
+    const v = e.analysis?.verdict || 'unknown';
+    verdictCounts[v] = (verdictCounts[v] || 0) + 1;
+  }
+  const verdictLine = Object.entries(verdictCounts)
+    .map(([v, n]) => n + ' ' + v).join(', ') || '—';
+
+  // Cost: best-effort. Sum cost_estimate_usd from any manifest that carries it.
+  let totalCost = 0;
+  let haveCost = false;
+  for (const e of exps) {
+    const c = e.manifest?.cost_estimate_usd ?? e.manifest?.estimated_cost_usd;
+    if (typeof c === 'number') { totalCost += c; haveCost = true; }
+  }
+  const wallMin = totalSec / 60;
+  const cards = [
+    { label: 'Experiments', value: String(exps.length), sub: verdictLine },
+    { label: 'Total cells', value: String(totalCells), sub: 'across all conditions' },
+    { label: 'Wall-clock', value: fmt(wallMin, 1) + ' min', sub: fmt(totalSec, 0) + ' s total' },
+    { label: 'Cost (est)', value: haveCost ? fmtUSD(totalCost) : '—', sub: haveCost ? 'sum of manifest estimates' : 'no cost field in manifests' },
+  ];
+  target.innerHTML = cards.map(c => `
+    <div class="summary-card">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join('');
 }
 
 // === Verdict overview ===
@@ -478,7 +704,13 @@ function renderExp2() {
     });
   }
   // Per-condition curves
-  for (const [cond, cell] of Object.entries(a.by_condition || {})) {
+  // Iterate conditions in the user's chosen sort order so the legend reads
+  // in valence/arousal order when those sorts are active. Trace order also
+  // controls draw order, but lines mostly don't overlap so visual impact
+  // is minimal.
+  const exp2Conds = sortConds(Object.keys(a.by_condition || {}));
+  for (const cond of exp2Conds) {
+    const cell = a.by_condition[cond];
     traces.push({
       x: cell.n_values, y: cell.turn_accuracies_mean, name: cond,
       mode: 'lines+markers',
@@ -511,16 +743,21 @@ function renderExp2() {
   `;
 }
 
-// === Exp 1a / 1b — bar chart + table ===
+// === Exp 1a — bar chart + effect-size table ===
+// (Exp 1b uses a different shape, see renderExp1b below.)
 function renderEffectSizes(elBar, elTable, analysis) {
   if (!analysis || analysis.verdict === 'build_error') {
     if (elBar) document.getElementById(elBar).innerHTML = '<div style="padding:40px; color: var(--muted)">No data available.</div>';
     return;
   }
   const cells = analysis.per_condition_vs_baseline || {};
-  const conds = Object.keys(cells).sort();
+  const conds = sortConds(Object.keys(cells));
+  if (!conds.length) {
+    if (elBar) document.getElementById(elBar).innerHTML = '<div style="padding:40px; color: var(--muted)">No per_condition_vs_baseline cells in analysis.</div>';
+    return;
+  }
   const means = conds.map(c => cells[c].mean_accuracy);
-  const baseline = analysis.per_condition_vs_baseline[conds[0]]?.baseline_mean;
+  const baseline = cells[conds[0]]?.baseline_mean;
   const colors = conds.map(c => COLORS[c] || '#888');
   const traces = [{
     x: conds, y: means, type: 'bar', marker: { color: colors },
@@ -562,6 +799,105 @@ function renderEffectSizes(elBar, elTable, analysis) {
   </table>`;
 }
 
+// === Exp 1b — three-way comparison (session_1 vs session_2 effect sizes) ===
+// analyzer returns { three_way_comparison: { <cond>: { session_1_effect_size,
+//   session_2_effect_size, session_1_mean_accuracy, session_2_mean_accuracy,
+//   session_1_n_runs, session_2_n_runs, no_conditioning_baseline } },
+//   session_1_baseline_mean, session_2_baseline_mean }.
+// The story is cross-session shrinkage: where session_1 d > session_2 d, the
+// affect signal is decaying when conditioning and transfer are split across
+// sessions. We render two grouped bars per condition (one per session) using
+// the shared condition color, with session_2 a paler variant so the eye can
+// pair them and read the gap.
+function renderExp1b() {
+  const a = DATA.experiments.exp1b?.analysis;
+  const elBar = 'exp1b-bars';
+  const elTable = 'exp1b-table';
+  if (!a || a.verdict === 'build_error') {
+    document.getElementById(elBar).innerHTML = '<div style="padding:40px; color: var(--muted)">No exp1b data available.</div>';
+    return;
+  }
+  const tw = a.three_way_comparison || {};
+  const conds = sortConds(Object.keys(tw));
+  if (!conds.length) {
+    document.getElementById(elBar).innerHTML = '<div style="padding:40px; color: var(--muted)">No three_way_comparison cells in exp1b analysis.</div>';
+    return;
+  }
+  // Build matched palettes: full color for session_1, faded for session_2.
+  // We faded by mixing toward a neutral mid-gray rather than alpha so the
+  // bars don't render translucent on top of grid lines.
+  function fade(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return '#9ca3af';
+    const n = parseInt(m[1], 16);
+    let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+    // Mix 55% toward #9ca3af (neutral gray) to keep hue but drop saturation.
+    const tr = 156, tg = 163, tb = 175, t = 0.55;
+    r = Math.round(r * (1 - t) + tr * t);
+    g = Math.round(g * (1 - t) + tg * t);
+    b = Math.round(b * (1 - t) + tb * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+  const s1Colors = conds.map(c => COLORS[c] || '#888');
+  const s2Colors = conds.map(c => fade(COLORS[c] || '#888'));
+  const s1d = conds.map(c => tw[c].session_1_effect_size);
+  const s2d = conds.map(c => tw[c].session_2_effect_size);
+  const traces = [
+    {
+      x: conds, y: s1d, type: 'bar', name: 'session_1 d',
+      marker: { color: s1Colors, line: { color: s1Colors, width: 1 } },
+      text: s1d.map(v => fmt(v, 2)),
+      textposition: 'outside',
+      hovertemplate: '%{x}<br>session_1 d: %{y:.3f}<extra></extra>',
+    },
+    {
+      x: conds, y: s2d, type: 'bar', name: 'session_2 d',
+      marker: { color: s2Colors, line: { color: s1Colors, width: 1 } },
+      text: s2d.map(v => fmt(v, 2)),
+      textposition: 'outside',
+      hovertemplate: '%{x}<br>session_2 d: %{y:.3f}<extra></extra>',
+    },
+  ];
+  Plotly.newPlot(elBar, traces, plotlyLayout({
+    barmode: 'group',
+    yaxis: { title: "Cohen's d vs no_conditioning baseline", zeroline: true },
+    xaxis: { tickangle: -25 },
+  }), PLOT_CFG);
+
+  // Companion table.
+  const s1Base = a.session_1_baseline_mean;
+  const s2Base = a.session_2_baseline_mean;
+  const rows = conds.map(c => {
+    const r = tw[c];
+    const s1Color = r.session_1_effect_size > 0 ? 'var(--positive)' : 'var(--negative)';
+    const s2Color = r.session_2_effect_size > 0 ? 'var(--positive)' : 'var(--negative)';
+    const shrink = (r.session_1_effect_size != null && r.session_2_effect_size != null)
+      ? r.session_1_effect_size - r.session_2_effect_size : null;
+    return `<tr>
+      <td>${c}</td>
+      <td class="num">${r.session_1_n_runs ?? '—'} / ${r.session_2_n_runs ?? '—'}</td>
+      <td class="num">${fmt(r.session_1_mean_accuracy)} / ${fmt(r.session_2_mean_accuracy)}</td>
+      <td class="num" style="color:${s1Color}">${r.session_1_effect_size > 0 ? '+' : ''}${fmt(r.session_1_effect_size, 2)}</td>
+      <td class="num" style="color:${s2Color}">${r.session_2_effect_size > 0 ? '+' : ''}${fmt(r.session_2_effect_size, 2)}</td>
+      <td class="num">${shrink == null ? '—' : (shrink > 0 ? '+' : '') + fmt(shrink, 2)}</td>
+    </tr>`;
+  }).join('');
+  const baselineNote = (s1Base != null || s2Base != null)
+    ? `<div class="note">Baseline accuracy: session_1 = ${fmt(s1Base)}, session_2 = ${fmt(s2Base)}. Positive d = condition outperforms no_conditioning baseline within that session.</div>`
+    : '';
+  document.getElementById(elTable).innerHTML = `<table>
+    <thead><tr>
+      <th>Condition</th>
+      <th>n (s1 / s2)</th>
+      <th>Mean acc (s1 / s2)</th>
+      <th>session_1 d</th>
+      <th>session_2 d</th>
+      <th>Shrinkage (s1 − s2)</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>${baselineNote}`;
+}
+
 // === Exp 3b — n-gram ratio (semantic diversity proxy) ===
 // analyzer returns { by_condition: { <cond>: {n_generations, embedding_variance, ngram_ratio} } }
 // embedding_variance is null when sentence-transformers isn't installed; we plot
@@ -574,7 +910,7 @@ function renderExp3b() {
     return;
   }
   const bc = a.by_condition || {};
-  const conds = Object.keys(bc).sort();
+  const conds = sortConds(Object.keys(bc));
   if (!conds.length) {
     document.getElementById(target).innerHTML = '<div style="padding:40px; color: var(--muted)">No conditions in exp3b analysis.</div>';
     return;
@@ -619,7 +955,7 @@ function renderExp3c() {
     difficulties.add(diff);
     (byCond[cond] = byCond[cond] || {})[diff] = bcd[key];
   }
-  const conds = Object.keys(byCond).sort();
+  const conds = sortConds(Object.keys(byCond));
   // Order difficulties: easy -> medium -> hard if present
   const diffOrder = ['easy', 'medium', 'hard'].filter(d => difficulties.has(d));
   if (!conds.length || !diffOrder.length) {
@@ -677,22 +1013,46 @@ function renderCost() {
 }
 
 // === Render everything ===
+// Each render call is wrapped in safeRender so a failure in one chart leaves
+// an inline error block in that chart's container and the rest of the page
+// still renders. Without this, a single TypeError aborts the whole handler.
+function renderAll() {
+  safeRender('meta',     renderMeta,     'meta-grid');
+  safeRender('summary',  renderSummary,  'summary-row');
+  safeRender('verdicts', renderVerdicts, 'verdicts');
+  safeRender('exp2',     renderExp2,     'exp2-curves');
+  safeRender('exp1a',    () => renderEffectSizes('exp1a-bars', 'exp1a-table', DATA.experiments.exp1a?.analysis), 'exp1a-bars');
+  safeRender('exp1b',    renderExp1b,    'exp1b-bars');
+  safeRender('exp3b',    renderExp3b,    'exp3b-bars');
+  safeRender('exp3c',    renderExp3c,    'exp3c-bars');
+  safeRender('cost',     renderCost,     'cost-bars');
+}
+
+// Per-sort hint text shown next to the selector. Brief and load-bearing —
+// the user should know what each ordering is FOR, not just its alphabetical
+// vs cognitive-psych framing.
+const SORT_HINTS = {
+  alphabetical: 'A neutral default with no implied story.',
+  arousal: 'Yerkes-Dodson predicts an inverted-U (peak at moderate arousal). Hard tasks tilt the peak left.',
+  valence: "Tests directional asymmetry (paper §3.4). H4 predicts the negative arm produces a larger off-control area than the positive arm.",
+};
+
 window.addEventListener('DOMContentLoaded', () => {
-  renderMeta();
-  renderVerdicts();
-  renderExp2();
-  renderEffectSizes('exp1a-bars', 'exp1a-table', DATA.experiments.exp1a?.analysis);
-  renderEffectSizes('exp1b-bars', 'exp1b-table', DATA.experiments.exp1b?.analysis);
-  renderExp3b();
-  renderExp3c();
-  renderCost();
-  // Re-render on theme change so colors stay readable.
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    renderVerdicts(); renderExp2();
-    renderEffectSizes('exp1a-bars', 'exp1a-table', DATA.experiments.exp1a?.analysis);
-    renderEffectSizes('exp1b-bars', 'exp1b-table', DATA.experiments.exp1b?.analysis);
-    renderExp3b(); renderExp3c(); renderCost();
-  });
+  renderAll();
+  // Re-render on theme change so axis/grid colors track the theme.
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+  // Re-render on sort change. We update the hint text inline so the user
+  // can see at a glance what the chosen ordering is for.
+  const sel = document.getElementById('sort-select');
+  const hint = document.getElementById('sort-hint');
+  if (sel) {
+    sel.value = currentSort;
+    sel.addEventListener('change', () => {
+      currentSort = sel.value;
+      if (hint) hint.textContent = SORT_HINTS[currentSort] || '';
+      renderAll();
+    });
+  }
 });
 </script>
 </body>
@@ -728,7 +1088,8 @@ def main() -> None:
             .replace("__PILOT_LABEL__", pilot_label)
             .replace("__PILOT_PATH__", str(pilot_dir))
             .replace("__DATA_JSON__", json.dumps(safe_payload))
-            .replace("__COLORS_JSON__", json.dumps(CONDITION_COLORS)))
+            .replace("__COLORS_JSON__", json.dumps(CONDITION_COLORS))
+            .replace("__AXES_JSON__", json.dumps(CONDITION_AXES)))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html, encoding="utf-8")
     size_kb = args.output.stat().st_size / 1024
