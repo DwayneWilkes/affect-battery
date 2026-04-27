@@ -1,22 +1,40 @@
-# Intensity-axis pilot protocol
+# H3a probe scripts
 
-This directory contains the operator scripts for running the
-inter-rater reliability pilot that gates the H3a (Yerkes-Dodson)
-experiment. Three or more human raters independently rate the seven
-`INTENSITY_LEVELS` stimuli on a signed intensity scale; the pilot
-computes Krippendorff α and writes a signed pilot-seed artifact when
-the rater agreement gate passes.
+This directory contains the operator scripts for the prerequisites of
+the H3a (Yerkes-Dodson) experiment. The chain is:
+
+1. **Intensity-axis pilot**: human raters validate that the seven
+   `INTENSITY_LEVELS` stimuli order on a signed intensity scale.
+2. **Variance probe**: sweeps each intensity level against the task
+   bank to measure per-level accuracy variance.
+3. **Power analysis**: turns the variance estimates into a recommended
+   `n_per_level` for the H3a quadratic test.
 
 ## Files
 
-- `build_rating_form.py` — generates a YAML rating form for one rater.
-  Stimuli are presented in seed-randomized order to control for
-  order-effect bias.
-- `run_intensity_pilot.py` — loads filled forms, computes α, prints the
-  decision (proceed / collapse / restructure), and writes the pilot
-  seed when the gate passes.
+- `build_rating_form.py`: generates a YAML rating form for one rater.
+  Stimuli are presented in seed-randomized order with opaque
+  identifiers (`stim_001`..`stim_007`); the canonical level mapping is
+  recoverable only by re-running the same seeded shuffle in the driver.
+- `run_intensity_pilot.py`: loads filled forms, computes Krippendorff α
+  (or accepts a single-rater form under `--solo-rater`), and writes the
+  pilot seed.
+- `h3a_variance_probe.py`: runs each `INTENSITY_LEVELS` stimulus as a
+  system prompt against a math-word-problem bank and emits per-level
+  mean/σ accuracy for the power simulation. See `README_power.md` for
+  the input format it produces.
+- `h3a_power_report.py`: Monte Carlo power analysis over assumed effect
+  sizes; produces the recommended `n_per_level`. See `README_power.md`.
 
 The α math + decision rule live in `src/probes/intensity_pilot.py`.
+
+# Intensity-axis pilot protocol
+
+Three or more human raters independently rate the seven
+`INTENSITY_LEVELS` stimuli on a signed intensity scale; the pilot
+computes Krippendorff α and writes a signed pilot-seed artifact when
+the rater agreement gate passes. Pilots run with a single rater are
+supported via the `--solo-rater` flag (see *Single-rater pilot* below).
 
 ## Protocol
 
@@ -40,6 +58,11 @@ Use a different `--seed` per rater so the stimulus presentation order
 varies across raters. The form's `rating` fields are blank; raters fill
 them in.
 
+Stimulus identifiers in the form are opaque (`stim_001`..`stim_NNN`,
+assigned in presentation order) so the rater cannot infer the canonical
+level from the id. The driver script reverses the mapping by re-running
+the same seeded shuffle.
+
 ### 3. Distribute, collect, and validate
 
 Send each rater their YAML file. The form contains inline instructions
@@ -52,14 +75,17 @@ A filled form looks like:
 rater_id: rater_A
 randomization_seed: 1
 ratings:
-  - id: level_4
+  - id: stim_001
     feedback_text: "Your response has been recorded. We will now move on to the next question."
     rating: 4
-  - id: level_1
+  - id: stim_002
     feedback_text: "That was really impressive work..."
     rating: 1
   ...
 ```
+
+The `id` field is purely positional within the rater's randomized
+ordering; the canonical-level mapping is reconstructed by the driver.
 
 ### 4. Run the pilot
 
@@ -118,6 +144,45 @@ Re-run when:
 
 Each re-run requires a fresh recruitment pass; raters should not see
 prior pilot results before rating.
+
+## Variance probe
+
+After the pilot seed is written, the variance probe sweeps each
+intensity stimulus against the task bank and records per-level accuracy
+mean and standard deviation. Its output JSON is the input to the power
+simulation.
+
+```bash
+uv run python scripts/probes/h3a_variance_probe.py \
+    --bank configs/banks/gsm8k_v1.yaml \
+    --provider openai --model gpt-5.4-nano \
+    --n-per-level 15 \
+    --output results/probes/h3a_variance_<date>.json
+```
+
+Use `--dry-run` to validate the script end-to-end without API spend.
+Sample sizing: `n_per_level × 7` items must be ≤ the bank size, since
+each level draws a disjoint sample from the bank to avoid correlating
+per-level variance through item sharing.
+
+The probe writes `sigma_per_level`, `mean_per_level`, the bank SHA-256,
+the sample seed, and the model/provider used. The downstream power
+report consumes this file via `--variance-json`.
+
+## Power analysis
+
+Once the variance JSON exists, run the simulation-based power analysis
+to obtain a recommended `n_per_level`. See `README_power.md` for the
+input format, the simulation method, and the calibration check.
+
+```bash
+uv run python scripts/probes/h3a_power_report.py \
+    --variance-json results/probes/h3a_variance_<date>.json \
+    --output results/probes/h3a_power_report_<date>.json
+```
+
+The recommended `n_per_level` plus the variance and pilot artifacts
+together form the pre-registration evidence for the H3a run.
 
 ## Single-rater pilot
 
