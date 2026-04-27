@@ -978,6 +978,9 @@ def cmd_run(args):
         VLLMCompletionClient,
     )
 
+    _check_exp3a_cli_compat(args)
+    _require_condition_for_non_exp3a(args)
+
     # Pre-flight gates: refuse to start a real run without OSF pre-reg
     # URL or a current power report. Skip in --dry-run mode (offline
     # testing path) per power-analysis spec exception.
@@ -1136,6 +1139,8 @@ def cmd_pilot(args):
     """
     from .runner import ExperimentConfig, ExperimentType, run_batch
     from .runners import RUNNERS
+
+    _check_exp3a_cli_compat(args)
 
     estimate_only = getattr(args, "estimate", False)
     # Skip runtime gates for --estimate (no API spend, no real run).
@@ -1382,6 +1387,49 @@ def cmd_score(args):
         print(f"{path.name}: accuracy={accuracy:.2f} hedging={hedging['normalized_per_100_words']:.1f}/100w ({cond})")
 
 
+def _check_exp3a_cli_compat(args) -> None:
+    """Reject CLI flags that have no effect on Exp 3a.
+
+    Exp 3a runs a single-turn intensity-stimulus paradigm per
+    pre-registration §3.4.1. --condition and --neutral-turns
+    parameterize multi-turn conditioning and have no effect on the
+    messages sent to the model. Silently accepting them would pollute
+    manifests with values that look like experimental variables in
+    later meta-analysis. Other experiments are unaffected by this
+    check.
+    """
+    if getattr(args, "experiment", None) != "exp3a":
+        return
+    if getattr(args, "condition", None) is not None:
+        print(
+            "error: --condition is incompatible with --experiment exp3a; "
+            "intensity levels are the sole stimulus per pre-reg §3.4.1.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if getattr(args, "neutral_turns", 0) != 0:
+        print(
+            "error: --neutral-turns is incompatible with --experiment exp3a "
+            "(single-turn paradigm).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
+def _require_condition_for_non_exp3a(args) -> None:
+    """The `run` subcommand requires --condition for every experiment except
+    exp3a. (`pilot` sweeps DEFAULT_PILOT_CONDITIONS automatically and does
+    not accept --condition.)"""
+    if getattr(args, "experiment", None) == "exp3a":
+        return
+    if getattr(args, "condition", None) is None:
+        print(
+            f"error: --condition is required for --experiment {args.experiment}.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
 def _add_prereg_gate_args(p: argparse.ArgumentParser) -> None:
     """Pre-registration + power-report gating flags shared between
     `run` and `pilot`. Both subcommands enforce the same gates so a
@@ -1466,7 +1514,10 @@ def build_parser() -> argparse.ArgumentParser:
     # run
     p_run = sub.add_parser("run", help="Run an experiment")
     p_run.add_argument("--model", required=True, help="Model name (e.g., meta-llama/Meta-Llama-3-8B-Instruct)")
-    p_run.add_argument("--condition", required=True, help="Condition: strong_positive, neutral, strong_negative, etc.")
+    p_run.add_argument("--condition", default=None,
+                       help="Condition: strong_positive, neutral, strong_negative, etc. "
+                            "Required for exp1a/1b/2/3b/3c; rejected for exp3a "
+                            "(intensity levels are the sole stimulus per pre-reg §3.4.1).")
     p_run.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
                        help="Experiment type (paper §3 alignment; default exp1a)")
     p_run.add_argument("--num-runs", type=int, default=50)
