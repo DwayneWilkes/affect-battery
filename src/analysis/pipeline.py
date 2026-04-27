@@ -321,7 +321,10 @@ def analyze_results_dir(
     # ---- Exp 3a ----
     # The Exp 3a corpus is loaded as a flat list and grouped by intensity
     # level. analyze_exp3a expects accuracy_by_level: {level: [accs]}
-    # so we project the corpus into that shape here.
+    # where each entry is a per-cell binary correctness (0 or 1) read
+    # from Exp3aBody.binary_correct. analyze_exp3a's quadratic fit takes
+    # the per-level mean over the list, so per-cell binaries aggregate
+    # cleanly into per-level accuracies.
     exp3a_corpus = _load_corpus(results_dir, "exp3a")
     exp3a_analysis: dict | None = None
     if exp3a_corpus:
@@ -329,11 +332,10 @@ def analyze_results_dir(
         for run in exp3a_corpus:
             body = run.get("body") or {}
             level = body.get("intensity_level")
-            tc = run.get("transfer_correct") or body.get("transfer_correct") or []
-            if level is None or not tc:
+            binary_correct = body.get("binary_correct")
+            if level is None or binary_correct is None:
                 continue
-            acc = sum(1 for c in tc if c) / len(tc)
-            accuracy_by_level.setdefault(level, []).append(acc)
+            accuracy_by_level.setdefault(level, []).append(float(binary_correct))
         if len(accuracy_by_level) >= 3:
             exp3a_analysis = analyze_exp3a(accuracy_by_level)
             exp3a_analysis["model"] = model

@@ -62,12 +62,15 @@ async def run_exp3a(
         level_dir = (base_dir / f"level_{level}") if base_dir else None
         if level_dir is not None:
             level_dir.mkdir(parents=True, exist_ok=True)
-        # run_batch dispatches via run_single's existing path. After yield,
-        # we attach Exp3aBody recording the intensity_level for this slice.
         async for result in run_batch(config, client, output_dir=level_dir, **kwargs):
+            response = result.transfer_responses[0] if result.transfer_responses else ""
+            expected = str(result.transfer_expected[0]) if result.transfer_expected else ""
+            tc = result.transfer_correct
+            binary = int(tc[0]) if tc else 0
             result.body = Exp3aBody(
                 intensity_level=level,
-                transfer_responses=list(result.transfer_responses),
-                transfer_expected=list(result.transfer_expected),
+                model_response=response,
+                expected_answer=expected,
+                binary_correct=binary,
             )
             yield result

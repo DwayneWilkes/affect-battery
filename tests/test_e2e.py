@@ -482,26 +482,29 @@ class TestEndToEndExp3a:
         exp3a_dir = tmp_path / "exp3a"
         exp3a_dir.mkdir(parents=True)
 
-        # Inverted-U: peak at level 4
+        # Inverted-U: peak at level 4. Single-turn paradigm yields one
+        # cell per (level, run); binary_correct is 0 or 1 per cell.
         for level in range(1, 8):
-            for run_idx in range(4):
-                acc = 0.5 - 0.05 * (level - 4) ** 2
-                tc = [True] * int(round(acc * 5)) + [False] * (5 - int(round(acc * 5)))
+            target_acc = 0.5 - 0.05 * (level - 4) ** 2
+            n_cells = 20
+            n_correct = int(round(target_acc * n_cells))
+            for cell_idx in range(n_cells):
+                binary_correct = 1 if cell_idx < n_correct else 0
                 payload = {
                     "config": {"condition": "strong_positive"},
-                    "run_number": run_idx,
+                    "run_number": cell_idx,
                     "experiment_type": "exp3a",
                     "model": "dry-run",
                     "condition": "strong_positive",
-                    "transfer_correct": tc,
                     "body": {
                         "intensity_level": level,
-                        "transfer_responses": [],
-                        "transfer_expected": [],
+                        "model_response": "42" if binary_correct else "0",
+                        "expected_answer": "42",
+                        "binary_correct": binary_correct,
                     },
                     "checksum": "0" * 16,
                 }
-                (exp3a_dir / f"l{level}_r{run_idx}.json").write_text(json.dumps(payload))
+                (exp3a_dir / f"l{level}_c{cell_idx}.json").write_text(json.dumps(payload))
 
         rendered = analyze_results_dir(results_dir=tmp_path, model="dry-run")
         assert "exp3a" in rendered
