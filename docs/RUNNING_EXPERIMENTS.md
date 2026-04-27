@@ -20,26 +20,29 @@ End-to-end guide for going from `git pull` to a populated set of per-experiment 
 
 Phase 1-3 are gates. Phase 4 produces result JSONs. Phase 5 stitches them into reports.
 
-## Quick start: contemporary Anthropic pilot
+## Quick start: single-experiment pilot
 
 Fastest path to real results — small-N validation that the harness
-produces well-formed output on a contemporary Anthropic model:
+produces well-formed output on any provider (anthropic, openai, vllm):
 
 ```bash
 # 1. Tag the current commit as your pre-registration (one-time setup)
 python -m scripts.create_prereg_tag \
-    --tag prereg-anthropic-pilot-$(date -u +%Y-%m-%d) \
-    --message "Anthropic pilot pre-registration"
+    --tag prereg-pilot-$(date -u +%Y-%m-%d) \
+    --message "Pilot pre-registration"
 
-# 2. Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...
+# 2. Set the API key for your chosen provider
+export ANTHROPIC_API_KEY=sk-ant-...     # OR
+export OPENAI_API_KEY=sk-...
 
 # 3. Run the pilot end-to-end (runs, then auto-analyzes)
-bash scripts/pilots/run_anthropic_pilot.sh
+bash scripts/pilots/run_pilot.sh                          # Anthropic Haiku 4.5 default
+bash scripts/pilots/run_pilot.sh --provider openai \
+    --model gpt-5.4-nano                                  # OpenAI alternative
 ```
 
-Defaults: `claude-sonnet-4-6`, 5 runs × 7 conditions, ~350 API calls,
-roughly $2-3 USD on Sonnet (about 5x that on Opus). The script
+Defaults: `claude-haiku-4-5`, 5 runs × 7 conditions, ~350 API calls,
+under $1 USD on Haiku (about 3x on Sonnet, 15x on Opus). The script
 auto-discovers the most recent `prereg-*` tag, converts it to the
 `--pre-registration-github-commit` flag, pipes through to
 `affect-battery pilot`, and runs `analyze` on completion.
@@ -75,12 +78,77 @@ The pilot config schema lives at `configs/pilots/anthropic_pilot.yaml`
 for reference; the shell script reads sensible defaults inline so the
 YAML is documentation rather than required input.
 
+## Multi-experiment orchestrator
+
+To run all 5 smokeable experiments end-to-end (1a, 1b, 2, 3b, 3c — exp3a
+is held back pending its Krippendorff-validated intensity-pilot seed),
+use the orchestrator:
+
+```bash
+bash scripts/pilots/run_all_experiments.sh \
+    --provider openai --model gpt-5.4-nano \
+    --num-runs 30 --seed 42 \
+    --skip-prereg --yes \
+    --parallel \
+    --rate-limit-rps 8
+```
+
+What it does:
+
+- Runs each experiment as its own pilot, optionally in parallel (`--parallel`)
+- For exp2, sweeps `neutral_turns ∈ {1, 3, 5, 10}` automatically for the
+  recovery-curve fit; all 4 sub-pilots write to the same `exp2/data/` dir
+  with `n<N>_` filename prefixes
+- Confirmation gate before any real-API spend (`--yes` to skip)
+- One-line heartbeat every 30s during parallel runs, showing per-experiment
+  percent complete
+- SIGINT-safe: Ctrl-C drains in-flight calls within 10s before SIGKILL
+- Per-cell resume: re-running with the same `PILOT_DATE_STAMP` skips
+  already-completed cells. Restarts are "free."
+
+```bash
+# Resume an interrupted run by pinning the date stamp.
+PILOT_DATE_STAMP=2026-04-27 bash scripts/pilots/run_all_experiments.sh ...
+```
+
+Output lands at `results/pilots/<DATE>_<MODEL_SLUG>/<experiment>/`,
+matching the pilot-root layout above.
+
+## Interactive results dashboard
+
+After a pilot completes, build a self-contained interactive HTML dashboard
+for inspecting the results:
+
+```bash
+./.venv/bin/python scripts/build_dashboard.py \
+    --pilot-dir results/pilots/2026-04-27_gpt-5.4-nano \
+    --output    results/pilots/2026-04-27_gpt-5.4-nano/dashboard.html
+```
+
+Single file, embedded data, Plotly via CDN. Open via `file://` — no
+local server needed. Sections cover verdicts, exp 2 recovery curves
+(with KPI cards for asymmetry ratio + baseline), exp 1a/1b transfer
+accuracy and cross-session shrinkage, exp 3b cognitive-scope diversity,
+exp 3c stratified accuracy by difficulty, and run cost & timing.
+
+UX controls at the top:
+
+- **Sort selector** (alphabetical / arousal / valence / intensity)
+  re-orders all bar/line charts. Arousal and intensity sorts surface
+  Yerkes-Dodson inverted-U signatures if present; valence sort surfaces
+  directional asymmetry.
+- **Y-axis selector** (auto-zoom / fixed 0-1 / delta from baseline)
+  tightens the visible range when accuracy clusters in narrow bands.
+  Delta mode centers on 0 so direction of effect is immediately readable.
+- **Adaptive bar/line**: bars when sort is alphabetical; lines+markers
+  when sort is ordered (so curves are visible).
+
 ## Smoke test (no GPU)
 
 Verify the harness end-to-end with a fake model:
 
 ```bash
-uv run pytest                                                           # 658 tests pass
+uv run pytest                                                           # ~840 tests pass
 uv run affect-battery pilot --dry-run                                   # 5 runs × 7 conditions, results/pilot/
 uv run affect-battery analyze --results-dir results/pilot --model dry-run
 ```

@@ -10,12 +10,12 @@ Eval harness for the Affect Battery study: do AI emotional states follow biologi
 
 ```bash
 uv sync
-uv run pytest                                       # ~660 tests, all should pass
+uv run pytest                                       # ~840 tests, all should pass
 uv run affect-battery pilot --dry-run               # dry-run smoke test, no GPU needed
 uv run affect-battery analyze --results-dir results/pilot --model dry-run
 ```
 
-For a complete walkthrough — per-experiment runs, runner-config YAML schemas, intensity-pilot pre-registration, the analyze pipeline, and output structure — see **[docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)**.
+For a complete walkthrough — per-experiment runs, runner-config YAML schemas, intensity-pilot pre-registration, the analyze pipeline, the multi-experiment orchestrator, and the interactive results dashboard — see **[docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)**.
 
 For real experiments (requires vLLM on RunPod):
 
