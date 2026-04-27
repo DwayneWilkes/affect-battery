@@ -238,6 +238,15 @@ if [[ -z "${ESTIMATE}" ]]; then
   COST_PER_CALL_FLAG="--cost-per-call ${COST_PER_CALL}"
 fi
 
+# Per-batch (= per-condition) call budget. Each cell makes
+# (num_conditioning_turns + num_transfer_questions) base API calls;
+# in practice retries from transient rate-limits add ~10-20% headroom.
+# Worst case today is exp2 at N=10: 30 cells × (10 + 5) × 1.2 = 540
+# raw + retries; exp3b at n_generations=10: 30 × (5 + 10*5) × 1.2 ≈
+# 1980. The prior cap of 500 stopped exp2 N=10 at ~17/30 cells per
+# condition (analyzer still worked, but with thinner sample size).
+# 1500 covers all current matrices with margin; bump again if a
+# higher-turn experiment is added.
 uv run affect-battery pilot \
   --provider "${PROVIDER}" \
   --model "${MODEL}" \
@@ -248,7 +257,7 @@ uv run affect-battery pilot \
   --output-dir "${OUTPUT_DIR}" \
   --max-concurrent "${MAX_CONCURRENT}" \
   --rate-limit-rps "${RATE_LIMIT_RPS}" \
-  --budget-max-calls 500 \
+  --budget-max-calls 1500 \
   ${COST_PER_CALL_FLAG} \
   ${TRANSFER_BANK_FLAG} \
   ${RUNNER_CONFIG_FLAG} \
