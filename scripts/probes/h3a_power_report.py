@@ -74,7 +74,10 @@ def main() -> int:
         print("variance JSON must include 'sigma_per_level' as a 7-element list",
               file=sys.stderr)
         return 1
-    icc = float(var_data.get("icc", 0.20))
+    # Treat null and missing as the prior (0.20). The probe writes null
+    # when ICC is not measured for the design.
+    icc_raw = var_data.get("icc")
+    icc = float(icc_raw) if icc_raw is not None else 0.20
 
     print(f"Variance estimates from {args.variance_json}:")
     print(f"  model: {var_data.get('model', '<unknown>')}")
