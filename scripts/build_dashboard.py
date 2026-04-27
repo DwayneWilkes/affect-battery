@@ -465,11 +465,18 @@ footer {
   <div class="summary-row" id="summary-row"></div>
   <div class="meta-grid" id="meta-grid"></div>
   <div class="controls-row">
-    <label class="controls-label" for="sort-select">Sort conditions on bar charts:</label>
+    <label class="controls-label" for="sort-select">Sort conditions:</label>
     <select id="sort-select">
       <option value="alphabetical">Alphabetical</option>
       <option value="arousal">Arousal (low → high)</option>
-      <option value="valence">Valence (negative → positive)</option>
+      <option value="valence">Valence (low → high)</option>
+      <option value="intensity">Intensity (least → most)</option>
+    </select>
+    <label class="controls-label" for="yscale-select">Y-axis:</label>
+    <select id="yscale-select">
+      <option value="auto">Auto-zoom (tight to data)</option>
+      <option value="fixed">Fixed (0 → 1)</option>
+      <option value="delta">Delta from baseline</option>
     </select>
     <span class="controls-hint" id="sort-hint">A neutral default with no implied story.</span>
   </div>
@@ -533,6 +540,7 @@ const AXES = __AXES_JSON__;
 // inverted-U vs arousal; the paper's H4 predicts directional asymmetry vs
 // valence; alphabetical is the neutral default for clean comparison.
 //
+// All sorts go low → high so the x-axis reads naturally (least → most).
 // The selector at the top of the page sets `currentSort`; every render
 // function calls sortConds() with the live condition list to get the
 // effective x-axis order before passing it to Plotly.
@@ -544,20 +552,75 @@ function sortConds(conds) {
     return arr.sort();
   }
   if (currentSort === 'arousal') {
-    // Low → high arousal. Tie-break alphabetically so the order is stable.
+    // Low → high arousal (least activating to most activating). Tie-break
+    // alphabetically so the order is stable across renders.
     return arr.sort((a, b) => {
       const da = (AXES[a]?.arousal ?? 0) - (AXES[b]?.arousal ?? 0);
       return da !== 0 ? da : a.localeCompare(b);
     });
   }
   if (currentSort === 'valence') {
-    // Most negative → most positive. Tie-break alphabetically.
+    // Low → high valence (most negative on the left, most positive on
+    // the right). "Low" here = numerically smallest = most negative.
     return arr.sort((a, b) => {
       const dv = (AXES[a]?.valence ?? 0) - (AXES[b]?.valence ?? 0);
       return dv !== 0 ? dv : a.localeCompare(b);
     });
   }
+  if (currentSort === 'intensity') {
+    // Composite "intensity" = arousal + |valence|. Goes from least
+    // intervention (no_conditioning) to most intense (strong_*) regardless
+    // of direction. This is the cleanest single-axis Yerkes-Dodson view.
+    const score = c => (AXES[c]?.arousal ?? 0) + Math.abs(AXES[c]?.valence ?? 0);
+    return arr.sort((a, b) => {
+      const ds = score(a) - score(b);
+      return ds !== 0 ? ds : a.localeCompare(b);
+    });
+  }
   return arr.sort();
+}
+
+// === Y-axis scaling ===
+// Nano-model accuracies cluster in narrow bands (0.66-0.70 for exp3c hard,
+// 0.78-0.82 for exp1a). Forcing range [0, 1] makes everything look flat.
+// Three options surface meaningfully different views:
+//   - 'auto'    : Plotly chooses based on data range (tight, good default)
+//   - 'fixed'   : explicit [0, 1] range (good for absolute comparisons)
+//   - 'delta'   : subtract per-chart baseline; centers on 0 so direction is
+//                 immediately readable. Caller passes baseline + label.
+let currentYScale = 'auto';
+
+function applyYRange(layout, opts) {
+  // opts: { values, baseline, label, fixedMin, fixedMax }
+  // Mutates layout.yaxis to apply the current y-scale strategy.
+  layout.yaxis = layout.yaxis || {};
+  if (currentYScale === 'fixed') {
+    layout.yaxis.range = [opts.fixedMin ?? 0, opts.fixedMax ?? 1];
+    return layout;
+  }
+  if (currentYScale === 'auto') {
+    // Plotly's autorange handles this when range is unset.
+    delete layout.yaxis.range;
+    return layout;
+  }
+  if (currentYScale === 'delta' && typeof opts.baseline === 'number') {
+    // Center on 0 with a symmetric range based on data spread.
+    const deltas = (opts.values || []).map(v => (v == null ? 0 : v - opts.baseline));
+    const absMax = Math.max(0.05, ...deltas.map(d => Math.abs(d)));
+    layout.yaxis.range = [-absMax * 1.1, absMax * 1.1];
+    layout.yaxis.title = 'Δ from baseline (' + (opts.label || 'no_conditioning') + ')';
+    layout.yaxis.zeroline = true;
+    layout.yaxis.zerolinewidth = 2;
+    return layout;
+  }
+  return layout;
+}
+
+function maybeDelta(values, baseline) {
+  // Subtract baseline if delta-mode and baseline is numeric; otherwise
+  // pass values through unchanged.
+  if (currentYScale !== 'delta' || typeof baseline !== 'number') return values;
+  return values.map(v => (v == null ? null : v - baseline));
 }
 
 // === Plotly defaults that match the dark/light theme ===
@@ -694,44 +757,51 @@ function renderExp2() {
   }
   const ns = a.n_values || [];
   const traces = [];
+  const baseline = a.baseline;
+  // Track all y-values across traces so the y-scale auto-zoom can size
+  // tightly to the actual data range.
+  const allY = [];
   // Control curve (always plot first so it's drawn underneath)
   if (a.control_curve) {
+    const ctrlY = maybeDelta(a.control_curve, baseline);
+    allY.push(...a.control_curve);
     traces.push({
-      x: ns, y: a.control_curve, name: 'neutral (control)',
+      x: ns, y: ctrlY, name: 'neutral (control)',
       mode: 'lines+markers',
       line: { color: COLORS.neutral, width: 2, dash: 'dot' },
       marker: { size: 8, color: COLORS.neutral },
     });
   }
-  // Per-condition curves
-  // Iterate conditions in the user's chosen sort order so the legend reads
-  // in valence/arousal order when those sorts are active. Trace order also
-  // controls draw order, but lines mostly don't overlap so visual impact
-  // is minimal.
+  // Per-condition curves. Iterate in sort order so the legend reads in
+  // arousal/valence order when those sorts are active.
   const exp2Conds = sortConds(Object.keys(a.by_condition || {}));
   for (const cond of exp2Conds) {
     const cell = a.by_condition[cond];
+    allY.push(...cell.turn_accuracies_mean);
     traces.push({
-      x: cell.n_values, y: cell.turn_accuracies_mean, name: cond,
+      x: cell.n_values, y: maybeDelta(cell.turn_accuracies_mean, baseline), name: cond,
       mode: 'lines+markers',
       line: { color: COLORS[cond] || '#888', width: 2 },
       marker: { size: 8, color: COLORS[cond] || '#888' },
     });
   }
-  // Baseline horizontal line
-  if (a.baseline != null) {
+  // Baseline horizontal line. Skip in delta mode (baseline = 0 line is
+  // already implied by the y=0 zeroline).
+  if (baseline != null && currentYScale !== 'delta') {
     traces.push({
-      x: ns, y: ns.map(() => a.baseline),
-      name: `no_conditioning baseline (${fmt(a.baseline)})`,
+      x: ns, y: ns.map(() => baseline),
+      name: `no_conditioning baseline (${fmt(baseline)})`,
       mode: 'lines',
       line: { color: COLORS.no_conditioning, width: 1, dash: 'dash' },
       hoverinfo: 'name',
     });
   }
-  Plotly.newPlot('exp2-curves', traces, plotlyLayout({
+  const layout = plotlyLayout({
     xaxis: { title: 'N (neutral conditioning turns)', tickmode: 'array', tickvals: ns },
-    yaxis: { title: 'Mean turn accuracy', range: [0, 1] },
-  }), PLOT_CFG);
+    yaxis: { title: 'Mean turn accuracy' },
+  });
+  applyYRange(layout, { values: allY, baseline, label: 'no_conditioning', fixedMin: 0, fixedMax: 1 });
+  Plotly.newPlot('exp2-curves', traces, layout, PLOT_CFG);
 
   // KPIs
   const kpis = document.getElementById('exp2-kpis');
@@ -759,14 +829,17 @@ function renderEffectSizes(elBar, elTable, analysis) {
   const means = conds.map(c => cells[c].mean_accuracy);
   const baseline = cells[conds[0]]?.baseline_mean;
   const colors = conds.map(c => COLORS[c] || '#888');
+  const yValues = maybeDelta(means, baseline);
   const traces = [{
-    x: conds, y: means, type: 'bar', marker: { color: colors },
-    text: means.map(v => fmtPct(v)),
+    x: conds, y: yValues, type: 'bar', marker: { color: colors },
+    text: yValues.map(v => currentYScale === 'delta' ? (v >= 0 ? '+' : '') + fmt(v, 3) : fmtPct(v)),
     textposition: 'outside',
-    name: 'mean acc',
-    hovertemplate: '%{x}<br>mean acc: %{y:.3f}<extra></extra>',
+    name: currentYScale === 'delta' ? 'Δ vs baseline' : 'mean acc',
+    hovertemplate: '%{x}<br>' + (currentYScale === 'delta' ? 'Δ: %{y:+.3f}' : 'mean: %{y:.3f}') + '<extra></extra>',
   }];
-  if (baseline != null) {
+  // In delta mode the bars are already centered on 0; the dashed-baseline
+  // overlay would be a flat line at 0 which adds no information.
+  if (baseline != null && currentYScale !== 'delta') {
     traces.push({
       x: conds, y: conds.map(() => baseline), type: 'scatter', mode: 'lines',
       line: { color: COLORS.no_conditioning, dash: 'dash', width: 2 },
@@ -774,10 +847,12 @@ function renderEffectSizes(elBar, elTable, analysis) {
       hoverinfo: 'name',
     });
   }
-  Plotly.newPlot(elBar, traces, plotlyLayout({
-    yaxis: { title: 'Mean transfer accuracy', range: [0, 1] },
+  const layout = plotlyLayout({
+    yaxis: { title: 'Mean transfer accuracy' },
     xaxis: { tickangle: -25 },
-  }), PLOT_CFG);
+  });
+  applyYRange(layout, { values: means, baseline, label: 'no_conditioning', fixedMin: 0, fixedMax: 1 });
+  Plotly.newPlot(elBar, traces, layout, PLOT_CFG);
 
   // Table with effect sizes
   const rows = conds.map(c => {
@@ -922,15 +997,21 @@ function renderExp3b() {
     : 'N-gram diversity ratio (distinct-2 / total bigrams)';
   const ys = conds.map(c => bc[c][metricKey]);
   const colors = conds.map(c => COLORS[c] || '#888');
-  Plotly.newPlot(target, [{
-    x: conds, y: ys, type: 'bar', marker: { color: colors },
-    text: ys.map(v => fmt(v)),
-    textposition: 'outside',
-    hovertemplate: '%{x}<br>' + metricKey + ': %{y:.3f}<extra></extra>',
-  }], plotlyLayout({
+  // exp3b diversity isn't bounded 0-1 in any meaningful way; "Fixed" mode
+  // is treated the same as "auto" since clamping to [0, 1] doesn't help.
+  const baseline = bc.no_conditioning?.[metricKey];
+  const yValues = maybeDelta(ys, baseline);
+  const layout = plotlyLayout({
     yaxis: { title: metricLabel },
     xaxis: { tickangle: -25 },
-  }), PLOT_CFG);
+  });
+  applyYRange(layout, { values: ys, baseline, label: 'no_conditioning' });
+  Plotly.newPlot(target, [{
+    x: conds, y: yValues, type: 'bar', marker: { color: colors },
+    text: yValues.map(v => fmt(v)),
+    textposition: 'outside',
+    hovertemplate: '%{x}<br>' + metricKey + ': %{y:.3f}<extra></extra>',
+  }], layout, PLOT_CFG);
 }
 
 // === Exp 3c — accuracy & refusal stratified by difficulty ===
@@ -962,14 +1043,24 @@ function renderExp3c() {
     document.getElementById(target).innerHTML = '<div style="padding:40px; color: var(--muted)">No exp3c stratified data available.</div>';
     return;
   }
-  // Difficulty palette: easy (light) -> hard (saturated). Refusal-on-hard is
-  // the headline of the conservative-shift hypothesis.
-  const diffShades = { easy: '#94a3b8', medium: '#64748b', hard: '#0f172a' };
-  const refusalShades = { easy: '#fca5a5', medium: '#f87171', hard: '#dc2626' };
+  // Difficulty palette: warming gradient teal → amber → red so all three
+  // bars have good contrast on both light and dark themes (the prior
+  // grey→black palette was invisible on dark backgrounds). Reads
+  // intuitively as "easier task = cool, harder task = hot."
+  const diffShades = { easy: '#0d9488', medium: '#f59e0b', hard: '#ef4444' };
+  const refusalShades = { easy: '#67e8f9', medium: '#fde68a', hard: '#fca5a5' };
+  // Collect all accuracy values for the y-scale auto-zoom.
+  const allAcc = [];
+  const baseline = byCond.no_conditioning
+    ? Object.values(byCond.no_conditioning).reduce((s, c) => s + (c?.accuracy ?? 0), 0)
+      / Math.max(1, Object.keys(byCond.no_conditioning).length)
+    : null;
   const traces = [];
   for (const diff of diffOrder) {
+    const accs = conds.map(c => byCond[c][diff]?.accuracy ?? null);
+    accs.forEach(v => { if (v != null) allAcc.push(v); });
     traces.push({
-      x: conds, y: conds.map(c => byCond[c][diff]?.accuracy ?? null),
+      x: conds, y: maybeDelta(accs, baseline),
       type: 'bar', name: 'acc / ' + diff,
       marker: { color: diffShades[diff] || '#888' },
       hovertemplate: '%{x}<br>' + diff + ' accuracy: %{y:.3f}<extra></extra>',
@@ -986,11 +1077,13 @@ function renderExp3c() {
       visible: 'legendonly',  // hidden by default; click legend to toggle
     });
   }
-  Plotly.newPlot(target, traces, plotlyLayout({
+  const layout = plotlyLayout({
     barmode: 'group',
-    yaxis: { title: 'rate', range: [0, 1] },
+    yaxis: { title: 'accuracy' },
     xaxis: { tickangle: -25 },
-  }), PLOT_CFG);
+  });
+  applyYRange(layout, { values: allAcc, baseline, label: 'no_conditioning mean', fixedMin: 0, fixedMax: 1 });
+  Plotly.newPlot(target, traces, layout, PLOT_CFG);
 }
 
 // === Cost + timing ===
@@ -1034,15 +1127,16 @@ function renderAll() {
 const SORT_HINTS = {
   alphabetical: 'A neutral default with no implied story.',
   arousal: 'Yerkes-Dodson predicts an inverted-U (peak at moderate arousal). Hard tasks tilt the peak left.',
-  valence: "Tests directional asymmetry (paper §3.4). H4 predicts the negative arm produces a larger off-control area than the positive arm.",
+  valence: 'Tests directional asymmetry (paper §3.4). H4 predicts the negative arm produces a larger off-control area than the positive arm.',
+  intensity: 'Combined arousal + |valence|. Goes from no intervention (left) to most intense (right) regardless of direction. Cleanest single-axis Yerkes-Dodson view.',
 };
 
 window.addEventListener('DOMContentLoaded', () => {
   renderAll();
   // Re-render on theme change so axis/grid colors track the theme.
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
-  // Re-render on sort change. We update the hint text inline so the user
-  // can see at a glance what the chosen ordering is for.
+  // Re-render on sort change. Hint text updates inline so the user can
+  // see at a glance what the chosen ordering is for.
   const sel = document.getElementById('sort-select');
   const hint = document.getElementById('sort-hint');
   if (sel) {
@@ -1050,6 +1144,15 @@ window.addEventListener('DOMContentLoaded', () => {
     sel.addEventListener('change', () => {
       currentSort = sel.value;
       if (hint) hint.textContent = SORT_HINTS[currentSort] || '';
+      renderAll();
+    });
+  }
+  // Y-scale selector. No hint text; the option labels are self-describing.
+  const yscaleSel = document.getElementById('yscale-select');
+  if (yscaleSel) {
+    yscaleSel.value = currentYScale;
+    yscaleSel.addEventListener('change', () => {
+      currentYScale = yscaleSel.value;
       renderAll();
     });
   }
