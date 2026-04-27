@@ -291,6 +291,36 @@ run_one_experiment() {
   fi
 }
 
+# Pretty-printer for per-experiment logs after run completion. Flattens
+# tqdm \r-history (otherwise the terminal replays ~600 progress-bar
+# updates per experiment when we cat the file), keeps only the FINAL
+# tqdm line per contiguous block, and passes everything else through
+# verbatim (banners, condition tables, [RUN_SUMMARY], manifest paths).
+print_clean_log() {
+  local log="$1"
+  awk '
+    { gsub(/\r/, "\n", $0); }
+    {
+      n = split($0, lines, "\n")
+      for (i = 1; i <= n; i++) {
+        ln = lines[i]
+        if (ln ~ /^pilot: /) {
+          pending_pilot = ln
+        } else {
+          if (pending_pilot != "") {
+            print pending_pilot
+            pending_pilot = ""
+          }
+          print ln
+        }
+      }
+    }
+    END {
+      if (pending_pilot != "") print pending_pilot
+    }
+  ' "${log}"
+}
+
 if [[ -n "${PARALLEL}" ]]; then
   echo ""
   echo "Running ${#EXPERIMENTS[@]} experiments IN PARALLEL."
@@ -312,9 +342,14 @@ if [[ -n "${PARALLEL}" ]]; then
   echo "   logs at ${LOG_DIR}/<exp>.log — \`tail -F ${LOG_DIR}/*.log\` to live-tail)"
   echo ""
 
-  # Heartbeat: periodically print which experiments are still running,
-  # along with the last line of each one's log so the user can see
-  # progress without parsing 5 interleaved tqdm streams.
+  # Heartbeat: ONE LINE per check-in. Prior versions printed the last
+  # tqdm line per experiment, which over a 30+ min run stacks ~5 lines
+  # × ~70 check-ins = ~350 partial progress-bar fragments on the
+  # orchestrator's stdout. Now the heartbeat is a single coarse status
+  # line showing elapsed time, which experiments are still running, and
+  # a compact "<exp>:NN%" tag per running experiment parsed from the
+  # tqdm percentage. tail -F LOG_DIR/*.log is still the way to see
+  # detailed progress.
   heartbeat_loop() {
     while true; do
       sleep 30
@@ -330,17 +365,21 @@ if [[ -n "${PARALLEL}" ]]; then
         fi
       done
       if [[ ${#still_running[@]} -eq 0 ]]; then return 0; fi
-      echo "  [+${mins}m${secs}s] running: ${still_running[*]}"
+      # Per-exp compact percent. tqdm prints "pilot:  NN%|..." with the
+      # \r overwrite, so we tr CRs and grep the most recent line that
+      # has the percentage for each running experiment.
+      local progress_tags=""
       for e in "${still_running[@]}"; do
-        # Grab the last non-blank line from each log; tqdm progress
-        # bars use \r so we strip CRs to get the last update.
-        local last
-        last=$(tr '\r' '\n' < "${LOG_DIR}/${e}.log" 2>/dev/null \
-               | grep -v '^$' | tail -1 | head -c 100)
-        if [[ -n "${last}" ]]; then
-          echo "    ${e}: ${last}"
+        local pct
+        pct=$(tr '\r' '\n' < "${LOG_DIR}/${e}.log" 2>/dev/null \
+              | grep -oE 'pilot: *[0-9]+%' | tail -1 | grep -oE '[0-9]+')
+        if [[ -n "${pct}" ]]; then
+          progress_tags+=" ${e}:${pct}%"
+        else
+          progress_tags+=" ${e}:--"
         fi
       done
+      echo "  [+${mins}m${secs}s]${progress_tags}"
     done
   }
   heartbeat_loop &
@@ -356,14 +395,12 @@ if [[ -n "${PARALLEL}" ]]; then
   # Stop the heartbeat now that all experiments have completed.
   kill "${HEARTBEAT_PID}" 2>/dev/null || true
   wait "${HEARTBEAT_PID}" 2>/dev/null || true
-  # After all done, dump the per-experiment logs sequentially so the
-  # user sees the full picture without interleaved chaos.
   for exp in "${EXPERIMENTS[@]}"; do
     echo ""
     echo "===================================="
     echo "  Output: ${exp}"
     echo "===================================="
-    cat "${LOG_DIR}/${exp}.log"
+    print_clean_log "${LOG_DIR}/${exp}.log"
   done
 else
   # Sequential mode. Use run_one_experiment so the exp2 N-sweep
@@ -378,11 +415,12 @@ else
     echo "  Pilot: ${exp}"
     echo "===================================="
     if run_one_experiment "${exp}"; then
-      # Stream the log to the terminal after completion so the user
-      # sees output (run_one_experiment redirects to file, not stdout).
-      cat "${LOG_DIR}/${exp}.log"
+      # Print the log AFTER cleanup so the terminal isn't flooded with
+      # tqdm \r-replays. run_one_experiment redirects to the log file,
+      # not stdout, so the live terminal stayed quiet during the run.
+      print_clean_log "${LOG_DIR}/${exp}.log"
     else
-      cat "${LOG_DIR}/${exp}.log"
+      print_clean_log "${LOG_DIR}/${exp}.log"
       FAILED+=("${exp}")
     fi
   done
