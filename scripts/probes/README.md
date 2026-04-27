@@ -122,15 +122,15 @@ prior pilot results before rating.
 ## Single-rater pilot
 
 Pilots run with a single rater are supported via the `--solo-rater`
-flag. The resulting seed records the rater's ordinal ratings, axis ID,
-and a SHA-256 digest; no Krippendorff α is computed. The seed is
-flagged `irr_validated: false` and `solo_rater: true`, and downstream
-gates apply their own acceptance policy on those flags.
+flag. The resulting seed records the supplied `rater_id`, ordinal
+ratings, axis ID, and a SHA-256 digest; no Krippendorff α is computed.
+The seed is flagged `irr_validated: false` and `solo_rater: true`, and
+downstream gates apply their own acceptance policy on those flags.
 
 ```bash
 # Generate one rating form
 uv run python scripts/probes/build_rating_form.py \
-    --rater-id <rater_id> --output ratings/solo.yaml --seed 1
+    --rater-id rater_PI --output ratings/solo.yaml --seed 1
 
 # Fill it out, then run with --solo-rater
 uv run python scripts/probes/run_intensity_pilot.py \
@@ -140,6 +140,7 @@ uv run python scripts/probes/run_intensity_pilot.py \
     --solo-rater
 ```
 
-Methods documentation should record the rater's identity, the absence
-of inter-rater reliability validation, and any pre-registration
-amendment that authorizes the single-rater design.
+Use a pseudonymous `rater_id` (e.g. `rater_PI`, `rater_01`); the value
+is recorded verbatim in the seed JSON. Methods documentation should
+note the single-rater design and reference any pre-registration
+amendment authorizing it.

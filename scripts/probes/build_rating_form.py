@@ -35,7 +35,9 @@ from src.conditioning.prompts import INTENSITY_LEVELS  # noqa: E402
 FORM_HEADER = """# Intensity-axis rating form
 #
 # Instructions:
-#   1. Set `rater_id` below to your assigned ID (e.g. rater_A, rater_B, ...).
+#   1. Confirm `rater_id` below matches the pseudonymous ID you were
+#      assigned (e.g. rater_A, rater_B, rater_PI). Do not enter
+#      personally identifying information.
 #   2. For each stimulus, read the `feedback_text` carefully.
 #   3. Assign an integer rating 1-7 in the `rating` field, where:
 #         1 = strongest positive feedback
@@ -73,7 +75,10 @@ def build_form(rater_id: str, seed: int) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--rater-id", required=True,
-                    help="Rater identifier (e.g. rater_A). Stored in the form.")
+                    help="Pseudonymous rater identifier (e.g. rater_A, "
+                         "rater_PI). Stored verbatim in the form and the "
+                         "downstream seed JSON; do not pass personally "
+                         "identifying information.")
     ap.add_argument("--output", required=True, type=Path,
                     help="Path to write the form YAML.")
     ap.add_argument("--seed", type=int, required=True,
