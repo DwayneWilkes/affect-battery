@@ -338,6 +338,33 @@ async def test_cell_count_contract_small(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_results_persisted_under_level_dir(tmp_path):
+    """Each yielded RunResult is written as JSON under output_dir/level_<N>/."""
+    bank = _bank_yaml(tmp_path, n=50)
+    seed_path = _write_seed(tmp_path)
+    client = RecordingClient(response="42")
+    config = _config_for_exp3a(bank, num_runs=2)
+
+    out = tmp_path / "out"
+    await _collect(dict(
+        config=config, client=client,
+        intensity_levels=[1, 2, 3, 4, 5, 6, 7],
+        pilot_seed_path=seed_path,
+        output_dir=out,
+    ))
+
+    written = sorted(out.rglob("*.json"))
+    assert len(written) == 14, f"expected 14 result files, found {len(written)}"
+    for level in range(1, 8):
+        level_dir = out / f"level_{level}"
+        json_files = sorted(level_dir.rglob("*.json"))
+        assert len(json_files) == 2, f"level {level} has {len(json_files)} files, expected 2"
+        first = json.loads(json_files[0].read_text())
+        assert first["body"]["intensity_level"] == level
+        assert first["body"]["model_response"] == "42"
+
+
+@pytest.mark.asyncio
 async def test_cell_count_at_pre_reg_n(tmp_path):
     bank = _bank_yaml(tmp_path, n=854)
     seed_path = _write_seed(tmp_path)
