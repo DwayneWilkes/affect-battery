@@ -34,3 +34,28 @@ def sample_items(
         shuffled[i * n_per_level:(i + 1) * n_per_level]
         for i in range(n_levels)
     ]
+
+
+def sample_items_within_subjects(
+    items: list[dict],
+    n_per_level: int,
+    n_levels: int,
+    seed: int,
+) -> list[list[dict]]:
+    """Return n_levels copies of the same n_per_level item list.
+
+    The within-subjects design pairs each item with each intensity
+    level: every level shows the same n_per_level items in the same
+    order. The minimum bank size is n_per_level (cross-level sharing
+    means the n_levels factor does not multiply).
+    """
+    if len(items) < n_per_level:
+        raise ValueError(
+            f"bank has {len(items)} items; need at least "
+            f"{n_per_level} for within-subjects sampling"
+        )
+    rng = random.Random(seed)
+    shuffled = items[:]
+    rng.shuffle(shuffled)
+    selected = shuffled[:n_per_level]
+    return [list(selected) for _ in range(n_levels)]

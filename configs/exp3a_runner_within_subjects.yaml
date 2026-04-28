@@ -1,0 +1,10 @@
+# Exp 3a runner config: within-subjects design (amendment 002).
+#
+# Each of the 122 bank items is paired with each of the 7 intensity
+# levels. Per-item variance is partialed out by the analysis pipeline's
+# random-effects fit. The minimum bank size for this mode is
+# n_per_level (122), not n_per_level × n_levels.
+
+intensity_levels: [1, 2, 3, 4, 5, 6, 7]
+pilot_seed_path: configs/intensity_pilot_seed.json
+sampling_mode: within_subjects
