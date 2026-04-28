@@ -19,6 +19,24 @@ FAIL="[FAIL]"
 WARN="[WARN]"
 INFO="[INFO]"
 
+# Cross-platform timeout binary: GNU coreutils ships `timeout` on Linux/WSL
+# and as `gtimeout` on macOS via Homebrew. macOS without coreutils ships
+# neither; we fail fast with a clear install hint rather than silently
+# producing empty output downstream.
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout"
+else
+    echo "[FAIL] neither \`timeout\` nor \`gtimeout\` is installed."
+    echo
+    echo "This diagnostic relies on a GNU-style timeout binary to bound"
+    echo "subprocess invocations. Install one of:"
+    echo "  brew install coreutils      # macOS — provides \`gtimeout\`"
+    echo "  apt-get install coreutils   # Debian/Ubuntu/WSL"
+    exit 2
+fi
+
 results=()
 fail_count=0
 warn_count=0
@@ -94,7 +112,7 @@ else
     invocation_label="claude -p --bare (API path)"
 fi
 print_response=$(echo "Reply with only the digit 4 and nothing else." | \
-    timeout 60 claude "${invocation_flags[@]}" 2>&1 || echo "")
+    "$TIMEOUT_CMD" 60 claude "${invocation_flags[@]}" 2>&1 || echo "")
 if [[ -z "$print_response" ]]; then
     report "$FAIL" "$invocation_label produced no output"
 elif echo "$print_response" | grep -qiE "not logged in|please run /login|unauthor"; then
@@ -121,7 +139,7 @@ fi
 # ---- Check 5: model selection ----
 # Use the same auth-source-aware invocation flags as Check 3.
 model_response=$(echo "Reply with only the word ok and nothing else." | \
-    timeout 60 claude "${invocation_flags[@]}" --model sonnet 2>&1 || echo "")
+    "$TIMEOUT_CMD" 60 claude "${invocation_flags[@]}" --model sonnet 2>&1 || echo "")
 if [[ -z "$model_response" ]]; then
     report "$WARN" "--model sonnet returned empty response"
 elif echo "$model_response" | grep -qiE "not logged in|please run /login|unauthor"; then
@@ -132,7 +150,7 @@ fi
 
 # ---- Check 6: structured output ----
 json_response=$(echo "Reply with only the digit 7." | \
-    timeout 60 claude "${invocation_flags[@]}" --output-format json 2>&1 || echo "")
+    "$TIMEOUT_CMD" 60 claude "${invocation_flags[@]}" --output-format json 2>&1 || echo "")
 if [[ -n "$json_response" ]] && echo "$json_response" | grep -q '"result"'; then
     report "$PASS" "--output-format json works (response includes .result field)"
 else

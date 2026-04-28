@@ -225,19 +225,25 @@ async def test_multiturn_context() -> tuple[str, str]:
     )
 
 
-async def test_help_for_generation_flags() -> tuple[str | None, str]:
+async def test_help_for_generation_flags() -> tuple[str, str]:
     """Scan ``claude --help`` for temperature and max-tokens flags.
 
-    Returns (None, multi_line_message) so the caller can print findings as a
-    block rather than a single status line.
+    Returns (status, multi_line_message). Status is PASS when both flags
+    are present, WARN when either is missing. The summary's warning count
+    increments on a missing flag so the methodology caveat surfaces; a
+    silent zero-warning summary would mislead operators into thinking
+    experimental temperature / max_tokens settings are honored when they
+    are not.
     """
     rc, stdout, stderr = await run_claude("", ["--help"], timeout=15)
     help_text = (stdout + "\n" + stderr).lower()
 
     findings = []
+    overall = PASS
     if "--temperature" in help_text:
         findings.append(f"  {PASS} --temperature flag found in --help")
     else:
+        overall = WARN
         findings.append(
             f"  {WARN} --temperature flag NOT in --help. "
             "If absent, CLI defaults will apply; experimental temperature settings "
@@ -246,12 +252,13 @@ async def test_help_for_generation_flags() -> tuple[str | None, str]:
     if "--max-tokens" in help_text or "--max_tokens" in help_text:
         findings.append(f"  {PASS} --max-tokens flag found in --help")
     else:
+        overall = WARN
         findings.append(
             f"  {WARN} --max-tokens flag NOT in --help. "
             "If absent, defaults apply (likely 4096+). exp3b's 512-token cap and "
             "exp3c's 256-token cap will not be honored."
         )
-    return None, "\n".join(findings)
+    return overall, "\n".join(findings)
 
 
 async def test_short_circuit_check() -> tuple[str, str]:
@@ -316,10 +323,11 @@ async def main() -> int:
         print(f"-- {name}")
         try:
             result = await test()
-            if result[0] is None:
-                print(result[1])
+            status, msg = result
+            if "\n" in msg:
+                # Multi-line block: per-line status prefixes already in msg.
+                print(msg)
             else:
-                status, msg = result
                 print(f"  {status} {msg}")
             results.append((name, result))
         except Exception as e:
