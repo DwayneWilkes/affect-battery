@@ -1,7 +1,11 @@
 """Model clients for the Affect Battery harness."""
 
 import asyncio
+import json
 import logging
+import re
+import subprocess
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -436,3 +440,302 @@ class AnthropicClient(ModelClient):
 
     async def close(self) -> None:
         await self._client.close()
+
+
+# -----------------------------------------------------------------------------
+# Claude Code CLI backend
+# -----------------------------------------------------------------------------
+# Subprocess-backed chat-completion adapter for the `claude` CLI.
+
+
+class ClaudeCodeError(Exception):
+    """Base class for ClaudeCodeClient failures."""
+
+
+class ClaudeCodeNotAvailableError(ClaudeCodeError):
+    """Raised when the `claude` binary is not on PATH."""
+
+
+class ClaudeCodeAuthError(ClaudeCodeError):
+    """Raised when `claude auth status` exits non-zero."""
+
+
+class ClaudeCodeTimeoutError(ClaudeCodeError):
+    """Raised when a `complete()` call exceeds the configured timeout."""
+
+
+class ClaudeCodeProtocolError(ClaudeCodeError):
+    """Raised when the CLI's stream-JSON output is missing the result event."""
+
+
+class ClaudeCodeUnsupportedParameterError(ClaudeCodeError):
+    """Raised in strict-params mode when temperature or max_tokens is non-default."""
+
+
+_CLAUDE_CODE_DEFAULT_TEMPERATURE = 1.0
+
+# Auth source values returned by _detect_claude_auth_source. Closed set;
+# downstream code reads these as identifier strings (recorded in the
+# pilot manifest as `inference_auth_source`).
+AUTH_SUBSCRIPTION = "subscription"
+AUTH_API = "api"
+AUTH_UNKNOWN = "unknown"
+
+
+def _format_messages_as_stream_json(messages: list[dict]) -> bytes:
+    """Serialize messages as newline-delimited stream-JSON for `claude --input-format stream-json`.
+
+    Each message becomes one line: {"type": <role>, "message": {"role":
+    <role>, "content": [{"type": "text", "text": <content>}]}}. The content
+    is wrapped as a content-block array because the CLI does a tool_use
+    check via .some() that requires the array shape.
+    """
+    lines = []
+    for m in messages:
+        content_blocks = [{"type": "text", "text": m["content"]}]
+        lines.append(json.dumps({
+            "type": m["role"],
+            "message": {"role": m["role"], "content": content_blocks},
+        }))
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _parse_stream_json_response(stdout: str) -> tuple[str | None, dict]:
+    """Parse newline-delimited stream-JSON output from `claude --output-format stream-json`.
+
+    Returns (result_text, metadata) where result_text is the assistant's
+    final message and metadata is a dict of {total_cost_usd, duration_ms,
+    num_turns, session_id} extracted from the terminal `result` event.
+    """
+    result_text: str | None = None
+    metadata: dict = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "result" and event.get("subtype") == "success":
+            result_text = event.get("result")
+            for k in ("total_cost_usd", "duration_ms", "num_turns", "session_id"):
+                if k in event:
+                    metadata[k] = event[k]
+            break
+    return result_text, metadata
+
+
+# Anchor on the "Login method:" status line so generic tokens like
+# "API" inside surrounding banner text cannot misclassify the source.
+_AUTH_SUBSCRIPTION_RE = re.compile(
+    r"login method[^\n]*\b(claude max|claude pro|subscription|claude account)\b",
+    re.IGNORECASE,
+)
+_AUTH_API_RE = re.compile(
+    r"login method[^\n]*\b(console|api key|anthropic console)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_claude_auth_source() -> tuple[str, str]:
+    """Probe `claude auth status --text` and classify.
+
+    Returns (auth_source, raw_text). auth_source is one of
+    AUTH_SUBSCRIPTION, AUTH_API, or AUTH_UNKNOWN. Raises
+    ClaudeCodeNotAvailableError if the binary is missing,
+    ClaudeCodeAuthError if the probe exits non-zero or its output cannot
+    be decoded.
+    """
+    try:
+        result = subprocess.run(
+            ["claude", "auth", "status", "--text"],
+            capture_output=True, timeout=10,
+        )
+    except FileNotFoundError as e:
+        raise ClaudeCodeNotAvailableError(
+            "`claude` binary not on PATH. Install with: "
+            "curl -fsSL https://claude.ai/install.sh | bash"
+        ) from e
+    except subprocess.TimeoutExpired as e:
+        raise ClaudeCodeAuthError(
+            f"`claude auth status` timed out after 10s: {e}"
+        ) from e
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    if result.returncode != 0:
+        raise ClaudeCodeAuthError(
+            f"`claude auth status` exited {result.returncode}: "
+            f"{(stdout + stderr).strip()[:300]}"
+        )
+    text = stdout + stderr
+    if _AUTH_SUBSCRIPTION_RE.search(text):
+        return AUTH_SUBSCRIPTION, text
+    if _AUTH_API_RE.search(text):
+        return AUTH_API, text
+    return AUTH_UNKNOWN, text
+
+
+class ClaudeCodeClient(ModelClient):
+    """Chat-completion adapter that delegates to the `claude` CLI subprocess.
+
+    The CLI does not accept --temperature or --max-tokens flags, so this
+    client raises ClaudeCodeUnsupportedParameterError when callers pass
+    non-default values (default temperature: 1.0; default max_tokens:
+    None). Set strict_params=False to accept non-defaults with a manifest
+    flag instead of raising.
+
+    Auth source is probed once at construction. Subscription auth omits
+    --bare; API auth includes --bare; unknown auth omits --bare (fail-safe
+    for the more common Claude Max/Pro path) and emits a one-time stderr
+    warning naming the unrecognized text.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        *,
+        strict_params: bool = True,
+        timeout: float = 120.0,
+    ):
+        self._model = model
+        self._strict_params = strict_params
+        self._timeout = timeout
+        self.total_cost_usd: float = 0.0
+        # (temperature, max_tokens) for each lenient-mode call whose
+        # parameters deviated from the CLI's defaults.
+        self.unhonored_calls: list[tuple[float, int | None]] = []
+
+        self.auth_source, raw_text = _detect_claude_auth_source()
+
+        cli_args = [
+            "-p",
+            "--tools", "",
+            "--max-turns", "1",
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--no-session-persistence",
+        ]
+        if self.auth_source == AUTH_API:
+            cli_args.append("--bare")
+        elif self.auth_source == AUTH_UNKNOWN:
+            print(
+                f"[ClaudeCodeClient] WARNING: unrecognized `claude auth status` "
+                f"text; --bare omitted to preserve subscription auth in case "
+                f"the user is on Claude Max/Pro. Auth probe text: "
+                f"{raw_text.strip()[:200]!r}",
+                file=sys.stderr,
+            )
+        self._argv = ["claude", *cli_args, "--model", self._model]
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    @property
+    def params_unhonored(self) -> bool:
+        """True if any call in this client's lifetime ran under
+        strict_params=False with a non-default temperature or max_tokens."""
+        return bool(self.unhonored_calls)
+
+    def manifest_metadata(self) -> dict:
+        """Inference-backend metadata for the pilot manifest writer.
+
+        Returns the auth source, accumulated cost, and (when present)
+        the list of unhonored parameter deviations. Empty dict if no
+        call has been made yet.
+        """
+        meta: dict = {
+            "inference_auth_source": self.auth_source,
+            "inference_total_cost_usd": round(float(self.total_cost_usd), 6),
+        }
+        if self.unhonored_calls:
+            meta["inference_unhonored_calls"] = [
+                {"temperature": t, "max_tokens": m}
+                for t, m in self.unhonored_calls
+            ]
+        return meta
+
+    async def complete(
+        self,
+        messages: list[dict],
+        temperature: float = _CLAUDE_CODE_DEFAULT_TEMPERATURE,
+        max_tokens: int | None = None,
+    ) -> str:
+        is_default = (
+            temperature == _CLAUDE_CODE_DEFAULT_TEMPERATURE
+            and max_tokens is None
+        )
+        if not is_default:
+            if self._strict_params:
+                offending = (
+                    f"temperature={temperature}"
+                    if temperature != _CLAUDE_CODE_DEFAULT_TEMPERATURE
+                    else f"max_tokens={max_tokens}"
+                )
+                raise ClaudeCodeUnsupportedParameterError(
+                    f"ClaudeCodeClient: {offending} is not honored by the "
+                    f"`claude` CLI (no --temperature / --max-tokens flag). "
+                    f"Set strict_params=False to accept this deviation; the "
+                    f"manifest will record the (temperature, max_tokens) "
+                    f"under inference_unhonored_calls."
+                )
+            log.warning(
+                "ClaudeCodeClient: temperature=%s, max_tokens=%s passed but "
+                "not honored by the `claude` CLI. Manifest will record this "
+                "deviation under inference_unhonored_calls.",
+                temperature, max_tokens,
+            )
+            self.unhonored_calls.append((temperature, max_tokens))
+
+        stdin_bytes = _format_messages_as_stream_json(messages)
+
+        proc = await asyncio.create_subprocess_exec(
+            *self._argv,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, _stderr = await asyncio.wait_for(
+                proc.communicate(stdin_bytes),
+                timeout=self._timeout,
+            )
+        except asyncio.TimeoutError as e:
+            proc.kill()
+            try:
+                # Drain pipes so the child doesn't deadlock on a full
+                # stdout buffer; communicate() also awaits the process
+                # exit. wait() alone can hang on >64KB stdout.
+                await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                pass
+            raise ClaudeCodeTimeoutError(
+                f"ClaudeCodeClient: `claude` did not return within "
+                f"{self._timeout}s; subprocess killed."
+            ) from e
+
+        result_text, metadata = _parse_stream_json_response(
+            stdout.decode("utf-8", errors="replace")
+        )
+        if result_text is None:
+            raise ClaudeCodeProtocolError(
+                f"ClaudeCodeClient: no `result` event in stream-JSON output. "
+                f"stdout snippet: {stdout.decode('utf-8', errors='replace')[:300]!r}"
+            )
+
+        cost = metadata.get("total_cost_usd")
+        if cost is not None:
+            try:
+                self.total_cost_usd += float(cost)
+            except (TypeError, ValueError):
+                pass
+
+        return result_text
+
+    async def complete_text(self, *_a, **_kw) -> str:
+        raise NotImplementedError(
+            "ClaudeCodeClient does not support base-model completions; "
+            "use --provider vllm or anthropic for that path."
+        )
