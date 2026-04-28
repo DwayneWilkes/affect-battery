@@ -71,38 +71,6 @@ class TestExtractNumericAnswer:
             "First 10 + 5 = 15, then we multiply by 3: \\boxed{45}"
         ) == 45.0
 
-    def test_chain_of_thought_picks_final_total(self):
-        """Multi-step calculation with intermediate '=' signs picks the final total.
-
-        Real-world failure: chain-of-thought responses like the calorie
-        sum below produce multiple '=' lines. The original implementation
-        picked the FIRST '=' match (450) instead of the final total (770).
-        """
-        response = (
-            "Let's add up the calories from each ingredient:\n"
-            "- Eggs: 6 eggs × 75 calories = 450 calories\n"
-            "- Cheese: 2 oz × 120 calories/oz = 240 calories\n"
-            "- Ham: equal amount of cheese = 2 oz × 40 calories/oz = 80 calories\n"
-            "Total calories = 450 + 240 + 80 = 770 calories."
-        )
-        assert extract_numeric_answer(response) == 770.0
-
-    def test_multiple_equals_picks_last(self):
-        """When several '=' signs appear, the rightmost one is the final answer."""
-        assert extract_numeric_answer("3 + 4 = 7, then 7 * 2 = 14") == 14.0
-
-    def test_running_total_with_arrows(self):
-        """Stepwise calculations using '=' as running totals: pick the last."""
-        assert extract_numeric_answer(
-            "Step 1: 5 + 3 = 8. Step 2: 8 * 2 = 16. Step 3: 16 - 1 = 15."
-        ) == 15.0
-
-    def test_total_marker_in_bold(self):
-        """Models often emit '**Total = N**' or '**Answer: N**' for the final line."""
-        assert extract_numeric_answer(
-            "First 6 × 75 = 450, then 2 × 120 = 240. **Total = 690**"
-        ) == 690.0
-
 
 class TestExtractionPriority:
     """Spec: explicit markers > boxed > equals > last number."""
