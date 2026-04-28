@@ -2,7 +2,7 @@
 
 These scripts verify that the Claude Code CLI can serve as a chat-completion
 backend for the affect-battery harness. Run them before attempting to use
-`--provider claude-cli` against a real experiment, especially if you intend
+`--provider claude_code` against a real experiment, especially if you intend
 to run on a Claude subscription rather than an Anthropic API key.
 
 ## Why two scripts
@@ -120,3 +120,59 @@ implementation must respect:
    surface.** Generation defaults apply for any harness call routed
    through the CLI provider. Methods documentation should record the
    defaults rather than the experimental settings.
+
+## Using Claude Code as the inference backend
+
+Once both diagnostics pass, the `--provider claude_code` flag routes any
+experiment through the `ClaudeCodeClient` adapter in `src/models.py`.
+
+### Prerequisites
+
+- Both diagnostic scripts pass.
+- For subscription billing: `claude setup-token` has been run and the
+  shell has `CLAUDE_CODE_OAUTH_TOKEN` exported, or the keychain holds a
+  valid login session.
+- For API-key billing: `ANTHROPIC_API_KEY` is exported.
+
+### Invocation
+
+```bash
+uv run --active python -m src.cli run \
+    --experiment exp1a \
+    --provider claude_code \
+    --model sonnet \
+    --condition strong_positive \
+    --num-runs 5 \
+    --bank arithmetic_easy_v1 \
+    --output-dir results/exp1a_claude_code_smoke \
+    --skip-prereg-gate --skip-power-gate
+```
+
+`--model` accepts CLI selectors (`sonnet`, `opus`, `haiku`) or full model
+IDs. The adapter handles auth detection, `--bare` decision, stream-JSON
+formatting, and per-call timeout (default 120s).
+
+### Methodological caveats
+
+The CLI does not honor `--temperature` or `--max-tokens`. By default
+`ClaudeCodeClient` raises `ClaudeCodeUnsupportedParameterError` if a
+caller passes a temperature different from 1.0 or any non-`None`
+max_tokens. Pre-registered experiments that commit to specific
+generation parameters cannot be replicated under this backend without
+a pre-registration amendment.
+
+To proceed with non-default parameters under explicit acknowledgement
+of the deviation, construct the client with `strict_params=False`. The
+client's `params_unhonored` attribute is set, and the pilot manifest
+records `inference_params_unhonored: true`.
+
+### Cost reporting
+
+The CLI emits `total_cost_usd` in its terminal `result` event under
+API-key auth. `ClaudeCodeClient.total_cost_usd` accumulates per-call
+costs; the pilot manifest records the total under
+`inference_total_cost_usd`. Subscription auth typically reports the
+cost field as `null`; the manifest then records `0.0`.
+
+The auth source is recorded in the manifest under
+`inference_auth_source` (one of `subscription`, `api`, `unknown`).

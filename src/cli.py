@@ -230,6 +230,7 @@ def _write_pilot_manifest(
     completed_utc: str,
     per_cond_elapsed: dict[str, float],
     per_cond_count: dict[str, int],
+    client=None,
 ) -> Path:
     """Write a manifest.yaml at the pilot root capturing everything needed
     to reproduce the run from disk alone: model, experiment, conditions,
@@ -309,6 +310,16 @@ def _write_pilot_manifest(
             for cond in (c.value if hasattr(c, "value") else str(c) for c in conditions)
         },
     }
+
+    # Inference-backend metadata (currently only ClaudeCodeClient surfaces these).
+    auth_source = getattr(client, "auth_source", None)
+    if auth_source is not None:
+        payload["inference_auth_source"] = auth_source
+    total_cost = getattr(client, "total_cost_usd", None)
+    if total_cost is not None:
+        payload["inference_total_cost_usd"] = round(float(total_cost), 6)
+    if getattr(client, "params_unhonored", False):
+        payload["inference_params_unhonored"] = True
     manifest_path.write_text(_yaml.safe_dump(payload, sort_keys=False))
     return manifest_path
 
@@ -861,6 +872,7 @@ def _build_client(args):
     """
     from .models import (
         AnthropicClient,
+        ClaudeCodeClient,
         DryRunClient,
         OpenAIClient,
         VLLMClient,
@@ -871,6 +883,17 @@ def _build_client(args):
         return DryRunClient(model=args.model)
 
     provider = getattr(args, "provider", "vllm")
+
+    if provider == "claude_code":
+        if args.base_model:
+            print(
+                "error: --base-model is not supported with --provider claude_code "
+                "(the `claude` CLI is a chat-completion proxy, not a raw-completion "
+                "endpoint).",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        return ClaudeCodeClient(model=args.model)
 
     if provider == "openai":
         if args.base_model:
@@ -895,7 +918,7 @@ def _build_client(args):
     if provider != "vllm":
         print(
             f"error: unknown provider {provider!r}; expected one of "
-            "{vllm, openai, anthropic}",
+            "{vllm, openai, anthropic, claude_code}",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -1110,6 +1133,7 @@ def cmd_run(args):
         completed_utc=completed_utc,
         per_cond_elapsed={condition_value: elapsed},
         per_cond_count={condition_value: runs_completed},
+        client=client,
     )
     print(f"\nRun complete in {elapsed:.1f}s. Results in {output_dir}/")
 
@@ -1534,7 +1558,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--num-runs", type=int, default=50)
     p_run.add_argument("--temperature", type=float, default=0.7)
     p_run.add_argument(
-        "--provider", default="vllm", choices=["vllm", "openai", "anthropic"],
+        "--provider", default="vllm", choices=["vllm", "openai", "anthropic", "claude_code"],
         help=(
             "Inference provider. 'vllm' (default) uses a local/remote "
             "OpenAI-compatible server (typically RunPod). 'openai' uses "
@@ -1605,7 +1629,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pilot.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
                          help="Experiment type (paper §3 alignment; default exp1a)")
     p_pilot.add_argument(
-        "--provider", default="vllm", choices=["vllm", "openai", "anthropic"],
+        "--provider", default="vllm", choices=["vllm", "openai", "anthropic", "claude_code"],
         help="Inference provider; see `affect-battery run --help`.",
     )
     p_pilot.add_argument("--base-url", default="http://localhost:8000/v1")
