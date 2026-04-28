@@ -22,6 +22,7 @@ import pytest
 class _CapturedSubprocessCall:
     argv: list[str]
     stdin: bytes
+    proc: "_MockProcess | None" = None
 
 
 class _MockProcess:
@@ -75,8 +76,8 @@ def mock_claude_subprocess(monkeypatch):
     recorder = _SubprocessRecorder()
 
     async def fake_create(*args, **kwargs):
-        recorder.calls.append(_CapturedSubprocessCall(argv=list(args), stdin=b""))
         proc = _MockProcess(recorder._stdout, recorder._stderr, recorder._returncode, hang=recorder._hang)
+        recorder.calls.append(_CapturedSubprocessCall(argv=list(args), stdin=b"", proc=proc))
         original_communicate = proc.communicate
 
         async def communicate_with_capture(stdin: bytes | None = None):
@@ -92,13 +93,15 @@ def mock_claude_subprocess(monkeypatch):
 
 @pytest.fixture
 def mock_claude_auth(monkeypatch):
-    """Patch subprocess.run for `claude auth status --text` and shutil.which for `claude`.
+    """Patch subprocess.run for `claude auth status --text`.
 
     Default: subscription auth, claude on PATH. Override via setter
-    `set_auth(text, returncode=0)` and `set_binary_present(present)`.
+    `set_auth(text, returncode=0)` and `set_binary_present(present)`. When
+    binary_present is False, the auth probe raises FileNotFoundError to
+    mirror the real subprocess behavior with a missing binary.
     """
     state = {
-        "auth_text": "Logged in to Claude Max subscription as user@example.com",
+        "auth_text": b"Login method: Claude Max account (user@example.com)",
         "auth_returncode": 0,
         "binary_present": True,
     }
@@ -106,26 +109,22 @@ def mock_claude_auth(monkeypatch):
 
     def fake_run(argv, **kwargs):
         if argv[:2] == ["claude", "auth"]:
+            if not state["binary_present"]:
+                raise FileNotFoundError(
+                    "[Errno 2] No such file or directory: 'claude'"
+                )
+
             class _R:
                 stdout = state["auth_text"]
-                stderr = ""
+                stderr = b""
                 returncode = state["auth_returncode"]
             return _R()
         return original_run(argv, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    def fake_which(name):
-        if name == "claude":
-            return "/usr/local/bin/claude" if state["binary_present"] else None
-        import shutil
-        return shutil.which.__wrapped__(name) if hasattr(shutil.which, "__wrapped__") else None
-
-    import shutil
-    monkeypatch.setattr(shutil, "which", fake_which)
-
     def set_auth(text: str, returncode: int = 0):
-        state["auth_text"] = text
+        state["auth_text"] = text.encode("utf-8") if isinstance(text, str) else text
         state["auth_returncode"] = returncode
 
     def set_binary_present(present: bool):
@@ -294,12 +293,36 @@ async def test_non_default_max_tokens_raises_in_strict_mode(mock_claude_auth):
 
 
 @pytest.mark.asyncio
-async def test_strict_params_false_allows_non_default(mock_claude_subprocess, mock_claude_auth):
+async def test_strict_params_false_records_unhonored_calls(mock_claude_subprocess, mock_claude_auth):
+    from src.models import ClaudeCodeClient
+    client = ClaudeCodeClient(model="sonnet", strict_params=False)
+
+    mock_claude_subprocess.set_response(stdout=_result_event())
+    await client.complete([{"role": "user", "content": "q"}], temperature=0.7, max_tokens=512)
+    mock_claude_subprocess.set_response(stdout=_result_event())
+    await client.complete([{"role": "user", "content": "q"}], temperature=1.0, max_tokens=None)
+    mock_claude_subprocess.set_response(stdout=_result_event())
+    await client.complete([{"role": "user", "content": "q"}], temperature=0.5, max_tokens=None)
+
+    # First and third calls deviated; second call used defaults.
+    assert client.unhonored_calls == [(0.7, 512), (0.5, None)]
+    assert client.params_unhonored is True
+    meta = client.manifest_metadata()
+    assert meta["inference_unhonored_calls"] == [
+        {"temperature": 0.7, "max_tokens": 512},
+        {"temperature": 0.5, "max_tokens": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_strict_params_false_compliant_calls_leave_no_record(mock_claude_subprocess, mock_claude_auth):
     from src.models import ClaudeCodeClient
     mock_claude_subprocess.set_response(stdout=_result_event())
     client = ClaudeCodeClient(model="sonnet", strict_params=False)
-    await client.complete([{"role": "user", "content": "q"}], temperature=0.7, max_tokens=512)
-    assert client.params_unhonored is True
+    await client.complete([{"role": "user", "content": "q"}], temperature=1.0, max_tokens=None)
+    assert client.unhonored_calls == []
+    assert client.params_unhonored is False
+    assert "inference_unhonored_calls" not in client.manifest_metadata()
 
 
 # -----------------------------------------------------------------------------
@@ -309,18 +332,30 @@ async def test_strict_params_false_allows_non_default(mock_claude_subprocess, mo
 
 def test_subscription_auth_detected(mock_claude_auth):
     from src.models import ClaudeCodeClient
-    mock_claude_auth["set_auth"]("Logged in to Claude Max subscription")
+    mock_claude_auth["set_auth"]("Login method: Claude Max account (user@example.com)")
     client = ClaudeCodeClient(model="sonnet")
     assert client.auth_source == "subscription"
-    assert "--bare" not in client._cli_args
+    assert "--bare" not in client._argv
 
 
 def test_api_auth_detected(mock_claude_auth):
     from src.models import ClaudeCodeClient
-    mock_claude_auth["set_auth"]("Logged in to the Anthropic Console (API key)")
+    mock_claude_auth["set_auth"]("Login method: Anthropic Console (API key)")
     client = ClaudeCodeClient(model="sonnet")
     assert client.auth_source == "api"
-    assert "--bare" in client._cli_args
+    assert "--bare" in client._argv
+
+
+def test_subscription_with_api_word_in_banner_stays_subscription(mock_claude_auth):
+    """A subscription banner that mentions "API access" must classify as subscription."""
+    from src.models import ClaudeCodeClient
+    mock_claude_auth["set_auth"](
+        "API access included with your subscription.\n"
+        "Login method: Claude Max account (user@example.com)"
+    )
+    client = ClaudeCodeClient(model="sonnet")
+    assert client.auth_source == "subscription"
+    assert "--bare" not in client._argv
 
 
 def test_unknown_auth_omits_bare_and_warns(mock_claude_auth, mock_claude_subprocess, capsys):
@@ -328,7 +363,7 @@ def test_unknown_auth_omits_bare_and_warns(mock_claude_auth, mock_claude_subproc
     mock_claude_auth["set_auth"]("some unrecognized auth response from a future CLI version")
     client = ClaudeCodeClient(model="sonnet")
     assert client.auth_source == "unknown"
-    assert "--bare" not in client._cli_args
+    assert "--bare" not in client._argv
     err = capsys.readouterr().err.lower()
     assert "unrecognized" in err or "unknown" in err
     assert "--bare" in err
@@ -360,6 +395,11 @@ async def test_timeout_kills_subprocess_and_raises(mock_claude_subprocess, mock_
     client = ClaudeCodeClient(model="sonnet", timeout=0.1)
     with pytest.raises(ClaudeCodeTimeoutError):
         await client.complete([{"role": "user", "content": "q"}], temperature=1.0, max_tokens=None)
+    # The single recorded call must have had its subprocess killed; without
+    # the kill the child process leaks and may deadlock on a full stdout buffer.
+    assert len(mock_claude_subprocess) == 1
+    proc = mock_claude_subprocess[0].proc
+    assert proc.killed is True
 
 
 # -----------------------------------------------------------------------------

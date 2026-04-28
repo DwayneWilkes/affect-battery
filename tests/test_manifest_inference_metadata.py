@@ -38,13 +38,17 @@ def _args(**overrides):
     return SimpleNamespace(**base)
 
 
+def _fake_client(**meta):
+    """Build a fake client whose manifest_metadata() returns the given dict."""
+    return SimpleNamespace(manifest_metadata=lambda: meta)
+
+
 def test_manifest_records_claude_code_metadata(tmp_path):
     from src.cli import _write_pilot_manifest
 
-    fake_client = SimpleNamespace(
-        auth_source="subscription",
-        total_cost_usd=0.42,
-        params_unhonored=False,
+    fake_client = _fake_client(
+        inference_auth_source="subscription",
+        inference_total_cost_usd=0.42,
     )
     _write_pilot_manifest(
         pilot_root=tmp_path,
@@ -63,13 +67,16 @@ def test_manifest_records_claude_code_metadata(tmp_path):
     assert manifest["inference_total_cost_usd"] == 0.42
 
 
-def test_manifest_records_params_unhonored_when_set(tmp_path):
+def test_manifest_records_unhonored_calls_when_set(tmp_path):
     from src.cli import _write_pilot_manifest
 
-    fake_client = SimpleNamespace(
-        auth_source="api",
-        total_cost_usd=0.0,
-        params_unhonored=True,
+    fake_client = _fake_client(
+        inference_auth_source="api",
+        inference_total_cost_usd=0.0,
+        inference_unhonored_calls=[
+            {"temperature": 0.7, "max_tokens": 512},
+            {"temperature": 0.7, "max_tokens": 256},
+        ],
     )
     _write_pilot_manifest(
         pilot_root=tmp_path, args=_args(),
@@ -79,15 +86,18 @@ def test_manifest_records_params_unhonored_when_set(tmp_path):
         client=fake_client,
     )
     manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
-    assert manifest["inference_params_unhonored"] is True
+    assert manifest["inference_unhonored_calls"] == [
+        {"temperature": 0.7, "max_tokens": 512},
+        {"temperature": 0.7, "max_tokens": 256},
+    ]
 
 
 def test_manifest_omits_inference_fields_when_client_lacks_them(tmp_path):
-    """OpenAI / Anthropic / VLLM clients don't carry these attributes;
-    the manifest must not write the fields when absent."""
+    """OpenAI / Anthropic / VLLM clients don't carry manifest_metadata;
+    the manifest must not write inference fields when absent."""
     from src.cli import _write_pilot_manifest
 
-    fake_client = SimpleNamespace(model_name="gpt-5.4-nano")  # no auth_source, etc.
+    fake_client = SimpleNamespace(model_name="gpt-5.4-nano")  # no manifest_metadata
     _write_pilot_manifest(
         pilot_root=tmp_path, args=_args(provider="openai"),
         conditions=[], bank_id="b", bank_hash="h",
@@ -98,7 +108,7 @@ def test_manifest_omits_inference_fields_when_client_lacks_them(tmp_path):
     manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
     assert "inference_auth_source" not in manifest
     assert "inference_total_cost_usd" not in manifest
-    assert "inference_params_unhonored" not in manifest
+    assert "inference_unhonored_calls" not in manifest
 
 
 def test_manifest_omits_inference_fields_when_client_is_none(tmp_path):

@@ -311,15 +311,11 @@ def _write_pilot_manifest(
         },
     }
 
-    # Inference-backend metadata (currently only ClaudeCodeClient surfaces these).
-    auth_source = getattr(client, "auth_source", None)
-    if auth_source is not None:
-        payload["inference_auth_source"] = auth_source
-    total_cost = getattr(client, "total_cost_usd", None)
-    if total_cost is not None:
-        payload["inference_total_cost_usd"] = round(float(total_cost), 6)
-    if getattr(client, "params_unhonored", False):
-        payload["inference_params_unhonored"] = True
+    # Inference-backend metadata. Clients implementing manifest_metadata()
+    # surface auth source, accumulated cost, and any per-call deviation
+    # records; clients without the method contribute nothing.
+    if client is not None and hasattr(client, "manifest_metadata"):
+        payload.update(client.manifest_metadata())
     manifest_path.write_text(_yaml.safe_dump(payload, sort_keys=False))
     return manifest_path
 
@@ -854,22 +850,23 @@ def _quiet_per_run_logger() -> None:
     logging.getLogger("src.runner").setLevel(logging.WARNING)
 
 
+PROVIDERS = ("vllm", "openai", "anthropic", "claude_code")
+
+# Providers that do not expose a raw-completion endpoint; --base-model
+# routes via /v1/completions and only vllm offers it for non-instruct
+# checkpoints. Mapped value is the operator-facing reason.
+_BASE_MODEL_INCOMPATIBLE = {
+    "openai": "no raw-completion endpoint on modern OpenAI chat models",
+    "anthropic": "no raw-completion endpoint on Anthropic API",
+    "claude_code": (
+        "the `claude` CLI is a chat-completion proxy, not a raw-completion "
+        "endpoint"
+    ),
+}
+
+
 def _build_client(args):
-    """Construct the right ModelClient subclass for `args.provider`.
-
-    Provider matrix:
-      - dry-run (any provider) -> DryRunClient
-      - openai -> OpenAIClient (chat only; refuses --base-model)
-      - anthropic -> AnthropicClient (chat only; refuses --base-model)
-      - vllm + --base-model -> VLLMCompletionClient (raw completions
-        endpoint for the few-shot scaffold path)
-      - vllm (default) -> VLLMClient (chat-completions endpoint)
-
-    The OpenAI / Anthropic clients refuse --base-model because neither
-    provider exposes a raw-completion endpoint for their newer models;
-    base-model studies require a vLLM endpoint with a non-instruct
-    checkpoint.
-    """
+    """Construct the right ModelClient subclass for `args.provider`."""
     from .models import (
         AnthropicClient,
         ClaudeCodeClient,
@@ -884,41 +881,24 @@ def _build_client(args):
 
     provider = getattr(args, "provider", "vllm")
 
+    if provider in _BASE_MODEL_INCOMPATIBLE and args.base_model:
+        print(
+            f"error: --base-model is not supported with --provider {provider} "
+            f"({_BASE_MODEL_INCOMPATIBLE[provider]}).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
     if provider == "claude_code":
-        if args.base_model:
-            print(
-                "error: --base-model is not supported with --provider claude_code "
-                "(the `claude` CLI is a chat-completion proxy, not a raw-completion "
-                "endpoint).",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
         return ClaudeCodeClient(model=args.model)
-
     if provider == "openai":
-        if args.base_model:
-            print(
-                "error: --base-model is not supported with --provider openai "
-                "(no raw-completion endpoint on modern OpenAI chat models)",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
         return OpenAIClient(model=args.model)
-
     if provider == "anthropic":
-        if args.base_model:
-            print(
-                "error: --base-model is not supported with --provider anthropic "
-                "(no raw-completion endpoint on Anthropic API)",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
         return AnthropicClient(model=args.model)
-
     if provider != "vllm":
         print(
             f"error: unknown provider {provider!r}; expected one of "
-            "{vllm, openai, anthropic, claude_code}",
+            f"{{{', '.join(PROVIDERS)}}}",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -1558,7 +1538,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--num-runs", type=int, default=50)
     p_run.add_argument("--temperature", type=float, default=0.7)
     p_run.add_argument(
-        "--provider", default="vllm", choices=["vllm", "openai", "anthropic", "claude_code"],
+        "--provider", default="vllm", choices=list(PROVIDERS),
         help=(
             "Inference provider. 'vllm' (default) uses a local/remote "
             "OpenAI-compatible server (typically RunPod). 'openai' uses "
@@ -1629,7 +1609,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pilot.add_argument("--experiment", default="exp1a", choices=EXPERIMENT_CHOICES,
                          help="Experiment type (paper §3 alignment; default exp1a)")
     p_pilot.add_argument(
-        "--provider", default="vllm", choices=["vllm", "openai", "anthropic", "claude_code"],
+        "--provider", default="vllm", choices=list(PROVIDERS),
         help="Inference provider; see `affect-battery run --help`.",
     )
     p_pilot.add_argument("--base-url", default="http://localhost:8000/v1")
