@@ -135,11 +135,17 @@ class Exp3aBody:
     INTENSITY_LEVELS[level-1].feedback_text as the system message and one
     bank item as the user message. The model's numeric response, the
     expected answer, and per-cell binary correctness are recorded for
-    quadratic-fit aggregation."""
+    quadratic-fit aggregation. sampling_mode discriminates the parent
+    pre-reg's cross-level disjoint design from the amendment-002
+    within-subjects design (each item shown at every level); item_id
+    preserves the bank item's identifier for the within-subjects
+    random-effects analysis."""
     intensity_level: int
     model_response: str = ""
     expected_answer: str = ""
     binary_correct: int = 0
+    sampling_mode: str = "cross_level_disjoint"
+    item_id: str = ""
 
 
 @dataclass

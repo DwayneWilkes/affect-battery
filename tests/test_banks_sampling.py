@@ -69,3 +69,48 @@ def test_exact_size_bank_succeeds():
     all_ids = {item["id"] for level in levels for item in level}
     assert len(all_ids) == 35
     assert len(levels) == 7
+
+
+def test_within_subjects_same_items_at_every_level():
+    from src.banks.sampling import sample_items_within_subjects
+    items = _bank(50)
+    levels = sample_items_within_subjects(items, n_per_level=10, n_levels=7, seed=42)
+    assert len(levels) == 7
+    first_ids = [item["id"] for item in levels[0]]
+    assert len(first_ids) == 10
+    assert len(set(first_ids)) == 10
+    for level in levels[1:]:
+        assert [item["id"] for item in level] == first_ids
+
+
+def test_within_subjects_deterministic_by_seed():
+    from src.banks.sampling import sample_items_within_subjects
+    items = _bank(50)
+    a = sample_items_within_subjects(items, n_per_level=10, n_levels=7, seed=42)
+    b = sample_items_within_subjects(items, n_per_level=10, n_levels=7, seed=42)
+    a_map = [(L, R, item["id"]) for L, level in enumerate(a) for R, item in enumerate(level)]
+    b_map = [(L, R, item["id"]) for L, level in enumerate(b) for R, item in enumerate(level)]
+    assert a_map == b_map
+
+
+def test_within_subjects_different_seeds_different_items():
+    from src.banks.sampling import sample_items_within_subjects
+    items = _bank(50)
+    a = sample_items_within_subjects(items, n_per_level=10, n_levels=7, seed=42)
+    b = sample_items_within_subjects(items, n_per_level=10, n_levels=7, seed=99)
+    assert [it["id"] for it in a[0]] != [it["id"] for it in b[0]]
+
+
+def test_within_subjects_n_per_level_size_only():
+    from src.banks.sampling import sample_items_within_subjects
+    items = _bank(122)
+    levels = sample_items_within_subjects(items, n_per_level=122, n_levels=7, seed=42)
+    assert len(levels) == 7
+    assert len(levels[0]) == 122
+
+
+def test_within_subjects_insufficient_bank_raises():
+    from src.banks.sampling import sample_items_within_subjects
+    items = _bank(5)
+    with pytest.raises(ValueError):
+        sample_items_within_subjects(items, n_per_level=10, n_levels=7, seed=42)

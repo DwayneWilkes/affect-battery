@@ -928,6 +928,7 @@ def _build_runner_extra_kwargs(args) -> dict:
     if args.experiment == "exp3a":
         extra["intensity_levels"] = cfg["intensity_levels"]
         extra["pilot_seed_path"] = Path(cfg["pilot_seed_path"])
+        extra["sampling_mode"] = cfg.get("sampling_mode", "cross_level_disjoint")
     elif args.experiment == "exp3b":
         extra["prompts"] = cfg["prompts"]
         extra["n_generations"] = cfg.get("n_generations", 10)

@@ -21,7 +21,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from src.banks.loader import load_bank_items
-from src.banks.sampling import sample_items
+from src.banks.sampling import sample_items, sample_items_within_subjects
 from src.conditioning.prompts import INTENSITY_LEVELS
 from src.runner import Exp3aBody, ExperimentType, RunResult, save_result
 from src.scoring.accuracy import extract_numeric_answer
@@ -60,9 +60,18 @@ async def run_exp3a(
     intensity_levels: list[int],
     pilot_seed_path: Path,
     output_dir: Path | None = None,
+    sampling_mode: str = "cross_level_disjoint",
     **_kwargs,
 ):
-    """Run Exp 3a across the configured intensity levels."""
+    """Run Exp 3a across the configured intensity levels.
+
+    sampling_mode = "cross_level_disjoint" (default, parent pre-reg):
+      each level draws n_per_level disjoint items from the bank.
+    sampling_mode = "within_subjects" (amendment 002):
+      every level shares the SAME n_per_level items in the same order,
+      so each item is paired with each intensity level. Eliminates the
+      per-level item-pool confound for the random-effects analysis.
+    """
     if config.experiment_type != ExperimentType.AROUSAL_PERFORMANCE:
         raise ValueError(
             f"run_exp3a requires config.experiment_type=AROUSAL_PERFORMANCE; "
@@ -70,13 +79,23 @@ async def run_exp3a(
         )
     if not intensity_levels:
         raise ValueError("intensity_levels must be non-empty")
+    if sampling_mode not in ("cross_level_disjoint", "within_subjects"):
+        raise ValueError(
+            f"unknown sampling_mode {sampling_mode!r}; expected one of "
+            "{cross_level_disjoint, within_subjects}"
+        )
 
     _validate_pilot_seed(pilot_seed_path)
 
     if not config.transfer_bank:
         raise ValueError("run_exp3a requires config.transfer_bank to be set")
     items = load_bank_items(config.transfer_bank)
-    per_level = sample_items(
+    sampler = (
+        sample_items_within_subjects
+        if sampling_mode == "within_subjects"
+        else sample_items
+    )
+    per_level = sampler(
         items,
         n_per_level=config.num_runs,
         n_levels=len(intensity_levels),
@@ -119,6 +138,8 @@ async def run_exp3a(
                     model_response=response,
                     expected_answer=expected,
                     binary_correct=binary,
+                    sampling_mode=sampling_mode,
+                    item_id=item.get("id", ""),
                 ),
             )
             result.compute_checksum()
