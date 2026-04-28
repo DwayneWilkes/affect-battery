@@ -23,7 +23,7 @@ from pathlib import Path
 from src.banks.loader import load_bank_items
 from src.banks.sampling import sample_items
 from src.conditioning.prompts import INTENSITY_LEVELS
-from src.runner import Exp3aBody, ExperimentType, RunResult
+from src.runner import Exp3aBody, ExperimentType, RunResult, save_result
 from src.scoring.accuracy import extract_numeric_answer
 from src.util import canonical_json_bytes
 
@@ -122,4 +122,6 @@ async def run_exp3a(
                 ),
             )
             result.compute_checksum()
+            if level_dir is not None:
+                save_result(result, level_dir)
             yield result
