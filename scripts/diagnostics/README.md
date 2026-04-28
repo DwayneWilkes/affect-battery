@@ -1,9 +1,25 @@
-# Claude Code CLI diagnostics
+# Claude Code CLI as an inference backend
 
-These scripts verify that the Claude Code CLI can serve as a chat-completion
-backend for the affect-battery harness. Run them before attempting to use
-`--provider claude_code` against a real experiment, especially if you intend
-to run on a Claude subscription rather than an Anthropic API key.
+This directory contains two diagnostic scripts and the operator-facing
+documentation for routing affect-battery experiments through the
+`claude` CLI via `--provider claude_code`. The integration adapter
+itself lives at `src/models.py::ClaudeCodeClient`; this README covers
+the diagnostics, the operator workflow, and the methodological caveats
+operators need to know before relying on the CLI path.
+
+## TL;DR
+
+```bash
+# 1. Verify the CLI can serve as a chat-completion backend.
+bash scripts/diagnostics/check_claude_cli.sh
+python scripts/diagnostics/check_claude_cli_multiturn.py
+
+# 2. Run any experiment with --provider claude_code.
+uv run --active python -m src.cli run --provider claude_code --model sonnet ...
+```
+
+See *Using Claude Code as the inference backend* below for the full
+workflow, manifest fields, and error semantics.
 
 ## Why two scripts
 
@@ -48,7 +64,7 @@ python scripts/diagnostics/check_claude_cli_multiturn.py
 ### Python diagnostic results
 
 - **PASS on all four tests**: the CLI is ready for the affect-battery
-  harness. Build the `ClaudeCliClient` integration.
+  harness. Run experiments via `--provider claude_code`.
 - **FAIL on basic stream-json**: the CLI may use a different stream-json
   schema than this script expects. Inspect the script's
   `format_messages_as_stream_json` function and try alternative shapes.
@@ -74,8 +90,8 @@ claude setup-token
 # Export it for subsequent invocations.
 export CLAUDE_CODE_OAUTH_TOKEN=<token>
 
-# The harness's ClaudeCliClient (once built) will pick up this token
-# automatically when no API key is set.
+# The harness's ClaudeCodeClient picks up this token automatically
+# when no API key is set.
 ```
 
 The token is tied to your subscription quota. Pro and Max plans have
@@ -93,13 +109,16 @@ re-run the diagnostic after upgrading the CLI to confirm.
 
 For publication-grade results, prefer the Anthropic API path
 (`--provider anthropic` with an API key) where temperature, max_tokens,
-and other generation parameters are under explicit control. The CLI path
-is well-suited to exploration and feasibility checks where rough
-parameter control is acceptable.
+and other generation parameters are under explicit control.
+`ClaudeCodeClient` runs in strict mode by default and raises on any
+non-default `temperature` or `max_tokens`, so a runner that depends on
+those settings cannot accidentally generate publication-grade data
+through the CLI path. The CLI path suits exploration and feasibility
+checks where the CLI's defaults are acceptable.
 
 ## CLI architecture findings (verified against Claude Code 2.1.120)
 
-The diagnostics surface four constraints that any `ClaudeCliClient`
+The diagnostics surface four constraints that any `ClaudeCodeClient`
 implementation must respect:
 
 1. **`--bare` skips OAuth and keychain reads.** Subscription auth (Claude
@@ -123,20 +142,20 @@ implementation must respect:
 
 ## Using Claude Code as the inference backend
 
-Once both diagnostics pass, the `--provider claude_code` flag routes any
-experiment through the `ClaudeCodeClient` adapter in `src/models.py`.
+`--provider claude_code` routes any experiment through the
+`ClaudeCodeClient` adapter in `src/models.py`. The adapter spawns a
+`claude` subprocess per `complete()` call, formats messages as
+stream-JSON, parses the result event, and conforms to the same
+`ModelClient` ABC as `OpenAIClient` and `AnthropicClient`.
 
-### Prerequisites
-
-- Both diagnostic scripts pass.
-- For subscription billing: `claude setup-token` has been run and the
-  shell has `CLAUDE_CODE_OAUTH_TOKEN` exported, or the keychain holds a
-  valid login session.
-- For API-key billing: `ANTHROPIC_API_KEY` is exported.
-
-### Invocation
+### Quick start
 
 ```bash
+# 1. Prerequisites: both diagnostics pass; either subscription or API auth.
+bash scripts/diagnostics/check_claude_cli.sh
+python scripts/diagnostics/check_claude_cli_multiturn.py
+
+# 2. Run an experiment.
 uv run --active python -m src.cli run \
     --experiment exp1a \
     --provider claude_code \
@@ -144,35 +163,69 @@ uv run --active python -m src.cli run \
     --condition strong_positive \
     --num-runs 5 \
     --bank arithmetic_easy_v1 \
-    --output-dir results/exp1a_claude_code_smoke \
+    --output-dir results/exp1a_smoke \
     --skip-prereg-gate --skip-power-gate
 ```
 
-`--model` accepts CLI selectors (`sonnet`, `opus`, `haiku`) or full model
-IDs. The adapter handles auth detection, `--bare` decision, stream-JSON
-formatting, and per-call timeout (default 120s).
+`--model` accepts CLI selectors (`sonnet`, `opus`, `haiku`) or full
+model IDs. Per-call timeout defaults to 120s.
 
-### Methodological caveats
+### Auth and `--bare`
 
-The CLI does not honor `--temperature` or `--max-tokens`. By default
-`ClaudeCodeClient` raises `ClaudeCodeUnsupportedParameterError` if a
-caller passes a temperature different from 1.0 or any non-`None`
-max_tokens. Pre-registered experiments that commit to specific
-generation parameters cannot be replicated under this backend without
-a pre-registration amendment.
+Auth source is detected once at construction by parsing `claude auth
+status --text`. The adapter then chooses whether to pass `--bare` to
+the subprocess based on the source:
 
-To proceed with non-default parameters under explicit acknowledgement
-of the deviation, construct the client with `strict_params=False`. The
-client's `params_unhonored` attribute is set, and the pilot manifest
-records `inference_params_unhonored: true`.
+| Auth source detected | `--bare` | Behavior |
+|---|---|---|
+| `subscription` (Claude Pro/Max) | omitted | OAuth/keychain reads happen; subscription billing applies |
+| `api` (Anthropic Console) | included | Skips OAuth/keychain reads; faster scripted use |
+| `unknown` (unrecognized text) | omitted | Fail-safe: preserves subscription auth if the user is on Max/Pro. A one-time stderr warning prints the unrecognized text |
 
-### Cost reporting
+For subscription scripted use, run `claude setup-token` and export
+`CLAUDE_CODE_OAUTH_TOKEN` so a fresh shell can authenticate without an
+interactive login.
 
-The CLI emits `total_cost_usd` in its terminal `result` event under
-API-key auth. `ClaudeCodeClient.total_cost_usd` accumulates per-call
-costs; the pilot manifest records the total under
-`inference_total_cost_usd`. Subscription auth typically reports the
-cost field as `null`; the manifest then records `0.0`.
+### Generation parameters
 
-The auth source is recorded in the manifest under
-`inference_auth_source` (one of `subscription`, `api`, `unknown`).
+The CLI does not expose `--temperature` or `--max-tokens`. The adapter
+enforces this at the boundary:
+
+| Mode | Behavior on non-default `temperature` or `max_tokens` |
+|---|---|
+| `strict_params=True` (default) | Raises `ClaudeCodeUnsupportedParameterError` before subprocess launch. The error message names the offending parameter and value. |
+| `strict_params=False` | Logs a WARNING with the offending value, appends `(temperature, max_tokens)` to `client.unhonored_calls`, and proceeds with the CLI's defaults. |
+
+Pre-registered experiments that commit to specific generation
+parameters cannot be replicated under this backend without a
+pre-registration amendment that documents the deviation.
+
+### Pilot manifest fields
+
+When a pilot run uses `--provider claude_code`, the manifest writer
+calls `client.manifest_metadata()` and merges its return value into
+`manifest.yaml`. Fields:
+
+| Field | Always present | Value |
+|---|---|---|
+| `inference_auth_source` | yes | `subscription`, `api`, or `unknown` |
+| `inference_total_cost_usd` | yes | sum of per-call `total_cost_usd` from the CLI's result events; `0.0` under subscription auth (CLI reports `null`) |
+| `inference_unhonored_calls` | only when at least one lenient-mode call deviated | list of `{temperature, max_tokens}` records, one per deviating call |
+
+A run that produced no deviations omits `inference_unhonored_calls`
+entirely; a run with one deviation among many compliant calls records
+exactly that one. Operators reading the manifest see precisely which
+parameter values were dropped, not a sticky boolean.
+
+### Error handling
+
+| Exception | Raised when |
+|---|---|
+| `ClaudeCodeNotAvailableError` | `claude` binary not on PATH at construction |
+| `ClaudeCodeAuthError` | `claude auth status` exits non-zero or times out |
+| `ClaudeCodeTimeoutError` | a `complete()` call exceeds the configured timeout (default 120s); subprocess is killed and pipes drained before raising |
+| `ClaudeCodeProtocolError` | the CLI's stream-JSON output contains no `result` event with `subtype="success"` |
+| `ClaudeCodeUnsupportedParameterError` | strict mode + non-default `temperature` or `max_tokens` |
+
+All five subclass `ClaudeCodeError`. Catching the base class covers
+every adapter-specific failure mode.
