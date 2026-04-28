@@ -9,27 +9,21 @@ def extract_numeric_answer(text: str) -> float | None:
     Priority order per spec (scoring-pipeline Requirement: Numeric answer
     extraction):
         1. Explicit answer markers: "the answer is X", "answer: X",
-           "total: X", "total = X", "result is X", "result: X",
-           "equals X"
+           "equals X", "result is X"
         2. Boxed answers: \\boxed{X}
         3. Equals sign: "= X"
         4. Last number in text (fallback)
-
-    Within each priority tier, the LAST match in the text wins. Models
-    emitting chain-of-thought responses produce intermediate '=' lines
-    (e.g. "6 * 75 = 450 ... Total = 770"); picking the first match
-    extracts an intermediate value rather than the final answer.
     """
     priority_patterns = [
-        r'(?:the answer is|answer:|total:|total\s*=|result is|result:|equals)\s*\**\s*(-?[\d,]+\.?\d*)',
+        r'(?:the answer is|answer:|equals|result is)\s*(-?[\d,]+\.?\d*)',
         r'\\boxed\{(-?[\d,]+\.?\d*)\}',
-        r'(?:=)\s*\**\s*(-?[\d,]+\.?\d*)',
+        r'(?:=)\s*(-?[\d,]+\.?\d*)',
     ]
     for pattern in priority_patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        if matches:
-            return float(matches[-1].replace(",", ""))
-
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return float(match.group(1).replace(",", ""))
+    
     # Fall back to last number in text.
     # Use word-boundary negative sign (preceded by space/start, not digit/letter)
     # to avoid parsing hyphens in ranges like "3-5" as negative numbers.
