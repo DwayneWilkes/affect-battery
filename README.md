@@ -4,7 +4,7 @@ Eval harness for the Affect Battery study: do AI emotional states follow biologi
 
 **Project:** Sentient Futures Project Incubator, P1
 **Lead:** Dwayne Wilkes | **Mentor:** Julia Bossmann
-**License:** [SAFE-AI v1.2.0](LICENSE)
+**License:** [SAFE-AI v1.0.0](LICENSE)
 
 ## Quick Start
 
