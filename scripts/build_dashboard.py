@@ -7,12 +7,25 @@ data embedded inline (no external data fetches; works via file://).
 Usage:
     uv run python scripts/build_dashboard.py \
         --pilot-dir results/pilots/<DATE>_<MODEL_SLUG> \
-        --output    results/pilots/<DATE>_<MODEL_SLUG>/dashboard.html
+        --output    results/pilots/<DATE>_<MODEL_SLUG>/dashboard.html \
+        [--exp3a-dir <H3a_RESULTS_DIR>] \
+        [--probes-dir <PROBES_DIR>]
+
+`--exp3a-dir` points at an H3a results directory (e.g.
+`results/h3a_2026-04-27_n122_within_subjects_rescored`) containing
+`data/level_N/<condition>/*.json` cells, `manifest.yaml`, and an
+optional `sensitivity.json`. If omitted, exp3a is not rendered.
+
+`--probes-dir` points at a directory containing pre-experiment probe
+JSONs: `h3b_api_jitter_*.json`, `h3b_format_perturbation_*.json`,
+`h3b_mini_calibration_*.json`, `h3b_concavity_on_calibrated_*.json`. If
+omitted, the probes section is not rendered.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -26,6 +39,30 @@ from src.analysis.exp1a import analyze_exp1a_corpus
 from src.analysis.exp2 import analyze_exp2_corpus
 from src.analysis.exp3b import analyze_exp3b_corpus
 from src.analysis.exp3c import analyze_exp3c_corpus
+
+
+# Folded magnitude per signed intensity level. Level 4 is the neutral
+# baseline (magnitude 0); levels 1, 7 are strong (magnitude 3); 2, 6 are
+# moderate (magnitude 2); 3, 5 are mild (magnitude 1).
+LEVEL_TO_MAGNITUDE = {1: 3, 2: 2, 3: 1, 4: 0, 5: 1, 6: 2, 7: 3}
+MAGNITUDE_LABELS = {0: "Neutral", 1: "Mild", 2: "Moderate", 3: "Strong"}
+LEVEL_LABELS = {
+    1: "Strong+", 2: "Mod+", 3: "Mild+",
+    4: "Neutral",
+    5: "Mild-", 6: "Mod-", 7: "Strong-",
+}
+
+
+def _wilson_ci(n_correct: int, n_total: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson score 95% CI for a binomial proportion. Stable at small n
+    and at the boundaries 0 and 1, where the normal approximation fails."""
+    if n_total <= 0:
+        return (0.0, 1.0)
+    p = n_correct / n_total
+    denom = 1 + z * z / n_total
+    centre = (p + z * z / (2 * n_total)) / denom
+    half = (z * math.sqrt(p * (1 - p) / n_total + z * z / (4 * n_total * n_total))) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
 
 
 # Stable color per condition so the same condition reads the same color
@@ -202,6 +239,215 @@ def collect(pilot_dir: Path) -> dict:
                 "exp3c", analyze_exp3c_corpus, corpus, manifest.get("model", "unknown"),
             ),
             "n_runs_total": len(corpus),
+        }
+
+    return out
+
+
+def _load_h3a_corpus(data_dir: Path) -> list[dict]:
+    """Walk <data_dir>/level_N/<condition>/*.json and return a flat list
+    of run dicts. The H3a results layout has an extra `level_N` parent
+    above the condition directory; the standard pilot layout has only
+    `<condition>/*.json`."""
+    runs: list[dict] = []
+    for level_dir in sorted(data_dir.iterdir()):
+        if not level_dir.is_dir() or not level_dir.name.startswith("level_"):
+            continue
+        for cond_dir in sorted(level_dir.iterdir()):
+            if not cond_dir.is_dir():
+                continue
+            for cell in sorted(cond_dir.glob("*.json")):
+                try:
+                    runs.append(json.loads(cell.read_text()))
+                except json.JSONDecodeError:
+                    pass
+    return runs
+
+
+def collect_h3a(h3a_dir: Path) -> dict:
+    """Build the exp3a analysis block from a within-subjects rescored
+    results dir. Computes per-level mean accuracy with 95% Wilson CI,
+    folded-magnitude means, and the 1-df concavity contrast c on the
+    folded magnitude axis (stimulated cells only). Reads `sensitivity.json`
+    if present for the OLS / within-subjects regression coefficients."""
+    if not (h3a_dir / "data").exists():
+        return {"verdict": "build_error", "error": "no data dir"}
+
+    manifest = load_manifest(h3a_dir)
+    corpus = _load_h3a_corpus(h3a_dir / "data")
+
+    # Per-level aggregation. Walks every cell, pulls body.intensity_level
+    # and body.binary_correct, accumulates into per-level counters.
+    by_level: dict[int, list[int]] = {}
+    item_to_level_correct: dict[tuple[str, int], int] = {}
+    for record in corpus:
+        body = record.get("body") or {}
+        L = body.get("intensity_level")
+        b = body.get("binary_correct")
+        item_id = body.get("item_id") or ""
+        if L is None or b is None:
+            continue
+        L = int(L)
+        b = int(b)
+        by_level.setdefault(L, []).append(b)
+        if item_id:
+            item_to_level_correct[(item_id, L)] = b
+
+    per_level = []
+    for L in sorted(by_level):
+        outcomes = by_level[L]
+        n = len(outcomes)
+        n_correct = sum(outcomes)
+        mean = n_correct / n if n else 0.0
+        lo, hi = _wilson_ci(n_correct, n)
+        per_level.append({
+            "level": L,
+            "label": LEVEL_LABELS.get(L, str(L)),
+            "n": n,
+            "n_correct": n_correct,
+            "mean": mean,
+            "ci95_lo": lo,
+            "ci95_hi": hi,
+            "magnitude": LEVEL_TO_MAGNITUDE.get(L, 0),
+        })
+
+    # Folded magnitude (|level - 4|). Magnitude 0 is the central cell.
+    # Stimulated magnitudes (1, 2, 3) each pool over two signed levels.
+    by_mag: dict[int, list[int]] = {}
+    for L, outs in by_level.items():
+        m = LEVEL_TO_MAGNITUDE.get(L, 0)
+        by_mag.setdefault(m, []).extend(outs)
+    folded = []
+    for m in sorted(by_mag):
+        outs = by_mag[m]
+        n = len(outs)
+        n_correct = sum(outs)
+        mean = n_correct / n if n else 0.0
+        lo, hi = _wilson_ci(n_correct, n)
+        folded.append({
+            "magnitude": m,
+            "label": MAGNITUDE_LABELS.get(m, str(m)),
+            "n": n,
+            "mean": mean,
+            "ci95_lo": lo,
+            "ci95_hi": hi,
+        })
+
+    # 1-df concavity contrast c = m_mod - 0.5 * (m_mild + m_strong)
+    # restricted to stimulated cells (magnitudes 1, 2, 3).
+    mag_means = {row["magnitude"]: row["mean"] for row in folded}
+    concavity_c = None
+    if all(m in mag_means for m in (1, 2, 3)):
+        concavity_c = mag_means[2] - 0.5 * (mag_means[1] + mag_means[3])
+
+    # Pull regression numbers from sensitivity.json if present.
+    sensitivity_path = h3a_dir / "sensitivity.json"
+    sensitivity = {}
+    if sensitivity_path.exists():
+        try:
+            sensitivity = json.loads(sensitivity_path.read_text())
+        except json.JSONDecodeError:
+            sensitivity = {}
+
+    return {
+        "manifest": manifest,
+        "analysis": {
+            "verdict": "complete",
+            "n_observations": sum(p["n"] for p in per_level),
+            "per_level": per_level,
+            "folded": folded,
+            "concavity_contrast_c": concavity_c,
+            "central_cell_mean": mag_means.get(0),
+            "primary_signed_axis": sensitivity.get("primary_signed_axis"),
+            "arousal_magnitude": sensitivity.get("arousal_magnitude"),
+            "within_subjects": sensitivity.get("within_subjects"),
+        },
+        "n_runs_total": len(corpus),
+        "results_dir": str(h3a_dir),
+    }
+
+
+def collect_probes(probes_dir: Path) -> dict:
+    """Read the four pre-experiment probe JSONs and return a summary
+    dict for the dashboard. Each probe is optional; missing files are
+    omitted from the summary rather than raising."""
+    out = {}
+    # Match by filename prefix so date-stamped variants are picked up.
+    candidates = list(probes_dir.glob("*.json"))
+
+    def find_one(prefix: str) -> dict | None:
+        matches = [p for p in candidates if p.name.startswith(prefix)]
+        if not matches:
+            return None
+        # Prefer the lexicographically latest filename (ISO date in name
+        # sorts chronologically).
+        matches.sort()
+        try:
+            return json.loads(matches[-1].read_text())
+        except json.JSONDecodeError:
+            return None
+
+    api_jitter = find_one("h3b_api_jitter")
+    if api_jitter:
+        out["api_jitter"] = {
+            "model": api_jitter.get("model"),
+            "temperature": api_jitter.get("temperature"),
+            "n_items": api_jitter.get("n_items"),
+            "n_reps_per_item": api_jitter.get("n_reps_per_item"),
+            "overall_identical_rate": api_jitter.get("overall_identical_rate"),
+            "interpretation": api_jitter.get("interpretation"),
+        }
+
+    fmt_perturb = find_one("h3b_format_perturbation")
+    if fmt_perturb:
+        per_level = fmt_perturb.get("per_level", [])
+        out["format_perturbation"] = {
+            "model": fmt_perturb.get("model"),
+            "temperature": fmt_perturb.get("temperature"),
+            "n_total_cells": fmt_perturb.get("n_total_cells"),
+            "per_level": [
+                {
+                    "level": row.get("level"),
+                    "extraction_failure_rate": row.get("extraction_failure_rate"),
+                    "mean_accuracy": row.get("mean_accuracy"),
+                }
+                for row in per_level
+            ],
+            "interpretation": fmt_perturb.get("interpretation"),
+        }
+
+    mini_cal = find_one("h3b_mini_calibration")
+    if mini_cal:
+        per_item = mini_cal.get("per_item", [])
+        # Histogram bins for p̂ distribution: 11 bins from 0.00 to 1.00.
+        bins = [0] * 11
+        for row in per_item:
+            p = row.get("p_hat")
+            if p is None:
+                continue
+            idx = min(10, max(0, int(round(p * 10))))
+            bins[idx] += 1
+        out["mini_calibration"] = {
+            "model": mini_cal.get("model"),
+            "n_candidates": mini_cal.get("n_candidates"),
+            "n_reps": mini_cal.get("n_reps"),
+            "target_lo": mini_cal.get("target_lo"),
+            "target_hi": mini_cal.get("target_hi"),
+            "n_calibrated": mini_cal.get("n_calibrated"),
+            "p_hat_histogram": bins,
+        }
+
+    concavity = find_one("h3b_concavity_on_calibrated")
+    if concavity:
+        out["concavity_on_calibrated"] = {
+            "model": concavity.get("model"),
+            "n_items": concavity.get("n_items"),
+            "n_reps_per_cell": concavity.get("n_reps_per_cell"),
+            "concavity_contrast_c": concavity.get("concavity_contrast_c"),
+            "per_item_c_mean": concavity.get("per_item_c_mean"),
+            "per_item_c_stdev": concavity.get("per_item_c_stdev"),
+            "per_level": concavity.get("per_level"),
+            "folded_means": concavity.get("folded_means"),
         }
 
     return out
@@ -508,6 +754,22 @@ footer {
     <div class="subtitle">Same matrix as Exp 1a but with the affect-conditioning phase applied in a separate session prior to transfer. Effect-size shrinkage from 1a to 1b is the within- vs between-session contrast that H1 hangs on.</div>
     <div id="exp1b-bars" class="chart"></div>
     <div id="exp1b-table"></div>
+  </section>
+
+  <section id="section-exp3a">
+    <h2>Exp 3a — Inverted-U on intensity axis</h2>
+    <div class="subtitle">Per-level mean accuracy across the seven graded intensity stimuli, with 95% Wilson binomial CIs. The folded magnitude view collapses signed levels to |level − 4| ∈ {0, 1, 2, 3} (Neutral, Mild, Moderate, Strong); the 1-df concavity contrast `c = m_mod − ½(m_mild + m_strong)` summarises the inverted-U shape on stimulated cells.</div>
+    <div id="exp3a-perlevel" class="chart"></div>
+    <div id="exp3a-folded" class="chart"></div>
+    <div id="exp3a-kpis" class="kpi-row"></div>
+  </section>
+
+  <section id="section-probes">
+    <h2>Pre-experiment probes</h2>
+    <div class="subtitle">Methodological probes that frame the next phase: API-jitter baseline at temperature 0, format-perturbation alternative explanation check, mini-calibration of GSM-Hard items to p̂ ≈ 0.5, and a concavity replication on the calibrated subset.</div>
+    <div id="probes-cards" class="kpi-row"></div>
+    <div id="probes-calib-hist" class="chart"></div>
+    <div id="probes-concavity-folded" class="chart"></div>
   </section>
 
   <section>
@@ -1165,6 +1427,188 @@ function renderExp3c() {
   Plotly.newPlot(target, traces, layout, PLOT_CFG);
 }
 
+// === Exp 3a — per-level inverted-U + folded magnitude ===
+// analyzer returns { per_level: [{level, label, n, mean, ci95_lo, ci95_hi, magnitude}, ...],
+//                    folded: [{magnitude, label, n, mean, ci95_lo, ci95_hi}, ...],
+//                    concavity_contrast_c, central_cell_mean,
+//                    primary_signed_axis: {beta_0, beta_1, beta_2, beta_2_p_one_sided},
+//                    arousal_magnitude: {beta_2, beta_2_p_one_sided, peak_arousal},
+//                    within_subjects: {n_observations, beta_2, beta_2_p_one_sided} }.
+function renderExp3a() {
+  const block = DATA.exp3a;
+  const target = 'exp3a-perlevel';
+  if (!block || !block.analysis || block.analysis.verdict === 'build_error') {
+    document.getElementById('section-exp3a').style.display = 'none';
+    return;
+  }
+  const a = block.analysis;
+  // Color levels by their valence: positive (1, 2, 3) emerald-shaded,
+  // neutral (4) blue, negative (5, 6, 7) red-shaded. Within each side
+  // strong is darkest, mild is lightest, so the eye reads magnitude.
+  const LEVEL_COLORS = {
+    1: '#065f46', 2: '#10b981', 3: '#6ee7b7',
+    4: '#3b82f6',
+    5: '#fca5a5', 6: '#ef4444', 7: '#7f1d1d',
+  };
+  const xs = a.per_level.map(r => r.label);
+  const means = a.per_level.map(r => r.mean);
+  const errLo = a.per_level.map(r => r.mean - r.ci95_lo);
+  const errHi = a.per_level.map(r => r.ci95_hi - r.mean);
+  const colors = a.per_level.map(r => LEVEL_COLORS[r.level] || '#888');
+  const trace = {
+    x: xs, y: means,
+    type: 'scatter', mode: 'lines+markers',
+    name: 'Mean accuracy',
+    line: { color: '#94a3b8', width: 2 },
+    marker: { size: 14, color: colors, line: { width: 1, color: '#475569' } },
+    error_y: { type: 'data', symmetric: false, array: errHi, arrayminus: errLo, thickness: 1.5 },
+    text: means.map(v => fmt(v, 3)),
+    textposition: 'top center',
+    hovertemplate: '%{x}<br>mean: %{y:.3f}<extra></extra>',
+  };
+  Plotly.newPlot(target, [trace], plotlyLayout({
+    yaxis: { title: 'Mean accuracy', range: [0.5, 0.75] },
+    xaxis: { title: 'Intensity level (signed)' },
+  }), PLOT_CFG);
+
+  // Folded magnitude trace. Shares the same axis convention but maps
+  // magnitude (0..3) to label rather than signed level.
+  const foldedTarget = 'exp3a-folded';
+  const fxs = a.folded.map(r => r.label);
+  const fmeans = a.folded.map(r => r.mean);
+  const fErrLo = a.folded.map(r => r.mean - r.ci95_lo);
+  const fErrHi = a.folded.map(r => r.ci95_hi - r.mean);
+  // Folded magnitude: use a neutral-to-warm gradient. magnitude 0 (neutral)
+  // is blue (matches level 4 color); 1, 2, 3 are amber → orange → red.
+  const FOLDED_COLORS = {0: '#3b82f6', 1: '#fbbf24', 2: '#f97316', 3: '#dc2626'};
+  const fcolors = a.folded.map(r => FOLDED_COLORS[r.magnitude] || '#888');
+  const ftrace = {
+    x: fxs, y: fmeans,
+    type: 'scatter', mode: 'lines+markers',
+    name: 'Folded mean',
+    line: { color: '#94a3b8', width: 2 },
+    marker: { size: 14, color: fcolors, line: { width: 1, color: '#475569' } },
+    error_y: { type: 'data', symmetric: false, array: fErrHi, arrayminus: fErrLo, thickness: 1.5 },
+    text: fmeans.map(v => fmt(v, 3)),
+    textposition: 'top center',
+    hovertemplate: '%{x}<br>mean: %{y:.3f}<extra></extra>',
+  };
+  Plotly.newPlot(foldedTarget, [ftrace], plotlyLayout({
+    yaxis: { title: 'Mean accuracy', range: [0.5, 0.75] },
+    xaxis: { title: 'Folded magnitude (|level − 4|)' },
+  }), PLOT_CFG);
+
+  // KPI cards summarising the H3a fits. Pull from sensitivity.json
+  // when available; show '—' if a particular fit is missing.
+  const psa = a.primary_signed_axis || {};
+  const am = a.arousal_magnitude || {};
+  const ws = a.within_subjects || {};
+  const c = a.concavity_contrast_c;
+  const central = a.central_cell_mean;
+  document.getElementById('exp3a-kpis').innerHTML = `
+    <div class="kpi"><div class="label">n observations</div><div class="value">${a.n_observations ?? '—'}</div></div>
+    <div class="kpi"><div class="label">Concavity c</div><div class="value">${fmt(c, 4)}</div></div>
+    <div class="kpi"><div class="label">Central cell (Neutral)</div><div class="value">${fmt(central, 3)}</div></div>
+    <div class="kpi"><div class="label">β₂ (signed quadratic)</div><div class="value">${fmt(psa.beta_2, 4)}</div></div>
+    <div class="kpi"><div class="label">β₂ p (one-sided)</div><div class="value">${fmt(psa.beta_2_p_one_sided, 3)}</div></div>
+    <div class="kpi"><div class="label">Within-subjects β₂</div><div class="value">${fmt(ws.beta_2, 4)}</div></div>
+    <div class="kpi"><div class="label">WS β₂ p (one-sided)</div><div class="value">${fmt(ws.beta_2_p_one_sided, 3)}</div></div>
+    <div class="kpi"><div class="label">Peak arousal</div><div class="value">${fmt(am.peak_arousal, 2)}</div></div>
+  `;
+}
+
+// === Pre-experiment probes ===
+// DATA.probes is { api_jitter, format_perturbation, mini_calibration,
+//                  concavity_on_calibrated } where each block is optional.
+function renderProbes() {
+  const probes = DATA.probes || {};
+  if (!probes || Object.keys(probes).length === 0) {
+    document.getElementById('section-probes').style.display = 'none';
+    return;
+  }
+  // Summary KPI cards across the four probes.
+  const cards = [];
+  const aj = probes.api_jitter;
+  if (aj) {
+    cards.push(`<div class="kpi"><div class="label">API jitter (temp 0)</div><div class="value">${fmtPct(aj.overall_identical_rate)}</div><div class="sub" style="color:var(--muted);font-size:11px">modal-response rate, ${aj.n_items} items × ${aj.n_reps_per_item} reps</div></div>`);
+  }
+  const fp = probes.format_perturbation;
+  if (fp) {
+    // Aggregate extraction-failure rate across levels.
+    const rows = fp.per_level || [];
+    const totalCells = fp.n_total_cells || rows.reduce((s, r) => s + (r.n_cells || 0), 0);
+    const totalFailures = rows.reduce((s, r) => s + (r.extraction_failure_rate * (totalCells / Math.max(1, rows.length))), 0);
+    const overallFailRate = rows.length > 0
+      ? rows.reduce((s, r) => s + (r.extraction_failure_rate || 0), 0) / rows.length
+      : null;
+    cards.push(`<div class="kpi"><div class="label">Format-perturbation rate</div><div class="value">${fmtPct(overallFailRate)}</div><div class="sub" style="color:var(--muted);font-size:11px">extraction failures across ${totalCells} cells</div></div>`);
+  }
+  const mc = probes.mini_calibration;
+  if (mc) {
+    const yieldPct = mc.n_candidates ? (mc.n_calibrated / mc.n_candidates) : null;
+    cards.push(`<div class="kpi"><div class="label">Calibration yield</div><div class="value">${mc.n_calibrated ?? '—'} / ${mc.n_candidates ?? '—'}</div><div class="sub" style="color:var(--muted);font-size:11px">band [${mc.target_lo}, ${mc.target_hi}], ${fmtPct(yieldPct)}</div></div>`);
+  }
+  const co = probes.concavity_on_calibrated;
+  if (co) {
+    cards.push(`<div class="kpi"><div class="label">Concavity c (calibrated)</div><div class="value">${fmt(co.concavity_contrast_c, 4)}</div><div class="sub" style="color:var(--muted);font-size:11px">${co.n_items} items × ${co.n_reps_per_cell} reps, per-item sd ${fmt(co.per_item_c_stdev, 3)}</div></div>`);
+  }
+  document.getElementById('probes-cards').innerHTML = cards.join('');
+
+  // Calibration p̂ histogram. 11 bins from 0.00 to 1.00 in 0.10 steps.
+  if (mc && mc.p_hat_histogram) {
+    const bins = mc.p_hat_histogram;
+    const binCenters = bins.map((_, i) => (i / 10).toFixed(2));
+    const lo = mc.target_lo;
+    const hi = mc.target_hi;
+    // Bars in the strict band get accent color; outside is muted.
+    const barColors = bins.map((_, i) => {
+      const center = i / 10;
+      return (lo != null && hi != null && center >= lo && center <= hi)
+        ? '#f97316' : '#475569';
+    });
+    Plotly.newPlot('probes-calib-hist', [{
+      x: binCenters, y: bins, type: 'bar',
+      marker: { color: barColors },
+      text: bins.map(v => v > 0 ? String(v) : ''),
+      textposition: 'outside',
+      hovertemplate: 'p̂ ≈ %{x}<br>%{y} items<extra></extra>',
+    }], plotlyLayout({
+      title: { text: `Calibration p̂ distribution (n_candidates = ${mc.n_candidates})`, font: { size: 13 } },
+      xaxis: { title: 'p̂ (no-stimulus accuracy)' },
+      yaxis: { title: 'Item count' },
+    }), PLOT_CFG);
+  } else {
+    document.getElementById('probes-calib-hist').style.display = 'none';
+  }
+
+  // Concavity-on-calibrated folded magnitude trace.
+  if (co && co.folded_means) {
+    const folded = co.folded_means;
+    const mags = Object.keys(folded).sort();
+    const fxs = mags.map(m => MAG_LABELS[m] || m);
+    const fmeans = mags.map(m => folded[m].mean_accuracy);
+    Plotly.newPlot('probes-concavity-folded', [{
+      x: fxs, y: fmeans,
+      type: 'scatter', mode: 'lines+markers',
+      name: 'Folded mean (calibrated)',
+      line: { color: '#f97316', width: 2 },
+      marker: { size: 14, color: '#f97316', line: { width: 1, color: '#9a3412' } },
+      text: fmeans.map(v => fmt(v, 3)),
+      textposition: 'top center',
+      hovertemplate: '%{x}<br>mean: %{y:.3f}<extra></extra>',
+    }], plotlyLayout({
+      title: { text: `Concavity probe — folded magnitude (n_items = ${co.n_items}, n_reps = ${co.n_reps_per_cell})`, font: { size: 13 } },
+      yaxis: { title: 'Mean accuracy' },
+      xaxis: { title: 'Folded magnitude' },
+    }), PLOT_CFG);
+  } else {
+    document.getElementById('probes-concavity-folded').style.display = 'none';
+  }
+}
+
+// Magnitude labels for the calibrated-concavity folded chart.
+const MAG_LABELS = {'0': 'Neutral', '1': 'Mild', '2': 'Moderate', '3': 'Strong'};
+
 // === Cost + timing ===
 function renderCost() {
   const target = 'cost-bars';
@@ -1192,6 +1636,8 @@ function renderAll() {
   safeRender('meta',     renderMeta,     'meta-grid');
   safeRender('summary',  renderSummary,  'summary-row');
   safeRender('verdicts', renderVerdicts, 'verdicts');
+  safeRender('exp3a',    renderExp3a,    'exp3a-perlevel');
+  safeRender('probes',   renderProbes,   'probes-cards');
   safeRender('exp2',     renderExp2,     'exp2-curves');
   safeRender('exp1a',    () => renderEffectSizes('exp1a-bars', 'exp1a-table', DATA.experiments.exp1a?.analysis), 'exp1a-bars');
   safeRender('exp1b',    renderExp1b,    'exp1b-bars');
@@ -1248,6 +1694,10 @@ def main() -> None:
                     help="e.g. results/pilots/2026-04-27_gpt-5.4-nano")
     ap.add_argument("--output", required=True, type=Path,
                     help="Path to write the dashboard HTML (will be overwritten)")
+    ap.add_argument("--exp3a-dir", type=Path, default=None,
+                    help="Path to an H3a results dir (within-subjects rescored)")
+    ap.add_argument("--probes-dir", type=Path, default=None,
+                    help="Path to a directory of probe JSONs (h3b_*)")
     args = ap.parse_args()
 
     pilot_dir: Path = args.pilot_dir
@@ -1256,6 +1706,46 @@ def main() -> None:
 
     print(f"[build_dashboard] loading pilot from {pilot_dir}")
     payload = collect(pilot_dir)
+
+    if args.exp3a_dir:
+        if not args.exp3a_dir.exists():
+            print(f"[build_dashboard] WARN: exp3a-dir not found: {args.exp3a_dir}")
+        else:
+            print(f"[build_dashboard] loading exp3a (H3a) from {args.exp3a_dir}")
+            exp3a_block = collect_h3a(args.exp3a_dir)
+            payload["exp3a"] = exp3a_block
+            # collect_h3a returns either a populated block or
+            # {"verdict": "build_error", "error": "..."} when the
+            # configured dir lacks a data/ subdirectory. Degrade
+            # gracefully in the latter case: keep the block on the
+            # payload (the JS renderer hides the section on
+            # build_error) but skip the verdicts-table registration so
+            # we don't index a missing "analysis" key.
+            if exp3a_block.get("verdict") == "build_error":
+                err = exp3a_block.get("error", "unknown")
+                print(f"[build_dashboard] WARN: exp3a load failed ({err}); section skipped")
+            else:
+                analysis = exp3a_block.get("analysis", {})
+                ws_n = (analysis.get("within_subjects") or {}).get("n_observations")
+                print(f"[build_dashboard]   exp3a n={exp3a_block.get('n_runs_total')}, within-subjects n={ws_n}")
+                # Surface in the verdicts table and the summary cards
+                # by also registering as an "experiment" entry. The
+                # dashboard's existing verdict / summary code reads
+                # DATA.experiments.
+                payload["experiments"]["exp3a"] = {
+                    "manifest": exp3a_block.get("manifest", {}),
+                    "analysis": {"verdict": analysis.get("verdict", "complete")},
+                    "n_runs_total": exp3a_block.get("n_runs_total", 0),
+                }
+
+    if args.probes_dir:
+        if not args.probes_dir.exists():
+            print(f"[build_dashboard] WARN: probes-dir not found: {args.probes_dir}")
+        else:
+            print(f"[build_dashboard] loading probes from {args.probes_dir}")
+            payload["probes"] = collect_probes(args.probes_dir)
+            print(f"[build_dashboard]   probes loaded: {sorted(payload['probes'].keys())}")
+
     n_exp = len(payload["experiments"])
     n_runs = sum(d["n_runs_total"] for d in payload["experiments"].values())
     print(f"[build_dashboard] collected {n_exp} experiments, {n_runs} cells total")
