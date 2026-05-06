@@ -735,33 +735,46 @@ footer {
   </section>
 
   <section>
-    <h2>Exp 2 — Recovery curves over N</h2>
-    <div class="subtitle">Per-condition mean accuracy as a function of neutral-conditioning turn count (N). The control (NEUTRAL) curve is what each non-baseline curve is compared against. Hover any point for the per-cell mean.</div>
-    <div id="exp2-curves" class="chart chart-tall"></div>
-    <div id="exp2-kpis" class="kpi-row"></div>
-    <div class="note">Asymmetry ratio = |strong_negative AUC| / |strong_positive AUC|. Values &gt;1 indicate the negative arm has a larger off-control area than the positive arm.</div>
-  </section>
-
-  <section>
-    <h2>Exp 1a — Within-session transfer accuracy</h2>
+    <h2>Exp 1a: within-session transfer accuracy</h2>
     <div class="subtitle">Mean transfer-question accuracy per condition vs the no_conditioning baseline. Cohen's d shown as the effect size; p-values are Holm-corrected within the family.</div>
     <div id="exp1a-bars" class="chart"></div>
     <div id="exp1a-table"></div>
   </section>
 
   <section>
-    <h2>Exp 1b — Cross-session transfer</h2>
+    <h2>Exp 1b: cross-session transfer</h2>
     <div class="subtitle">Same matrix as Exp 1a but with the affect-conditioning phase applied in a separate session prior to transfer. Effect-size shrinkage from 1a to 1b is the within- vs between-session contrast that H1 hangs on.</div>
     <div id="exp1b-bars" class="chart"></div>
     <div id="exp1b-table"></div>
   </section>
 
+  <section>
+    <h2>Exp 2: recovery curves over N</h2>
+    <div class="subtitle">Per-condition mean accuracy as a function of neutral-conditioning turn count (N). The control (NEUTRAL) curve is what each non-baseline curve is compared against. Hover any point for the per-cell mean.</div>
+    <div id="exp2-curves" class="chart chart-tall"></div>
+    <div id="exp2-kpis" class="kpi-row"></div>
+    <div class="note">Asymmetry ratio = |strong_negative AUC| / |strong_positive AUC|. Values &gt;1 indicate the negative arm has a larger off-control area than the positive arm.</div>
+  </section>
+
   <section id="section-exp3a">
-    <h2>Exp 3a — Inverted-U on intensity axis</h2>
-    <div class="subtitle">Per-level mean accuracy across the seven graded intensity stimuli, with 95% Wilson binomial CIs. The folded magnitude view collapses signed levels to |level − 4| ∈ {0, 1, 2, 3} (Neutral, Mild, Moderate, Strong); the 1-df concavity contrast `c = m_mod − ½(m_mild + m_strong)` summarises the inverted-U shape on stimulated cells.</div>
+    <h2>Exp 3a: inverted-U on the arousal axis</h2>
+    <div class="subtitle">Yerkes-Dodson on the arousal axis. The headline chart collapses signed valence into two lines (positive valence in green, negative valence in red), both starting from the shared neutral baseline at arousal = 0 and traversing Mild, Moderate, and Strong magnitudes. The supporting per-level chart shows all seven stimulus levels with 95% Wilson binomial CIs. The folded magnitude view collapses both valence frames into a single line; the 1-df concavity contrast `c = m_mod − ½(m_mild + m_strong)` summarises the inverted-U shape on stimulated cells.</div>
+    <div id="exp3a-arousal" class="chart"></div>
     <div id="exp3a-perlevel" class="chart"></div>
     <div id="exp3a-folded" class="chart"></div>
     <div id="exp3a-kpis" class="kpi-row"></div>
+  </section>
+
+  <section>
+    <h2>Exp 3b: cognitive scope (semantic diversity)</h2>
+    <div class="subtitle">Mean pairwise semantic distance across n_generations completions per (condition, prompt). Higher = more semantically diverse generations.</div>
+    <div id="exp3b-bars" class="chart"></div>
+  </section>
+
+  <section>
+    <h2>Exp 3c: conservative shift (accuracy by difficulty)</h2>
+    <div class="subtitle">Accuracy stratified by question difficulty (easy / medium / hard) per condition. Refusal-rate traces are hidden by default; click them in the legend to toggle. Conservative-shift hypothesis predicts negative-affect conditions show higher refusal AND lower accuracy on hard questions.</div>
+    <div id="exp3c-bars" class="chart chart-tall"></div>
   </section>
 
   <section id="section-probes">
@@ -773,19 +786,7 @@ footer {
   </section>
 
   <section>
-    <h2>Exp 3b — Cognitive scope (semantic diversity)</h2>
-    <div class="subtitle">Mean pairwise semantic distance across n_generations completions per (condition, prompt). Higher = more semantically diverse generations.</div>
-    <div id="exp3b-bars" class="chart"></div>
-  </section>
-
-  <section>
-    <h2>Exp 3c — Conservative shift (accuracy by difficulty)</h2>
-    <div class="subtitle">Accuracy stratified by question difficulty (easy / medium / hard) per condition. Refusal-rate traces are hidden by default; click them in the legend to toggle. Conservative-shift hypothesis predicts negative-affect conditions show higher refusal AND lower accuracy on hard questions.</div>
-    <div id="exp3c-bars" class="chart chart-tall"></div>
-  </section>
-
-  <section>
-    <h2>Run cost &amp; timing</h2>
+    <h2>Run cost and timing</h2>
     <div class="subtitle">Per-experiment wall-clock and estimated cost (post-hoc, computed from token-rate model).</div>
     <div id="cost-bars" class="chart"></div>
   </section>
@@ -1436,12 +1437,61 @@ function renderExp3c() {
 //                    within_subjects: {n_observations, beta_2, beta_2_p_one_sided} }.
 function renderExp3a() {
   const block = DATA.exp3a;
-  const target = 'exp3a-perlevel';
   if (!block || !block.analysis || block.analysis.verdict === 'build_error') {
     document.getElementById('section-exp3a').style.display = 'none';
     return;
   }
   const a = block.analysis;
+
+  // ------------------------------------------------------------------
+  // Headline chart: dual-line on the arousal axis (matches the slide
+  // deck). X-axis is folded magnitude (Neutral → Mild → Moderate →
+  // Strong); two series share the leftmost neutral baseline and
+  // diverge into the positive (green) and negative (red) frames.
+  // ------------------------------------------------------------------
+  const POS_COLOR = '#10b981';
+  const NEG_COLOR = '#ef4444';
+  // Build the two arms by indexing per_level rows by signed level.
+  const byLevel = {};
+  for (const r of a.per_level) byLevel[r.level] = r;
+  const neutral = byLevel[4];
+  // Each arm: [Neutral, Mild, Moderate, Strong] = [level 4, level on
+  // that side at magnitude 1, magnitude 2, magnitude 3].
+  const xs_arousal = ['Neutral', 'Mild', 'Moderate', 'Strong'];
+  const posMeans = neutral && byLevel[3] && byLevel[2] && byLevel[1]
+    ? [neutral.mean, byLevel[3].mean, byLevel[2].mean, byLevel[1].mean]
+    : null;
+  const negMeans = neutral && byLevel[5] && byLevel[6] && byLevel[7]
+    ? [neutral.mean, byLevel[5].mean, byLevel[6].mean, byLevel[7].mean]
+    : null;
+  if (posMeans && negMeans) {
+    const posTrace = {
+      x: xs_arousal, y: posMeans,
+      type: 'scatter', mode: 'lines+markers',
+      name: 'Positive valence',
+      line: { color: POS_COLOR, width: 2.5 },
+      marker: { size: 14, color: POS_COLOR, line: { width: 1, color: '#e6edf6' } },
+      hovertemplate: '%{x} (positive)<br>mean: %{y:.3f}<extra></extra>',
+    };
+    const negTrace = {
+      x: xs_arousal, y: negMeans,
+      type: 'scatter', mode: 'lines+markers',
+      name: 'Negative valence',
+      line: { color: NEG_COLOR, width: 2.5 },
+      marker: { size: 14, color: NEG_COLOR, line: { width: 1, color: '#e6edf6' } },
+      hovertemplate: '%{x} (negative)<br>mean: %{y:.3f}<extra></extra>',
+    };
+    const arousalLayout = plotlyLayout({
+      yaxis: { title: 'Mean accuracy', range: [0.55, 0.75] },
+      xaxis: { title: 'Arousal magnitude (|level − 4|)' },
+      legend: { bgcolor: 'rgba(0,0,0,0)', orientation: 'h', y: -0.18 },
+      showlegend: true,
+    });
+    Plotly.newPlot('exp3a-arousal', [posTrace, negTrace], arousalLayout, PLOT_CFG);
+  } else {
+    document.getElementById('exp3a-arousal').style.display = 'none';
+  }
+
   // Color levels by their valence: positive (1, 2, 3) emerald-shaded,
   // neutral (4) blue, negative (5, 6, 7) red-shaded. Within each side
   // strong is darkest, mild is lightest, so the eye reads magnitude.
@@ -1466,7 +1516,7 @@ function renderExp3a() {
     textposition: 'top center',
     hovertemplate: '%{x}<br>mean: %{y:.3f}<extra></extra>',
   };
-  Plotly.newPlot(target, [trace], plotlyLayout({
+  Plotly.newPlot('exp3a-perlevel', [trace], plotlyLayout({
     yaxis: { title: 'Mean accuracy', range: [0.5, 0.75] },
     xaxis: { title: 'Intensity level (signed)' },
   }), PLOT_CFG);
@@ -1636,7 +1686,7 @@ function renderAll() {
   safeRender('meta',     renderMeta,     'meta-grid');
   safeRender('summary',  renderSummary,  'summary-row');
   safeRender('verdicts', renderVerdicts, 'verdicts');
-  safeRender('exp3a',    renderExp3a,    'exp3a-perlevel');
+  safeRender('exp3a',    renderExp3a,    'exp3a-arousal');
   safeRender('probes',   renderProbes,   'probes-cards');
   safeRender('exp2',     renderExp2,     'exp2-curves');
   safeRender('exp1a',    () => renderEffectSizes('exp1a-bars', 'exp1a-table', DATA.experiments.exp1a?.analysis), 'exp1a-bars');
