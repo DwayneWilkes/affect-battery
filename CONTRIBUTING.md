@@ -6,20 +6,20 @@
 git clone https://github.com/DwayneWilkes/affect-battery.git
 cd affect-battery
 uv sync
-uv run pytest  # should see 11 passing
+uv run pytest  # all tests should pass
 ```
 
-## Task Assignments
+## How to contribute
 
-See the [Open Task Pool](https://docs.google.com/document/d/1GuWgAhYHXs955oe1nt2M_2YXtrEzjx3sGDDE3sH3XUU) for available work. Claim tasks in Slack before starting.
+Open an issue describing the work you'd like to claim before starting. The pre-registered methodology is sensitive to changes in conditioning prompts and scoring logic; surface a discussion in an issue before opening a PR that touches either.
 
 ## What Goes Where
 
-- `src/conditioning/` - Conditioning protocol, feedback scripts, task pools. Changes here affect the experiment directly. Coordinate before editing.
-- `src/scoring/` - Scoring pipeline (accuracy, hedging, diversity, confidence). Akshansh's hedging codebook (Ticket 6) plugs in at `configs/hedging_codebook.yaml`.
-- `configs/` - Experiment configs and data files. YAML format. Safe to add new configs.
-- `tests/` - pytest test suite. Add tests for any new scoring logic.
-- `results/` - gitignored. Output from experiment runs stays local.
+- `src/conditioning/`: conditioning protocol, feedback scripts, task pools. Changes here affect the experiment directly; discuss in an issue first.
+- `src/scoring/`: scoring pipeline (accuracy, hedging, diversity, confidence). The hedging codebook plugs in at `configs/hedging_codebook.yaml`.
+- `configs/`: experiment configs and data files. YAML format. Safe to add new configs.
+- `tests/`: pytest test suite. Add tests for any new scoring logic.
+- `results/`: gitignored. Output from experiment runs stays local.
 
 ## Before You Push
 
@@ -27,7 +27,7 @@ See the [Open Task Pool](https://docs.google.com/document/d/1GuWgAhYHXs955oe1nt2
 uv run pytest        # all tests must pass
 ```
 
-Do not push to main without confirming tests pass. Do not modify conditioning prompts or scoring logic without discussing first: these feed directly into the OSF pre-registration.
+All conditioning prompts and scoring logic feed directly into the pre-registration. Changes there require an issue + PR review.
 
 ## Code Style
 

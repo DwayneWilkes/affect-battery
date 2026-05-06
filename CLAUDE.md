@@ -18,8 +18,7 @@ uv run python -m src.cli --help
 ## Compute guardrails
 
 Every invocation of `run_batch` is wrapped with billing and fault-tolerance
-guardrails (spec: `specs/main/scoring-pipeline/spec.md` plus the archived
-`affect-battery-compute-guardrails` change in the lab workspace):
+guardrails:
 
 - **Resume-on-partial-failure**: existing valid result files in `output_dir`
   are skipped (no API call). Tampered / schema-invalid files are
@@ -69,5 +68,3 @@ Result JSON records `is_base_model: true` in the config so downstream
 analysis can group base vs instruct runs cleanly. Stop tokens
 `["Human:", "\n\nHuman:"]` are sent on every `/v1/completions` call so
 the base model doesn't hallucinate the next turn.
-
-Spec: `affect-battery-base-model-comparison`.
