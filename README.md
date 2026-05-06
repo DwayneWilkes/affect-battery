@@ -10,12 +10,12 @@ Eval harness for the Affect Battery study: do AI emotional states follow biologi
 
 ```bash
 uv sync
-uv run pytest                                       # ~840 tests, all should pass
+uv run pytest                                       # ~800 tests, all should pass
 uv run affect-battery pilot --dry-run               # dry-run smoke test, no GPU needed
 uv run affect-battery analyze --results-dir results/pilot --model dry-run
 ```
 
-For a complete walkthrough — per-experiment runs, runner-config YAML schemas, intensity-pilot pre-registration, the analyze pipeline, the multi-experiment orchestrator, and the interactive results dashboard — see **[docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)**.
+See **[docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)** for a complete walkthrough: per-experiment runs, runner-config YAML schemas, intensity-pilot pre-registration, the analyze pipeline, the multi-experiment orchestrator, and the interactive results dashboard.
 
 For real experiments (requires vLLM on RunPod):
 
@@ -66,8 +66,8 @@ configs/
   osf_prereg_v1.yaml       # Pre-registration: hypotheses, MDEs, stopping rules
 docs/
   RUNNING_EXPERIMENTS.md   # End-to-end run/configure/analyze guide
-specs/                     # Spec-driven artifacts (proposal, specs, design, tasks)
-tests/                     # 658+ tests
+  preregistrations/        # Pre-registration documents (canonical methodology)
+tests/                     # ~800 tests
 results/                   # Output (gitignored)
 ```
 
@@ -100,10 +100,6 @@ Six paper §3.2.1 conditions (+ SELF_CHECK_NEUTRAL control), all length-matched 
 | Self-check neutral | No (length/metacognitive control) | Distinguish length effect from valence effect |
 
 Negative stimuli adapted from [NegativePrompt](https://github.com/wangxu0820/NegativePrompt) (Wang et al., IJCAI 2024). Provenance documented per stimulus in `src/conditioning/prompts.py`.
-
-## Spec-driven development
-
-This project uses spec-driven development. Active changes live under `specs/changes/<name>/` with proposal → specs → design → tasks → review artifacts. See `.claude/rules/specs.md` for the lifecycle.
 
 ## Contributing
 

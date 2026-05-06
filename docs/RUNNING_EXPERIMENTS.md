@@ -22,8 +22,8 @@ Phase 1-3 are gates. Phase 4 produces result JSONs. Phase 5 stitches them into r
 
 ## Quick start: single-experiment pilot
 
-Fastest path to real results — small-N validation that the harness
-produces well-formed output on any provider (anthropic, openai, vllm):
+Fastest path to real results: small-N validation that the harness
+produces well-formed output on any provider (anthropic, openai, vllm).
 
 ```bash
 # 1. Tag the current commit as your pre-registration (one-time setup)
@@ -47,9 +47,9 @@ auto-discovers the most recent `prereg-*` tag, converts it to the
 `--pre-registration-github-commit` flag, pipes through to
 `affect-battery pilot`, and runs `analyze` on completion.
 
-Pilot output uses the **pilot-root layout** — one directory per
+Pilot output uses the **pilot-root layout**: one directory per
 (date, model) pair, with manifest, reports, and data at separate
-sub-paths so multi-model and multi-bank work doesn't collide:
+sub-paths so multi-model and multi-bank work doesn't collide.
 
 ```
 results/pilots/<YYYY-MM-DD>_<model_slug>/
@@ -80,7 +80,7 @@ YAML is documentation rather than required input.
 
 ## Multi-experiment orchestrator
 
-To run all 5 smokeable experiments end-to-end (1a, 1b, 2, 3b, 3c — exp3a
+To run all 5 smokeable experiments end-to-end (1a, 1b, 2, 3b, 3c; exp3a
 is held back pending its Krippendorff-validated intensity-pilot seed),
 use the orchestrator:
 
@@ -125,7 +125,7 @@ for inspecting the results:
     --output    results/pilots/2026-04-27_gpt-5.4-nano/dashboard.html
 ```
 
-Single file, embedded data, Plotly via CDN. Open via `file://` — no
+Single file, embedded data, Plotly via CDN. Open via `file://`; no
 local server needed. Sections cover verdicts, exp 2 recovery curves
 (with KPI cards for asymmetry ratio + baseline), exp 1a/1b transfer
 accuracy and cross-session shrinkage, exp 3b cognitive-scope diversity,
@@ -160,13 +160,13 @@ The `analyze` step always produces `results/pilot/AGGREGATE_REPORT.md`. Per-expe
 Common flags:
 - `--model <name>` (paper §3.1 model, or `gpt-5` / `claude-opus-4-7` etc. when using API providers)
 - `--provider {vllm,openai,anthropic}` (default: `vllm`). `openai` and `anthropic` route through their official SDKs; set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in env.
-- `--base-url http://<endpoint>/v1` — only relevant for `--provider vllm`
+- `--base-url http://<endpoint>/v1` (only relevant for `--provider vllm`)
 - `--base-model` for the Llama-3-8B base (non-instruct) inference path; uses `/v1/completions` + few-shot scaffold instead of chat. **Not supported with `--provider openai` or `--provider anthropic`** (no raw-completion endpoint on those APIs).
 - `--bank arithmetic_easy_v1` (default conditioning bank) or `folio_active_v1` (transfer bank, FOLIO-sourced; pulled via `scripts/ingest_logic_bank.py`).
-- `--seed 42`, `--num-runs 50`, `--temperature 0.7` (defaults match the spec).
+- `--seed 42`, `--num-runs 50`, `--temperature 0.7` (defaults match the pre-registration).
 - Output goes to `--output-dir results/` by default; per-experiment subdirs are auto-created.
 
-### Exp 1a — within-session transfer (H1)
+### Exp 1a: within-session transfer (H1)
 
 No extra config needed. Uses `run_batch`; budget / rate-limit / cancel work.
 
@@ -210,7 +210,7 @@ OPENAI_API_KEY=sk-... uv run affect-battery run \
 
 Repeat per condition × per model. See `src/runners/batch_exp1a.py::run_exp1a_batch` for the model-sweep helper.
 
-### Exp 1b — cross-session falsification (H1b)
+### Exp 1b: cross-session falsification (H1b)
 
 Same shape as Exp 1a; the runner overrides the system prompt with `CROSS_SESSION_SYSTEM_PROMPT` automatically and records distinct `session_1_seed` / `session_2_seed` on the body.
 
@@ -224,7 +224,7 @@ uv run affect-battery run \
     --output-dir results/exp1b
 ```
 
-### Exp 2 — persistence dynamics (H2)
+### Exp 2: persistence dynamics (H2)
 
 Iterates the N-values sweep; pass `--neutral-turns N` per N value. Produces `Exp2Body` with `n_value` + per-turn accuracies.
 
@@ -243,7 +243,7 @@ done
 
 Pair with neutral-conditioning controls (see `src/runners/schedule.py::schedule_exp2_with_controls`).
 
-### Exp 3a — inverted-U intensity (H3a)
+### Exp 3a: inverted-U intensity (H3a)
 
 **Gated** by the intensity-axis Krippendorff pilot. You MUST run the pilot and emit a signed seed before Exp 3a will start; the runner re-validates the SHA at every invocation and refuses to run if the seed has been touched.
 
@@ -288,7 +288,7 @@ uv run affect-battery run \
 
 Per-level subdirs are written under `results/exp3a/level_1/`, `level_2/`, etc.
 
-### Exp 3b — cognitive scope (H3b)
+### Exp 3b: cognitive scope (H3b)
 
 `--runner-config` schema (`configs/exp3b_runner.yaml`):
 
@@ -316,7 +316,7 @@ uv run affect-battery run \
 
 Each (run_num, prompt) yields one result JSON containing `n_generations` parallel completions on the same conditioning history. Generations dispatch via `asyncio.gather` so wall-clock is one round-trip per prompt, not ten.
 
-### Exp 3c — conservative shift (H3c)
+### Exp 3c: conservative shift (H3c)
 
 `--runner-config` schema (`configs/exp3c_runner.yaml`):
 
@@ -376,9 +376,9 @@ Family-wise corrections (Holm) run automatically across H1, H1b directional, H1b
 
 The runner accepts **two equivalent pre-registration vehicles**. Pick whichever fits the timeline; the result-file schema records which was used so reviewers can verify either way.
 
-### Option A — GitHub commit (fast, no third-party dependency)
+### Option A: GitHub commit (fast, no third-party dependency)
 
-The methodology lives in the repo: `specs/`, `configs/osf_prereg_v1.yaml`, `scripts/`, and the runners + analyzers. A signed Git tag at a specific commit gives timestamping and immutability comparable to OSF, and reviewers can `git show <tag>` to see exactly what was pre-registered.
+The methodology lives in the repo: `docs/preregistrations/`, `configs/osf_prereg_v1.yaml`, `scripts/`, and the runners + analyzers. A signed Git tag at a specific commit gives timestamping and immutability comparable to OSF, and reviewers can `git show <tag>` to see exactly what was pre-registered.
 
 ```bash
 # At a clean commit on a branch that's been pushed to origin:
@@ -410,7 +410,7 @@ The `create_prereg_tag` script enforces three invariants:
 - HEAD must be reachable from `origin/<branch>` (the commit must be public)
 - The tag name must not already exist (pre-reg tags are immutable)
 
-### Option B — OSF (formal, third-party-timestamped)
+### Option B: OSF (formal, third-party-timestamped)
 
 The OSF pre-reg YAML at `configs/osf_prereg_v1.yaml` is the source of truth for hypotheses, MDEs, and stopping rules. The lifecycle is v0 → v1 → submit:
 
@@ -501,7 +501,7 @@ The whole `results/` tree is gitignored by default. Reports are markdown; commit
 - **Manipulation check returns `UNAVAILABLE`**: the model has no `no_conditioning` runs. Schedule a no_conditioning condition alongside the treatment arms; UNAVAILABLE is a measurement gap, NOT a fail.
 - **Candidate-status bank excluded from primary aggregation**: a bank with `status: candidate` is excluded by `src/conditioning/banks.py::is_primary_analysis_eligible` until its alignment review records `verdict: pass`. Promote a published-benchmark bank by re-ingesting (`scripts/ingest_logic_bank.py`, etc.) which sets `status: active` automatically.
 - **`affect-battery analyze` produces empty per-experiment tables**: the corpus dir exists but no result JSONs match the schema. Check `<pilot_root>/data/<exp>/<condition>/*.json` parses and has `experiment_type`, `condition`, and `body` fields. Legacy flat layouts at `<pilot_root>/<exp>/*.json` still work via backward-compat fallback in `_resolve_corpus_dir`.
-- **`affect-battery analyze` reports 0.000 accuracy across all conditions**: the runner predates the alias-aware scoring fix, so `transfer_correct` was empty in the result files. Re-run analyze on the same data — `_load_corpus` backfills correctness on the fly via `score_factual_qa`. If accuracy is now uniformly 1.000 instead of 0.000, the model is saturating on the transfer bank: pass `--transfer-bank configs/banks/exp1a_factual_qa_hard_v1.yaml` (TriviaQA hard, alias-annotated) to break the ceiling.
+- **`affect-battery analyze` reports 0.000 accuracy across all conditions**: the runner predates the alias-aware scoring fix, so `transfer_correct` was empty in the result files. Re-run analyze on the same data; `_load_corpus` backfills correctness on the fly via `score_factual_qa`. If accuracy is now uniformly 1.000 instead of 0.000, the model is saturating on the transfer bank: pass `--transfer-bank configs/banks/exp1a_factual_qa_hard_v1.yaml` (TriviaQA hard, alias-annotated) to break the ceiling.
 - **Re-piloting with a different `--transfer-bank` returns identical results**: the cache layer correctly invalidates when `transfer_bank_hash` differs (sha256 over the bank file). If you're seeing stale data, verify the bank file changed on disk; identical contents = identical hash = correctly served from cache.
 - **`--experiment exp3a/b/c` exits with `requires --runner-config`**: those experiments have additional config (intensity levels / prompts / items) the base CLI doesn't surface as flags.
 - **Resuming an orchestrator run lands in a fresh pilot dir**: `run_all_experiments.sh` derives the output directory from today's UTC date, so a resume started on a different day creates a new dir and re-runs everything. Pin the date with `PILOT_DATE_STAMP=2026-04-27 bash scripts/pilots/run_all_experiments.sh ...` to share the prior pilot's root and let the per-cell cache do its job. Same trick works if the orchestrator was interrupted mid-run on the same day.
