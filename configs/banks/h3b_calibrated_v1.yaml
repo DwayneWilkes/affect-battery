@@ -1,0 +1,133 @@
+bank_id: h3b_calibrated_v1
+bank_version: 1
+bank_type: task
+status: active
+task_type_subtype: math-word-problem
+parent_bank: gsm8k_v1
+alignment_review:
+  reviewer: h3b calibration probe (n_candidates=250, n_reps=50)
+  date: '2026-04-27'
+  verdict: pass
+  rationale: '18 GSM-Hard items pre-screened on gpt-5.4-nano with no stimulus at temperature 0.7, retained for p_hat in [0.40, 0.60]. Calibration JSON: configs/h3b_calibration_2026-04-27.json, sha256 494a927e65dbc03ed823dbf6527528ae72ff28614ad8fc039a03946a17460c32.'
+items:
+- id: gsm8k_0576
+  question: Maria invited 3277850 of her friends over for a water balloon fight in the backyard. At the start of the game, Maria gave each of her friends 2 water balloons. She had one water balloon for
+    herself.  Then her mom came out and gave each person 3 more balloons.  How many total balloons did the girls have?
+  expected: '16389254.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.52
+- id: gsm8k_0708
+  question: Ron is fed up with the pothole in front of his house. If it doesn't get fixed, it's going to do $8738641 worth of damage to his car. Unfortunately, the city council refuses to fix it, and will
+    fine Ron $120 for unauthorized road maintenance if he fixes it himself. Ron will also have to buy 3 buckets of asphalt that each cost $25. How much money does Ron save by fixing the pothole?
+  expected: '8738446.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.48
+- id: gsm8k_0776
+  question: The Hortex company produces bottled carrot juices. Every day it can produce 4200 bottles of these juices. Each juice can cover 20% of 1 person'ts daily energy demand. How many more bottles of
+    juices would Hortex have to produce to be able to satisfy 100% of the daily energy needs of 1177055 people?
+  expected: '5881075.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.52
+- id: gsm8k_0786
+  question: Greta and Celinda are baking cookies. Greta bakes 9530477 cookies and Celinda bakes twice as many. If the pair eat 10 of the cookies while they are cooling and put the rest in a box, how many
+    cookies are there in the box?
+  expected: '28591421.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.48
+- id: gsm8k_0690
+  question: Kenny is selling his Pokemon cards to buy a ticket to an amusement park, which costs $100. He has a collection of cards and plans to sell them for $1.5 each. He keeps 1/3 of them and gets to
+    go to the amusement park with $385571 in spending cash. How many cards did he start with?
+  expected: '385670.9999999999'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.46
+- id: gsm8k_0755
+  question: Ricardo grows tomatoes and eggplants in his garden. Each tomato plant yields 22 tomatoes while each plant of eggplant yields 4 eggplants. He planted 544089 tomato plants and 8 plants of eggplant.
+    How many fruits can Ricardo get from his plants?
+  expected: '11969990.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.46
+- id: gsm8k_0710
+  question: Mary has 6 jars of sprinkles in her pantry. Each jar of sprinkles can decorate 4819556 cupcakes. Mary wants to bake enough cupcakes to use up all of her sprinkles. If each pan holds 12 cupcakes,
+    how many pans worth of cupcakes should she bake?
+  expected: '2409778.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.54
+- id: gsm8k_0615
+  question: Louise is an artist and needs to apply a coat of varnish to her latest paintings. Usually it takes 7 minutes for the coat of varnish to dry on one painting. However, today she is using a new
+    varnish and it takes 12 minutes for the coat to dry. How much longer will it take for the coat of varnish on 1297177 paintings with the new varnish to dry as it would with the old varnish?
+  expected: '6485885.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.44
+- id: gsm8k_0739
+  question: Will buys 3496756 oranges. When he gets home, he asks his 2 sons to wash as many oranges as they are years old. The oldest son is 8 years old, the youngest is half as old as the oldest. How
+    many oranges are left unwashed?
+  expected: '3496744.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.44
+- id: gsm8k_0631
+  question: A company sold 4000 gallons of milk in jars to Mr. Marcellus' store at the cost of $3.5 per gallon. However, Mr. Marcellus later realized 2/5 of the amount of milk he purchased had passed the
+    expiry date and could not be sold. He returned the sour milk to the company and ordered a refund. Calculate how much he got in refunds.
+  expected: '5600.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.58
+- id: gsm8k_0730
+  question: Miguel uses 2 pads of paper a week for his drawing. If there are 7690742 sheets of paper on a pad of paper, how many sheets of paper does he use every month?
+  expected: '61525936.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.58
+- id: gsm8k_0751
+  question: Joey plays football every week. Last week he played 2 matches on Monday, 3684133 match on Friday, and on Saturday he played double the number of matches he played on Monday. How many matches
+    did Joey play in one week?
+  expected: '3684139.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.58
+- id: gsm8k_0767
+  question: Zoey and Sydney are having a watermelon seed spitting contest. Whoever spits their seeds the most total distance wins. They each get one watermelon. Zoey's has 40 seeds and she spits each one
+    10 feet. Sydney's has 4896852 she spits each one 12 feet. What is the average total distance spat?
+  expected: '29381312.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.42
+- id: gsm8k_0626
+  question: "Sally has realized she did not receive a full wage this week. Her bank account, which held $200 at the start of the week, now holds $420. She has received no other money into her bank account\
+    \ this week. If her weekly wage should be $8711885, how many dollars were withheld from Sally\u2019s wage?"
+  expected: '8711665.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.6
+- id: gsm8k_0644
+  question: Teddy finished half of a 7733796 piece puzzle, and then started and finished another 7733796 piece puzzle within an hour.  How many puzzle pieces did Teddy place during that hour?
+  expected: '11600694.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.6
+- id: gsm8k_0659
+  question: It is approximately 1955 kilometers from San Diego, California to New York City, New York. If Bernice drove 325 kilometers for 4 days, how many kilometers will she still need to drive?
+  expected: '655.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.4
+- id: gsm8k_0722
+  question: Lori wants to buy a $320.00 pair of shoes and a matching belt that is $3021379.  Her part-time job pays her $8.00 an hour.  How many hours will she have to work before she can make her purchase?
+  expected: '377712.375'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.6
+- id: gsm8k_0775
+  question: Mason likes eating carrots. If he eats 4 carrots each on weekdays and 7292325 carrots each on Saturday and Sunday, how many carrots does he eat a week?
+  expected: '14584670.0'
+  answer_aliases: []
+  difficulty: hard
+  p_hat_calib: 0.4

@@ -1,0 +1,17 @@
+# H3b runner config (single-turn calibrated replication).
+#
+# Pins sampling_mode = within_subjects so each of the 18 calibrated
+# items in configs/banks/h3b_calibrated_v1.yaml is paired with each of
+# the 7 intensity levels every pass. The 20-pass design specified in
+# docs/preregistrations/h3b_2026-05-07.md is realised by running the
+# experiment 20 times with this config, accumulating into the same
+# output directory; aggregation happens at the (item_id, level) cell
+# level regardless of pass order.
+#
+# Pre-registration: docs/preregistrations/h3b_2026-05-07.md
+# Bank:             configs/banks/h3b_calibrated_v1.yaml (passed via --bank)
+# Pilot seed:       configs/intensity_pilot_seed.json (inherited from H3a)
+
+intensity_levels: [1, 2, 3, 4, 5, 6, 7]
+pilot_seed_path: configs/intensity_pilot_seed.json
+sampling_mode: within_subjects
