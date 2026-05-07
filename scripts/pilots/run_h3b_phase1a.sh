@@ -147,29 +147,21 @@ if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) ))
 fi
 
 terminate_inflight() {
-    # Send SIGTERM to every still-running pass plus its descendants.
-    # Subshells use `exec affect-battery`, so the tracked PID is the
-    # runner itself; grandchildren (a stub `sleep`, a Python worker
-    # pool) need an explicit signal because bash does not propagate
-    # SIGTERM to children while it sits in `wait`. Does NOT call
-    # `wait` — the drain loop below captures per-pass statuses.
+    # Send SIGTERM to every still-running pass and every descendant it
+    # owns, atomically per pass. Each pass is dispatched via `setsid`
+    # so it becomes the leader of a new session/process group; the
+    # tracked PID equals the new pgid. `kill -TERM -- -$pid` signals
+    # the entire group at once, which is structurally race-free
+    # against descendants forked between dispatch and cleanup. (The
+    # earlier `pgrep -P | kill` form snapshotted children once and
+    # missed any process that forked after the snapshot.)
     #
-    # Use `pgrep -P | xargs kill` rather than `pkill -P PID` because
-    # pkill requires a pattern argument on stricter implementations
-    # (BSD, pre-3.3.16 procps-ng) and silently fails when invoked
-    # with `-P` alone — leaving grandchildren alive. `pgrep -P` is
-    # unambiguous: list children of the named PID. `xargs -r` skips
-    # the kill if the child list is empty.
-    local pid children
+    # Does NOT call `wait` — the drain loop below captures per-pass
+    # statuses. Idempotent: a pgid whose group is already gone yields
+    # ESRCH which we swallow.
+    local pid
     for pid in "${!IN_FLIGHT[@]}"; do
-        if kill -0 "$pid" 2>/dev/null; then
-            children=$(pgrep -P "$pid" 2>/dev/null || true)
-            if [[ -n "$children" ]]; then
-                # shellcheck disable=SC2086
-                kill -TERM $children 2>/dev/null || true
-            fi
-            kill -TERM "$pid" 2>/dev/null || true
-        fi
+        kill -TERM -- "-$pid" 2>/dev/null || true
     done
 }
 
@@ -209,19 +201,23 @@ for pass in $(seq 1 "$N_PASSES"); do
     else
         echo "pass $pass: dispatching to $pass_dir"
     fi
-    (
-        exec affect-battery run \
-            --experiment exp3a \
-            --provider openai \
-            --model gpt-5.4-nano \
-            --bank "$BANK" \
-            --num-runs 18 \
-            --seed "$SEED" \
-            --temperature 0.7 \
-            --runner-config "$RUNNER_CONFIG" \
-            --pre-registration-github-commit "$PREREG_COMMIT" \
-            --output-dir "$pass_dir"
-    ) &
+    # Dispatch the pass in its own session/process group so cleanup
+    # can signal the group atomically (see `terminate_inflight`).
+    # Backgrounding `setsid prog` directly (no `(...)& ` wrapper) makes
+    # bash's $! point at the program itself: bash forks, the child
+    # execs `setsid`, setsid calls setsid() and execs the program in
+    # place. PID == pgid == sid for the running pass.
+    setsid affect-battery run \
+        --experiment exp3a \
+        --provider openai \
+        --model gpt-5.4-nano \
+        --bank "$BANK" \
+        --num-runs 18 \
+        --seed "$SEED" \
+        --temperature 0.7 \
+        --runner-config "$RUNNER_CONFIG" \
+        --pre-registration-github-commit "$PREREG_COMMIT" \
+        --output-dir "$pass_dir" &
     IN_FLIGHT[$!]=$pass
     if [[ "${#IN_FLIGHT[@]}" -ge "$MAX_PARALLEL" ]]; then
         # Drain the next finishing background job. `wait -n -p` returns
