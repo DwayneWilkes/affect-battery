@@ -436,10 +436,9 @@ def test_stray_json_does_not_inflate_cell_count(env_setup):
 # Signal handling
 # ----------------------------------------------------------------------
 
-def test_sigint_triggers_trap_and_kills_inflight(env_setup):
-    """An external SIGINT must run the trap_handler: kill in-flight
-    passes via the pgroup, drain children, and exit with status 130.
-    This is the Ctrl-C path operators take during a multi-hour run."""
+def _send_signal_and_assert(env_setup, signal_name, expected_rc):
+    """Shared driver for SIGINT/SIGTERM trap tests."""
+    import signal as sigmod
     cwd, env = env_setup
     env["STUB_SLEEP_SECONDS"] = "10"
     proc = subprocess.Popen(
@@ -449,24 +448,33 @@ def test_sigint_triggers_trap_and_kills_inflight(env_setup):
         cwd=cwd, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    # Give the wrapper time to dispatch all 5 passes.
     time.sleep(0.5)
-    import signal
-    proc.send_signal(signal.SIGINT)
+    proc.send_signal(getattr(sigmod, signal_name))
     start = time.time()
     try:
         proc.wait(timeout=4.0)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
-        raise AssertionError("wrapper did not exit within 4s of SIGINT")
+        raise AssertionError(f"wrapper did not exit within 4s of {signal_name}")
     elapsed = time.time() - start
-    assert proc.returncode == 130, (
-        f"expected exit 130 (SIGINT convention), got {proc.returncode}"
+    assert proc.returncode == expected_rc, (
+        f"{signal_name}: expected exit {expected_rc}, got {proc.returncode}"
     )
     assert elapsed < 4.0, (
-        f"SIGINT cleanup took {elapsed:.1f}s; expected fast pgroup teardown"
+        f"{signal_name} cleanup took {elapsed:.1f}s; expected fast pgroup teardown"
     )
+
+
+def test_sigint_triggers_trap_and_exits_130(env_setup):
+    _send_signal_and_assert(env_setup, "SIGINT", 130)
+
+
+def test_sigterm_triggers_trap_and_exits_143(env_setup):
+    """SIGTERM must exit 143 (128+15), not 130 (128+2 = SIGINT).
+    Automation that distinguishes TERM vs INT by exit code relies on
+    this convention."""
+    _send_signal_and_assert(env_setup, "SIGTERM", 143)
 
 
 # ----------------------------------------------------------------------

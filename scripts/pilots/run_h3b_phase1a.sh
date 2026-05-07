@@ -153,35 +153,51 @@ find_cell_files() {
     find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null
 }
 
+SELF_PGID=$(ps -o pgid= -p $$ | tr -d ' ')
+
 terminate_inflight() {
-    # Send SIGTERM to every still-running pass and every descendant it
-    # owns, atomically per pass. Each pass is dispatched via `setsid`
-    # so it becomes the leader of a new session/process group; the
-    # tracked PID equals the new pgid. `kill -TERM -- -$pid` signals
-    # the entire group at once, which is structurally race-free
-    # against descendants forked between dispatch and cleanup. (The
-    # earlier `pgrep -P | kill` form snapshotted children once and
-    # missed any process that forked after the snapshot.)
+    # Send SIGTERM to every still-running pass and its descendants,
+    # via the pass's process group. Each pass is dispatched as
+    # `setsid affect-battery ... &`; once setsid() runs the program
+    # leads its own session/pgroup and pgid==pid, so signaling the
+    # group catches every descendant the kernel has linked to it.
     #
-    # Does NOT call `wait` — the drain loop below captures per-pass
-    # statuses. Idempotent: a pgid whose group is already gone yields
-    # ESRCH which we swallow.
-    local pid
+    # Race window: between `&` returning $! and setsid() executing
+    # in the child, the child's pgid is still $SELF_PGID (inherited).
+    # Reading pgid live and comparing to $SELF_PGID lets us avoid
+    # `kill -- -$SELF_PGID` (which would signal the wrapper itself)
+    # and instead signal the lone PID, which is pre-fork so has no
+    # descendants yet.
+    local pid pgid
     for pid in "${!IN_FLIGHT[@]}"; do
-        kill -TERM -- "-$pid" 2>/dev/null || true
+        pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [[ -z "$pgid" ]]; then
+            continue  # process already gone
+        fi
+        if [[ "$pgid" == "$SELF_PGID" ]]; then
+            kill -TERM "$pid" 2>/dev/null || true
+        else
+            kill -TERM -- "-$pgid" 2>/dev/null || true
+        fi
     done
 }
 
 trap_handler() {
-    # External SIGINT/SIGTERM: kill in-flight passes, drain children,
-    # exit with the conventional 128+signal status. Distinct from the
-    # explicit `terminate_inflight` call below — that call leaves
-    # children un-reaped so the drain loop can record their statuses.
+    # External SIGINT/SIGTERM: tear down in-flight passes, then exit
+    # with the conventional 128+signal code. Per-signal traps let us
+    # distinguish 130 (SIGINT) from 143 (SIGTERM); automation that
+    # classifies shutdown reason by exit code relies on the convention.
+    local sig="$1"
     terminate_inflight
     wait 2>/dev/null || true
-    exit 130
+    case "$sig" in
+        INT)  exit 130;;
+        TERM) exit 143;;
+        *)    exit 1;;
+    esac
 }
-trap trap_handler INT TERM
+trap 'trap_handler INT' INT
+trap 'trap_handler TERM' TERM
 
 # Account a pass's exit code: 0 = success (no-op), anything else =
 # failure. Called from both the wait -n branch and the final drain.
@@ -259,7 +275,8 @@ for pid in "${!IN_FLIGHT[@]}"; do
     account_status "$pass" "$rc"
 done
 
-trap - INT TERM
+trap - INT
+trap - TERM
 
 {
     echo "completed_utc:         $(date -u +%Y-%m-%dT%H:%M:%SZ)"
