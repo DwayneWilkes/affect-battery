@@ -28,6 +28,33 @@ SEED=42
 BANK="configs/banks/h3b_calibrated_v1.yaml"
 RUNNER_CONFIG="configs/exp3a_runner_h3b_2026-05-07.yaml"
 
+usage() {
+    cat <<'USAGE'
+Run the H3b Phase 1A 20-pass single-turn calibrated replication.
+
+Usage:
+  bash scripts/pilots/run_h3b_phase1a.sh \
+    --prereg-commit <owner/repo>@<sha> \
+    [--output-base PATH] \
+    [--max-parallel N] \
+    [--n-passes N] \
+    [--seed N]
+
+Required:
+  --prereg-commit       Pre-registration commit reference, e.g.
+                        DwayneWilkes/affect-battery@<squash-sha>.
+
+Optional:
+  --output-base PATH    Output root (default: results/h3b_2026-05-07).
+  --max-parallel N      Max concurrent passes in flight (default: 20).
+  --n-passes N          Number of passes (default: 20).
+  --seed N              Sampler seed (default: 42).
+
+Pre-registration: docs/preregistrations/h3b_2026-05-07.md
+Environment:      OPENAI_API_KEY must be set.
+USAGE
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --prereg-commit) PREREG_COMMIT="$2"; shift 2;;
@@ -35,10 +62,8 @@ while [[ $# -gt 0 ]]; do
         --max-parallel)  MAX_PARALLEL="$2";  shift 2;;
         --n-passes)      N_PASSES="$2";      shift 2;;
         --seed)          SEED="$2";          shift 2;;
-        -h|--help)
-            sed -n '/^# Run the H3b/,/^$/p' "$0"
-            exit 0;;
-        *) echo "unknown flag: $1" >&2; exit 1;;
+        -h|--help)       usage; exit 0;;
+        *) echo "unknown flag: $1" >&2; usage; exit 1;;
     esac
 done
 
@@ -62,30 +87,60 @@ fi
 
 mkdir -p "$OUTPUT_BASE"
 
+# Derive the expected per-pass cell count from the canonical artifacts so
+# the count check survives bank or intensity-level changes without script
+# edits. Bank items are counted by `^- id:` lines (yaml dump format used
+# by build_calibrated_bank.py); intensity levels come from the runner
+# config's `intensity_levels: [...]` list.
+N_BANK_ITEMS=$(grep -cE '^- id:' "$BANK")
+N_LEVELS=$(grep -E '^intensity_levels:' "$RUNNER_CONFIG" | grep -oE '[0-9]+' | wc -l)
+if [[ "$N_BANK_ITEMS" -lt 1 || "$N_LEVELS" -lt 1 ]]; then
+    echo "ERROR: could not derive item or level counts (items=$N_BANK_ITEMS, levels=$N_LEVELS)" >&2
+    exit 1
+fi
+EXPECTED_CELLS_PER_PASS=$((N_BANK_ITEMS * N_LEVELS))
+
 MANIFEST="$OUTPUT_BASE/run_manifest.txt"
 {
     echo "H3b Phase 1A: single-turn calibrated replication (20 within-subjects passes)"
-    echo "prereg:           docs/preregistrations/h3b_2026-05-07.md"
-    echo "prereg_commit:    $PREREG_COMMIT"
-    echo "bank:             $BANK"
-    echo "runner_config:    $RUNNER_CONFIG"
-    echo "n_passes:         $N_PASSES"
-    echo "max_parallel:     $MAX_PARALLEL"
-    echo "seed:             $SEED"
-    echo "started_utc:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "prereg:                docs/preregistrations/h3b_2026-05-07.md"
+    echo "prereg_commit:         $PREREG_COMMIT"
+    echo "bank:                  $BANK"
+    echo "runner_config:         $RUNNER_CONFIG"
+    echo "n_bank_items:          $N_BANK_ITEMS"
+    echo "n_levels:              $N_LEVELS"
+    echo "expected_cells/pass:   $EXPECTED_CELLS_PER_PASS"
+    echo "n_passes:              $N_PASSES"
+    echo "max_parallel:          $MAX_PARALLEL"
+    echo "seed:                  $SEED"
+    echo "started_utc:           $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$MANIFEST"
 
 # Bounded-concurrency dispatch. Cap concurrent in-flight passes at
 # MAX_PARALLEL via `wait -n`. Each pass writes to its own subdir so
 # filenames don't collide.
+#
+# Pass-skipping discipline: a pass is skipped only when its output
+# directory holds the full expected_cells_per_pass count of result
+# JSONs. Partial directories (crashed mid-pass) are re-dispatched; the
+# runner's per-cell cache layer (documented in CLAUDE.md) resumes from
+# the missing cells without re-billing the API for completed ones.
 in_flight=0
 for pass in $(seq 1 "$N_PASSES"); do
     pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
-    if [[ -d "$pass_dir" && -n "$(find "$pass_dir" -name '*.json' -print -quit 2>/dev/null)" ]]; then
-        echo "pass $pass: existing results found at $pass_dir, skipping"
+    existing_cells=0
+    if [[ -d "$pass_dir" ]]; then
+        existing_cells=$(find "$pass_dir" -path "*/level_*/neutral/*.json" 2>/dev/null | wc -l)
+    fi
+    if [[ "$existing_cells" -ge "$EXPECTED_CELLS_PER_PASS" ]]; then
+        echo "pass $pass: $existing_cells/$EXPECTED_CELLS_PER_PASS cells complete, skipping"
         continue
     fi
-    echo "pass $pass: dispatching to $pass_dir"
+    if [[ "$existing_cells" -gt 0 ]]; then
+        echo "pass $pass: $existing_cells/$EXPECTED_CELLS_PER_PASS cells partial, re-dispatching (runner cache resumes)"
+    else
+        echo "pass $pass: dispatching to $pass_dir"
+    fi
     (
         affect-battery run \
             --experiment exp3a \
@@ -117,4 +172,5 @@ echo
 echo "All $N_PASSES passes complete. Manifest: $MANIFEST"
 echo "Cell-count check:"
 total_cells=$(find "$OUTPUT_BASE" -path "*/level_*/neutral/*.json" | wc -l)
-echo "  total result JSONs: $total_cells (expected $((N_PASSES * 18 * 7)) = $N_PASSES passes × 18 items × 7 levels)"
+expected_total=$((N_PASSES * EXPECTED_CELLS_PER_PASS))
+echo "  total result JSONs: $total_cells (expected $expected_total = $N_PASSES passes × $N_BANK_ITEMS items × $N_LEVELS levels)"
