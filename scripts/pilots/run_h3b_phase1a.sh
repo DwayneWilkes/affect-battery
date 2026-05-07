@@ -63,7 +63,7 @@ while [[ $# -gt 0 ]]; do
         --n-passes)      N_PASSES="$2";      shift 2;;
         --seed)          SEED="$2";          shift 2;;
         -h|--help)       usage; exit 0;;
-        *) echo "unknown flag: $1" >&2; usage; exit 1;;
+        *) echo "unknown flag: $1" >&2; usage >&2; exit 1;;
     esac
 done
 
@@ -92,8 +92,8 @@ mkdir -p "$OUTPUT_BASE"
 # edits. Bank items are counted by `^- id:` lines (yaml dump format used
 # by build_calibrated_bank.py); intensity levels come from the runner
 # config's `intensity_levels: [...]` list.
-N_BANK_ITEMS=$(grep -cE '^- id:' "$BANK")
-N_LEVELS=$(grep -E '^intensity_levels:' "$RUNNER_CONFIG" | grep -oE '[0-9]+' | wc -l)
+N_BANK_ITEMS=$(grep -cE '^- id:' "$BANK" || true)
+N_LEVELS=$(grep -E '^intensity_levels:' "$RUNNER_CONFIG" | grep -oE '[0-9]+' | wc -l || true)
 if [[ "$N_BANK_ITEMS" -lt 1 || "$N_LEVELS" -lt 1 ]]; then
     echo "ERROR: could not derive item or level counts (items=$N_BANK_ITEMS, levels=$N_LEVELS)" >&2
     exit 1
@@ -136,12 +136,16 @@ declare -i FAILED_COUNT=0
 declare -a FAILED_PASSES=()
 
 cleanup_on_failure() {
-    # Send SIGTERM to every tracked PID still running; let the runner's
-    # SIGINT handler drain in-flight calls cleanly. Idempotent: a PID
-    # that already exited produces a "no such process" we swallow.
+    # Send SIGTERM to every tracked PID still running plus its descendants.
+    # The tracked PID is the runner; if the runner forked grandchildren
+    # (e.g. a `sleep` in the test stub, or a Python pool worker), they
+    # need an explicit signal because bash does not propagate SIGTERM
+    # to children while it sits in `wait`. Idempotent: a PID that has
+    # already exited produces a "no such process" we swallow.
     local pid
     for pid in "${TRACKED_PIDS[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
+            pkill -TERM -P "$pid" 2>/dev/null || true
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done
@@ -170,7 +174,7 @@ for pass in $(seq 1 "$N_PASSES"); do
         echo "pass $pass: dispatching to $pass_dir"
     fi
     (
-        affect-battery run \
+        exec affect-battery run \
             --experiment exp3a \
             --provider openai \
             --model gpt-5.4-nano \
