@@ -130,34 +130,59 @@ MANIFEST="$OUTPUT_BASE/run_manifest.txt"
 # number. The first pass to fail triggers SIGTERM on every other
 # in-flight pass before the script exits; this stops API budget burn
 # the moment we know the pre-reg-locked count cannot be reached.
-declare -a TRACKED_PIDS=()
-declare -a TRACKED_PASSES=()
+declare -A IN_FLIGHT=()       # pid → pass number, for currently-running passes
 declare -i FAILED_COUNT=0
 declare -a FAILED_PASSES=()
 
-cleanup_on_failure() {
-    # Send SIGTERM to every tracked PID still running plus its descendants.
-    # The tracked PID is the runner; if the runner forked grandchildren
-    # (e.g. a `sleep` in the test stub, or a Python pool worker), they
-    # need an explicit signal because bash does not propagate SIGTERM
-    # to children while it sits in `wait`. Idempotent: a PID that has
-    # already exited produces a "no such process" we swallow.
+# Bash 5.1+ is required for `wait -n -p VAR` (used below to identify
+# which background job was reaped). BASH_VERSINFO is the structured
+# version array; checking [0]/[1] avoids parsing the human-readable
+# string. Pre-5.1 bash doesn't expand this comparison the same way
+# but also can't run the script's modern `wait -n -p` regardless,
+# so the check is a clearer error than the cryptic bash builtin
+# message you'd otherwise see.
+if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
+    echo "ERROR: bash $BASH_VERSION lacks 'wait -n -p VAR' (need 5.1+)" >&2
+    exit 1
+fi
+
+terminate_inflight() {
+    # Send SIGTERM to every still-running pass plus its descendants.
+    # Subshells use `exec affect-battery`, so the tracked PID is the
+    # runner itself; grandchildren (a stub `sleep`, a Python worker
+    # pool) need an explicit signal because bash does not propagate
+    # SIGTERM to children while it sits in `wait`. Does NOT call
+    # `wait` — the drain loop below captures per-pass statuses.
     local pid
-    for pid in "${TRACKED_PIDS[@]}"; do
+    for pid in "${!IN_FLIGHT[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
             pkill -TERM -P "$pid" 2>/dev/null || true
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done
-    wait 2>/dev/null || true
 }
 
-# `set -e` is on, but we manage `wait` exit codes explicitly so the
-# loop can record failures without aborting on the first one. The trap
-# below ensures Ctrl-C stops in-flight passes too.
-trap cleanup_on_failure INT TERM
+trap_handler() {
+    # External SIGINT/SIGTERM: kill in-flight passes, drain children,
+    # exit with the conventional 128+signal status. Distinct from the
+    # explicit `terminate_inflight` call below — that call leaves
+    # children un-reaped so the drain loop can record their statuses.
+    terminate_inflight
+    wait 2>/dev/null || true
+    exit 130
+}
+trap trap_handler INT TERM
 
-in_flight=0
+# Account a pass's exit code: 0 = success (no-op), anything else =
+# failure. Called from both the wait -n branch and the final drain.
+account_status() {
+    local pass="$1" rc="$2"
+    if [[ "$rc" -ne 0 ]]; then
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_PASSES+=("$pass")
+    fi
+}
+
 for pass in $(seq 1 "$N_PASSES"); do
     pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
     existing_cells=0
@@ -186,39 +211,38 @@ for pass in $(seq 1 "$N_PASSES"); do
             --pre-registration-github-commit "$PREREG_COMMIT" \
             --output-dir "$pass_dir"
     ) &
-    TRACKED_PIDS+=("$!")
-    TRACKED_PASSES+=("$pass")
-    in_flight=$((in_flight + 1))
-    if [[ "$in_flight" -ge "$MAX_PARALLEL" ]]; then
-        # Drain the next finishing background job. `wait -n` returns its
-        # exit code; if non-zero, terminate remaining passes immediately
-        # rather than burning more API budget on a pre-reg that can no
-        # longer reach its locked cell count.
-        if ! wait -n; then
-            FAILED_COUNT=$((FAILED_COUNT + 1))
-            echo "ERROR: a pass failed; terminating remaining in-flight passes" >&2
-            cleanup_on_failure
+    IN_FLIGHT[$!]=$pass
+    if [[ "${#IN_FLIGHT[@]}" -ge "$MAX_PARALLEL" ]]; then
+        # Drain the next finishing background job. `wait -n -p` returns
+        # the reaped PID via the named variable so we can attribute the
+        # exit status to its pass number. On non-zero exit, terminate
+        # remaining passes immediately rather than burning more API
+        # budget on a pre-reg that can no longer reach its locked cell
+        # count.
+        caught_pid=""
+        rc=0
+        wait -n -p caught_pid "${!IN_FLIGHT[@]}" || rc=$?
+        caught_pass="${IN_FLIGHT[$caught_pid]:-?}"
+        unset "IN_FLIGHT[$caught_pid]"
+        account_status "$caught_pass" "$rc"
+        if [[ "$rc" -ne 0 ]]; then
+            echo "ERROR: pass $caught_pass failed (exit $rc); terminating remaining in-flight passes" >&2
+            terminate_inflight
             break
         fi
-        in_flight=$((in_flight - 1))
     fi
 done
 
-# Drain remaining background jobs by PID so we can capture per-pass
-# exit codes. Plain `wait` returns 0 even if children failed; per-PID
-# `wait $pid` returns the child's exit code.
-for idx in "${!TRACKED_PIDS[@]}"; do
-    pid="${TRACKED_PIDS[$idx]}"
-    pass="${TRACKED_PASSES[$idx]}"
-    if ! wait "$pid" 2>/dev/null; then
-        # Distinguish "non-zero exit" from "PID already reaped" by
-        # checking if a result was produced.
-        rc=$?
-        if [[ "$rc" -ne 127 ]]; then
-            FAILED_COUNT=$((FAILED_COUNT + 1))
-            FAILED_PASSES+=("$pass")
-        fi
-    fi
+# Drain whatever is still in flight. Per-PID `wait` returns the
+# child's exit code (or 143 for SIGTERM'd passes). Capture via
+# `|| rc=$?` not `if ! wait; then rc=$?` — bash negates the pipeline's
+# exit status when `!` is used, so `$?` inside the `then` block is
+# always 0 and would silently mis-attribute statuses.
+for pid in "${!IN_FLIGHT[@]}"; do
+    pass="${IN_FLIGHT[$pid]}"
+    rc=0
+    wait "$pid" 2>/dev/null || rc=$?
+    account_status "$pass" "$rc"
 done
 
 trap - INT TERM

@@ -295,6 +295,50 @@ def test_manifest_records_failure_count(env_setup):
     assert int(failed_line.split(":")[1].strip()) >= 1
 
 
+def test_failed_count_matches_dispatched_failures_exactly(env_setup):
+    """The manifest's `failed_passes` count must equal the number of
+    passes that actually failed (1 by error + N-1 by SIGTERM cleanup),
+    not some inflated total caused by double-counting in both the
+    wait -n branch and the per-PID drain. With FAIL_ON_PASS=1 and
+    N_PASSES=5, MAX_PARALLEL=5, exactly 5 passes are dispatched and
+    all 5 should be marked failed (1 from error 17, 4 from SIGTERM)."""
+    cwd, env = env_setup
+    env["STUB_FAIL_ON_PASS"] = "1"
+    env["STUB_SLEEP_SECONDS"] = "2"
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "5", "--max-parallel", "5"],
+    )
+    assert result.returncode == 1
+    manifest = (cwd / "results" / "h3b_2026-05-07" / "run_manifest.txt").read_text()
+    failed_line = next(L for L in manifest.splitlines() if "failed_passes:" in L)
+    failed_count = int(failed_line.split(":")[1].strip())
+    assert failed_count == 5, (
+        f"expected exactly 5 failed passes (1 errored + 4 cleaned up), "
+        f"got {failed_count}. Manifest:\n{manifest}\nstderr: {result.stderr[:300]}"
+    )
+
+
+def test_failed_count_no_double_count_with_max_parallel_one(env_setup):
+    """With MAX_PARALLEL=1, every pass goes through wait -n. A failure
+    must be counted exactly once, not once in wait -n and again in the
+    drain loop."""
+    cwd, env = env_setup
+    env["STUB_FAIL_ON_PASS"] = "2"
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "3", "--max-parallel", "1"],
+    )
+    assert result.returncode == 1
+    manifest = (cwd / "results" / "h3b_2026-05-07" / "run_manifest.txt").read_text()
+    failed_line = next(L for L in manifest.splitlines() if "failed_passes:" in L)
+    failed_count = int(failed_line.split(":")[1].strip())
+    assert failed_count == 1, (
+        f"expected exactly 1 failed pass (only pass 2 was dispatched-and-failed; "
+        f"pass 1 succeeded, pass 3 never started), got {failed_count}.\n{manifest}"
+    )
+
+
 def test_failure_kills_inflight_passes_quickly(env_setup):
     """If a pass fails while siblings are sleeping, cleanup_on_failure
     must kill the siblings rather than letting them run to completion.
