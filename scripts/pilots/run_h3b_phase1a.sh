@@ -85,6 +85,17 @@ if [[ ! -f "$RUNNER_CONFIG" ]]; then
     exit 1
 fi
 
+# Bash 5.1+ is required for `wait -n -p VAR` (used in the dispatch
+# loop to identify which background job was reaped). BASH_VERSINFO is
+# the structured version array — checking [0]/[1] avoids parsing the
+# human-readable string. Validated up-front, before any side effects,
+# so a pre-5.1 bash exits cleanly without leaving an output dir or
+# manifest behind.
+if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
+    echo "ERROR: bash $BASH_VERSION lacks 'wait -n -p VAR' (need 5.1+)" >&2
+    exit 1
+fi
+
 mkdir -p "$OUTPUT_BASE"
 
 # Derive the expected per-pass cell count from the canonical artifacts so
@@ -134,17 +145,13 @@ declare -A IN_FLIGHT=()       # pid → pass number, for currently-running passe
 declare -i FAILED_COUNT=0
 declare -a FAILED_PASSES=()
 
-# Bash 5.1+ is required for `wait -n -p VAR` (used below to identify
-# which background job was reaped). BASH_VERSINFO is the structured
-# version array; checking [0]/[1] avoids parsing the human-readable
-# string. Pre-5.1 bash doesn't expand this comparison the same way
-# but also can't run the script's modern `wait -n -p` regardless,
-# so the check is a clearer error than the cryptic bash builtin
-# message you'd otherwise see.
-if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
-    echo "ERROR: bash $BASH_VERSION lacks 'wait -n -p VAR' (need 5.1+)" >&2
-    exit 1
-fi
+# Cell files match `<digits>.json` under `level_*/neutral/`. Centralise
+# the find filter so the dispatch-loop "skip complete" check (line ~190)
+# and the post-run total enforcement (bottom of script) cannot drift
+# apart and silently miscount.
+find_cell_files() {
+    find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null
+}
 
 terminate_inflight() {
     # Send SIGTERM to every still-running pass and every descendant it
@@ -190,7 +197,7 @@ for pass in $(seq 1 "$N_PASSES"); do
     pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
     existing_cells=0
     if [[ -d "$pass_dir" ]]; then
-        existing_cells=$(find "$pass_dir" -path "*/level_*/neutral/*.json" 2>/dev/null | wc -l)
+        existing_cells=$(find_cell_files "$pass_dir" | wc -l)
     fi
     if [[ "$existing_cells" -ge "$EXPECTED_CELLS_PER_PASS" ]]; then
         echo "pass $pass: $existing_cells/$EXPECTED_CELLS_PER_PASS cells complete, skipping"
@@ -269,6 +276,20 @@ fi
 echo
 echo "All $N_PASSES passes complete. Manifest: $MANIFEST"
 echo "Cell-count check:"
-total_cells=$(find "$OUTPUT_BASE" -path "*/level_*/neutral/*.json" | wc -l)
+total_cells=$(find_cell_files "$OUTPUT_BASE" | wc -l)
 expected_total=$((N_PASSES * EXPECTED_CELLS_PER_PASS))
 echo "  total result JSONs: $total_cells (expected $expected_total = $N_PASSES passes × $N_BANK_ITEMS items × $N_LEVELS levels)"
+if [[ "$total_cells" -ne "$expected_total" ]]; then
+    {
+        echo "ERROR: cell-count mismatch — got $total_cells, expected $expected_total"
+        echo "       Pre-registered analysis assumes $expected_total cells; missing"
+        echo "       cells will silently bias the (item_id, level) corpus. Inspect"
+        echo "       per-pass cell counts under $OUTPUT_BASE/pass_*/ before any"
+        echo "       analysis or amendment."
+    } >&2
+    {
+        echo "cell_count_check:      FAIL ($total_cells/$expected_total)"
+    } >> "$MANIFEST"
+    exit 1
+fi
+echo "cell_count_check:      OK ($total_cells/$expected_total)" >> "$MANIFEST"

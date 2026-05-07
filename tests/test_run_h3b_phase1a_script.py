@@ -254,15 +254,19 @@ def test_fully_complete_pass_skipped_no_runner_invocation(env_setup):
 def test_partial_pass_redispatched(env_setup):
     cwd, env = env_setup
     output_base = cwd / "results" / "h3b_2026-05-07"
+    # Realistic partial state: 10 cells of one level already on disk
+    # from a prior crash. The stub's full re-dispatch overwrites
+    # those plus fills in the remaining 116 cells across all levels,
+    # bringing the total to the expected 126.
     d = output_base / "pass_01" / "level_1" / "neutral"
     d.mkdir(parents=True)
-    for i in range(50):
+    for i in range(10):
         (d / f"{i:04d}.json").write_text("{}")
     result = _run(
         cwd, env,
         ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
     )
-    assert result.returncode == 0
+    assert result.returncode == 0, f"stderr: {result.stderr}"
     assert "partial, re-dispatching" in result.stdout
 
 
@@ -340,7 +344,7 @@ def test_failed_count_no_double_count_with_max_parallel_one(env_setup):
 
 
 def test_failure_kills_inflight_passes_quickly(env_setup):
-    """If a pass fails while siblings are sleeping, cleanup_on_failure
+    """If a pass fails while siblings are sleeping, terminate_inflight
     must kill the siblings rather than letting them run to completion.
     Asserted via wall-clock: with sleep=4 and pass 1 failing, the
     wrapper should exit well under 4s if cleanup works."""
@@ -360,3 +364,137 @@ def test_failure_kills_inflight_passes_quickly(env_setup):
         f"wrapper took {elapsed:.1f}s; expected fast cleanup. "
         f"stderr: {result.stderr[:400]}"
     )
+
+
+# ----------------------------------------------------------------------
+# Cell-count enforcement
+# ----------------------------------------------------------------------
+
+def test_cell_count_mismatch_exits_nonzero(env_setup):
+    """When the runner produces fewer cells than expected, the post-run
+    cell-count check must fail loud (non-zero exit, error to stderr).
+    Without enforcement, missing cells slip silently into pre-registered
+    analysis where the count is the unit of inference."""
+    cwd, env = env_setup
+    # Stub produces full cells, then we delete a few to simulate a
+    # silent partial run that the wrapper would otherwise accept.
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
+    )
+    assert result.returncode == 0, "baseline run should succeed"
+    pass_dir = cwd / "results" / "h3b_2026-05-07" / "pass_01"
+    deleted = list(pass_dir.glob("level_1/neutral/00*.json"))[:3]
+    for f in deleted:
+        f.unlink()
+    assert len(deleted) == 3, "test setup: expected 3 files to delete"
+    # Re-run with the same output base; pass_01 now has 123/126 cells, so
+    # it gets re-dispatched. Stub with PRODUCE_OUTPUT=0 leaves the partial
+    # state alone, so the post-run total is 123 instead of 126.
+    env["STUB_PRODUCE_OUTPUT"] = "0"
+    result2 = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
+    )
+    assert result2.returncode != 0, "wrapper should fail on cell-count mismatch"
+    assert "cell-count mismatch" in result2.stderr.lower() or "mismatch" in result2.stderr.lower()
+
+
+def test_stray_json_does_not_inflate_cell_count(env_setup):
+    """The cell-count find should match only numbered cell files
+    (`<NN>.json`), not unrelated JSON debris that an operator might
+    drop in a level_*/neutral/ directory."""
+    cwd, env = env_setup
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
+    )
+    assert result.returncode == 0
+    # Drop a stray non-cell JSON in one neutral dir; it must not be
+    # counted by the wrapper's cell-count check.
+    pass_dir = cwd / "results" / "h3b_2026-05-07" / "pass_01"
+    stray = pass_dir / "level_1" / "neutral" / "scratch_notes.json"
+    stray.write_text('{"note": "operator scratch"}')
+    # Delete one real cell so the totals balance: 126-1 (deleted) +
+    # 1 (stray, should be ignored) = 125. With the loose glob, total
+    # would read as 126 (stray inflates) and pass; with the tight
+    # glob, total reads as 125 and the cell-count check should fail.
+    real = pass_dir / "level_1" / "neutral" / "0000.json"
+    real.unlink()
+    env["STUB_PRODUCE_OUTPUT"] = "0"
+    result2 = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
+    )
+    assert result2.returncode != 0, (
+        "stray JSON should not be counted; total should read 125 not 126, "
+        "triggering a mismatch.\nstderr: " + result2.stderr[:400]
+    )
+
+
+# ----------------------------------------------------------------------
+# Signal handling
+# ----------------------------------------------------------------------
+
+def test_sigint_triggers_trap_and_kills_inflight(env_setup):
+    """An external SIGINT must run the trap_handler: kill in-flight
+    passes via the pgroup, drain children, and exit with status 130.
+    This is the Ctrl-C path operators take during a multi-hour run."""
+    cwd, env = env_setup
+    env["STUB_SLEEP_SECONDS"] = "10"
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT),
+         "--prereg-commit", "owner/repo@x",
+         "--n-passes", "5", "--max-parallel", "5"],
+        cwd=cwd, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    # Give the wrapper time to dispatch all 5 passes.
+    time.sleep(0.5)
+    import signal
+    proc.send_signal(signal.SIGINT)
+    start = time.time()
+    try:
+        proc.wait(timeout=4.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise AssertionError("wrapper did not exit within 4s of SIGINT")
+    elapsed = time.time() - start
+    assert proc.returncode == 130, (
+        f"expected exit 130 (SIGINT convention), got {proc.returncode}"
+    )
+    assert elapsed < 4.0, (
+        f"SIGINT cleanup took {elapsed:.1f}s; expected fast pgroup teardown"
+    )
+
+
+# ----------------------------------------------------------------------
+# Malformed inputs
+# ----------------------------------------------------------------------
+
+def test_malformed_bank_yaml_fails_derivation(env_setup):
+    """A bank file that exists but contains no `- id:` entries (e.g.,
+    items keyed differently or wrapped in an unexpected structure)
+    must trip the count-derivation check, not silently produce an
+    empty experiment."""
+    cwd, env = env_setup
+    (cwd / "configs" / "banks" / "h3b_calibrated_v1.yaml").write_text(
+        "bank_id: malformed\nfoo: bar\nbaz: [1, 2, 3]\n"
+    )
+    result = _run(cwd, env, ["--prereg-commit", "owner/repo@x"])
+    assert result.returncode == 1
+    assert "could not derive" in result.stderr
+
+
+def test_malformed_runner_config_fails_derivation(env_setup):
+    """A runner config with intensity_levels in an unparseable form
+    (e.g., a string instead of a list of integers) must fail
+    derivation rather than running with zero levels."""
+    cwd, env = env_setup
+    (cwd / "configs" / "exp3a_runner_h3b_2026-05-07.yaml").write_text(
+        "intensity_levels: low_medium_high\nsampling_mode: within_subjects\n"
+    )
+    result = _run(cwd, env, ["--prereg-commit", "owner/repo@x"])
+    assert result.returncode == 1
+    assert "could not derive" in result.stderr
