@@ -125,6 +125,34 @@ MANIFEST="$OUTPUT_BASE/run_manifest.txt"
 # JSONs. Partial directories (crashed mid-pass) are re-dispatched; the
 # runner's per-cell cache layer (documented in CLAUDE.md) resumes from
 # the missing cells without re-billing the API for completed ones.
+#
+# Failure handling: each background PID is tracked alongside its pass
+# number. The first pass to fail triggers SIGTERM on every other
+# in-flight pass before the script exits; this stops API budget burn
+# the moment we know the pre-reg-locked count cannot be reached.
+declare -a TRACKED_PIDS=()
+declare -a TRACKED_PASSES=()
+declare -i FAILED_COUNT=0
+declare -a FAILED_PASSES=()
+
+cleanup_on_failure() {
+    # Send SIGTERM to every tracked PID still running; let the runner's
+    # SIGINT handler drain in-flight calls cleanly. Idempotent: a PID
+    # that already exited produces a "no such process" we swallow.
+    local pid
+    for pid in "${TRACKED_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
+    done
+    wait 2>/dev/null || true
+}
+
+# `set -e` is on, but we manage `wait` exit codes explicitly so the
+# loop can record failures without aborting on the first one. The trap
+# below ensures Ctrl-C stops in-flight passes too.
+trap cleanup_on_failure INT TERM
+
 in_flight=0
 for pass in $(seq 1 "$N_PASSES"); do
     pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
@@ -154,19 +182,54 @@ for pass in $(seq 1 "$N_PASSES"); do
             --pre-registration-github-commit "$PREREG_COMMIT" \
             --output-dir "$pass_dir"
     ) &
+    TRACKED_PIDS+=("$!")
+    TRACKED_PASSES+=("$pass")
     in_flight=$((in_flight + 1))
     if [[ "$in_flight" -ge "$MAX_PARALLEL" ]]; then
-        wait -n
+        # Drain the next finishing background job. `wait -n` returns its
+        # exit code; if non-zero, terminate remaining passes immediately
+        # rather than burning more API budget on a pre-reg that can no
+        # longer reach its locked cell count.
+        if ! wait -n; then
+            FAILED_COUNT=$((FAILED_COUNT + 1))
+            echo "ERROR: a pass failed; terminating remaining in-flight passes" >&2
+            cleanup_on_failure
+            break
+        fi
         in_flight=$((in_flight - 1))
     fi
 done
 
-# Drain remaining background jobs.
-wait
+# Drain remaining background jobs by PID so we can capture per-pass
+# exit codes. Plain `wait` returns 0 even if children failed; per-PID
+# `wait $pid` returns the child's exit code.
+for idx in "${!TRACKED_PIDS[@]}"; do
+    pid="${TRACKED_PIDS[$idx]}"
+    pass="${TRACKED_PASSES[$idx]}"
+    if ! wait "$pid" 2>/dev/null; then
+        # Distinguish "non-zero exit" from "PID already reaped" by
+        # checking if a result was produced.
+        rc=$?
+        if [[ "$rc" -ne 127 ]]; then
+            FAILED_COUNT=$((FAILED_COUNT + 1))
+            FAILED_PASSES+=("$pass")
+        fi
+    fi
+done
+
+trap - INT TERM
 
 {
-    echo "completed_utc:    $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "completed_utc:         $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "failed_passes:         $FAILED_COUNT"
 } >> "$MANIFEST"
+
+if [[ "$FAILED_COUNT" -gt 0 ]]; then
+    echo
+    echo "FAILURE: $FAILED_COUNT pass(es) failed: ${FAILED_PASSES[*]:-(killed before completion)}" >&2
+    echo "Manifest: $MANIFEST" >&2
+    exit 1
+fi
 
 echo
 echo "All $N_PASSES passes complete. Manifest: $MANIFEST"
