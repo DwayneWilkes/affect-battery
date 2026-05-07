@@ -153,10 +153,21 @@ terminate_inflight() {
     # pool) need an explicit signal because bash does not propagate
     # SIGTERM to children while it sits in `wait`. Does NOT call
     # `wait` — the drain loop below captures per-pass statuses.
-    local pid
+    #
+    # Use `pgrep -P | xargs kill` rather than `pkill -P PID` because
+    # pkill requires a pattern argument on stricter implementations
+    # (BSD, pre-3.3.16 procps-ng) and silently fails when invoked
+    # with `-P` alone — leaving grandchildren alive. `pgrep -P` is
+    # unambiguous: list children of the named PID. `xargs -r` skips
+    # the kill if the child list is empty.
+    local pid children
     for pid in "${!IN_FLIGHT[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
-            pkill -TERM -P "$pid" 2>/dev/null || true
+            children=$(pgrep -P "$pid" 2>/dev/null || true)
+            if [[ -n "$children" ]]; then
+                # shellcheck disable=SC2086
+                kill -TERM $children 2>/dev/null || true
+            fi
             kill -TERM "$pid" 2>/dev/null || true
         fi
     done
