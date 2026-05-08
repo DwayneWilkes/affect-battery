@@ -21,6 +21,21 @@ log = logging.getLogger(__name__)
 NON_RETRYABLE_STATUSES = frozenset({400, 401, 403, 404, 422})
 
 
+@dataclass
+class UsageRecord:
+    """One API call's billable token counts.
+
+    `reasoning_tokens` is None for non-reasoning models (gpt-4o, etc.)
+    that don't itemize hidden reasoning. For reasoning models (gpt-5.x,
+    o-series), it's the count from `usage.completion_tokens_details.reasoning_tokens`,
+    billed at the same rate as visible completion tokens.
+    """
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int | None = None
+
+
 class NonRetryableAPIError(Exception):
     """Raised when the API returns a status that must halt the batch
     rather than be retried (auth, schema, missing resource)."""
@@ -221,10 +236,46 @@ class OpenAIClient(ModelClient):
 
         self._model = model
         self._client = AsyncOpenAI(api_key=api_key) if api_key else AsyncOpenAI()
+        # Per-call usage records appended after each successful response.
+        # See `UsageRecord` and `usage_summary()`.
+        self.usage_log: list[UsageRecord] = []
 
     @property
     def model_name(self) -> str:
         return self._model
+
+    def usage_summary(
+        self,
+        *,
+        input_usd_per_million: float | None = None,
+        output_usd_per_million: float | None = None,
+    ) -> dict:
+        """Aggregate per-call usage records.
+
+        Output cost (when pricing is supplied) bills both
+        `completion_tokens` and `reasoning_tokens` at the output rate —
+        OpenAI's reasoning-token line item is itemized but priced as
+        output. Without pricing, `estimated_usd` is omitted.
+        """
+        n_calls = len(self.usage_log)
+        prompt = sum(r.prompt_tokens for r in self.usage_log)
+        completion = sum(r.completion_tokens for r in self.usage_log)
+        reasoning = sum(
+            (r.reasoning_tokens or 0) for r in self.usage_log
+        )
+        out: dict = {
+            "model": self._model,
+            "n_calls": n_calls,
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "reasoning_tokens": reasoning,
+        }
+        if input_usd_per_million is not None and output_usd_per_million is not None:
+            out["estimated_usd"] = (
+                prompt * input_usd_per_million / 1_000_000
+                + (completion + reasoning) * output_usd_per_million / 1_000_000
+            )
+        return out
 
     @staticmethod
     def _uses_max_completion_tokens(model: str) -> bool:
@@ -335,7 +386,30 @@ class OpenAIClient(ModelClient):
                 f"last error: {last_exception}",
                 status_code=429,
             )
+        self._record_usage(resp)
         return resp.choices[0].message.content or ""
+
+    def _record_usage(self, resp) -> None:
+        """Pull token counts off the response and append a UsageRecord.
+
+        Tolerant of usage missing entirely (some local-proxy SDKs strip
+        it) — silently skips rather than crashing.
+        """
+        usage = getattr(resp, "usage", None)
+        if usage is None:
+            return
+        prompt = getattr(usage, "prompt_tokens", 0) or 0
+        completion = getattr(usage, "completion_tokens", 0) or 0
+        reasoning: int | None = None
+        details = getattr(usage, "completion_tokens_details", None)
+        if details is not None:
+            reasoning = getattr(details, "reasoning_tokens", None)
+        self.usage_log.append(UsageRecord(
+            model=self._model,
+            prompt_tokens=int(prompt),
+            completion_tokens=int(completion),
+            reasoning_tokens=int(reasoning) if reasoning is not None else None,
+        ))
 
     async def complete_text(self, *_a, **_kw) -> str:
         raise NotImplementedError(
