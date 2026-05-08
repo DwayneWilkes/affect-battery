@@ -735,3 +735,127 @@ def test_unit_find_cell_files_excludes_non_cell_jsons(tmp_path: Path):
 
 def test_unit_find_cell_files_returns_empty_for_missing_dir(tmp_path: Path):
     assert h3b_runner.find_cell_files(tmp_path / "nonexistent") == []
+
+
+# ----------------------------------------------------------------------
+# End-to-end integration: real affect-battery CLI under --dry-run.
+#
+# The stub-based tests above pin the wrapper's behaviour; these tests
+# pin that the on-disk corpus produced by the wrapper + real runner
+# matches what the pre-registered analysis pipeline expects. If the
+# runner's output schema drifts (e.g., field rename, layout change),
+# these tests fail loud rather than letting the drift pass through to
+# silently-broken analysis.
+# ----------------------------------------------------------------------
+
+def test_e2e_dry_run_produces_analyzable_corpus(tmp_path: Path):
+    """Run the real wrapper + real affect-battery via --dry-run and
+    validate that the resulting on-disk corpus shape matches the
+    prereg's analysis assumptions:
+
+      - 18 calibrated items × 7 intensity levels = 126 cells per pass
+      - N passes × 126 = N × 126 total cells
+      - Each pass writes to its own pass_NN/ subdirectory (so the
+        runner's per-cell cache doesn't shadow fresh stochastic samples
+        between passes)
+      - Each cell file is JSON with the fields analysis depends on
+        (config block with transfer_bank metadata, transfer_correct
+        array, run_number, etc.)
+      - Per-pass coverage: 18 cells per level per pass (within_subjects)
+      - transfer_bank_hash matches the calibrated bank's pinned SHA
+    """
+    import json
+    output_base = tmp_path / "h3b_e2e"
+    env = os.environ.copy()
+    env.setdefault("OPENAI_API_KEY", "unused-under-dry-run")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT),
+         "--prereg-commit", "DwayneWilkes/affect-battery@dryrun",
+         "--output-base", str(output_base),
+         "--n-passes", "2",
+         "--max-parallel", "2",
+         "--dry-run"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, (
+        f"wrapper exited {result.returncode}\n"
+        f"stderr: {result.stderr[:600]}\n"
+        f"stdout: {result.stdout[-400:]}"
+    )
+
+    # Total cell count: 2 passes × 18 items × 7 levels.
+    cells = sorted(output_base.glob("pass_*/data/level_*/neutral/*.json"))
+    assert len(cells) == 252, (
+        f"expected 252 cells (2×18×7), got {len(cells)}.\n"
+        f"layout: {[str(c.relative_to(output_base)) for c in cells[:5]]}"
+    )
+
+    # Per-pass × per-level coverage: within_subjects pairs every item
+    # with every level on every pass, so each `level_<L>/neutral/` dir
+    # under a pass should hold exactly 18 cells.
+    for pass_n in (1, 2):
+        for level in range(1, 8):
+            d = (output_base / f"pass_{pass_n:02d}"
+                 / "data" / f"level_{level}" / "neutral")
+            n = len(list(d.glob("*.json")))
+            assert n == 18, (
+                f"pass {pass_n} level {level}: expected 18 cells, got {n}"
+            )
+
+    # Cell files share the schema the analysis pipeline indexes on.
+    # `transfer_correct` carries the per-cell binary correctness in
+    # real runs (empty list under --dry-run is fine; we're checking
+    # *presence*, not *content*). `config.transfer_bank` and
+    # `config.transfer_bank_hash` lock the bank used.
+    sample = cells[0]
+    data = json.loads(sample.read_text())
+    required_top = {"config", "experiment_type", "model",
+                    "run_number", "transfer_correct", "transfer_questions"}
+    missing = required_top - set(data.keys())
+    assert not missing, (
+        f"cell {sample.name} missing required fields: {missing}\n"
+        f"actual keys: {sorted(data.keys())[:20]}"
+    )
+    cfg = data["config"]
+    assert cfg.get("experiment_type") == "exp3a"
+    assert cfg.get("transfer_bank", "").endswith("h3b_calibrated_v1.yaml"), (
+        f"transfer_bank does not point at the calibrated YAML: "
+        f"{cfg.get('transfer_bank')}"
+    )
+    # Calibrated bank SHA pinned in docs/preregistrations/h3b_2026-05-07.md.
+    expected_bank_sha_prefix = "337dddd0"
+    assert cfg.get("transfer_bank_hash", "").startswith(expected_bank_sha_prefix), (
+        f"transfer_bank_hash doesn't match pinned SHA "
+        f"({expected_bank_sha_prefix}...): got {cfg.get('transfer_bank_hash')}"
+    )
+
+
+def test_e2e_dry_run_each_cell_has_unique_path(tmp_path: Path):
+    """Every cell on disk must occupy a unique (pass, level, run_number)
+    slot — no two cells should write to the same file path. If they did,
+    the later writer would silently overwrite the earlier and the
+    aggregated corpus would undercount."""
+    output_base = tmp_path / "h3b_unique"
+    env = os.environ.copy()
+    env.setdefault("OPENAI_API_KEY", "unused-under-dry-run")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT),
+         "--prereg-commit", "DwayneWilkes/affect-battery@dryrun",
+         "--output-base", str(output_base),
+         "--n-passes", "3",
+         "--max-parallel", "3",
+         "--dry-run"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr[:400]}"
+    cells = list(output_base.glob("pass_*/data/level_*/neutral/*.json"))
+    paths = {str(c.relative_to(output_base)) for c in cells}
+    assert len(paths) == len(cells), (
+        f"duplicate cell paths detected: {len(cells)} files, "
+        f"{len(paths)} unique paths"
+    )
+    assert len(cells) == 378, f"expected 378 cells (3×18×7), got {len(cells)}"
