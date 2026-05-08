@@ -181,12 +181,19 @@ declare -a FAILED_PASSES=()
 # clause excludes per-pass `manifest.yaml` and any non-cell scratch
 # JSONs an operator might drop in.
 find_cell_files() {
-    # `|| true` so a transient find error (unreadable subdir, race with
-    # the runner writing files) doesn't propagate non-zero through the
-    # pipeline this is usually called inside. Under `set -euo pipefail`,
-    # `var=$(find_cell_files dir | wc -l)` would otherwise errexit the
-    # caller — which can land mid-cleanup and leak in-flight passes.
-    find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null || true
+    find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null
+}
+
+count_cell_files() {
+    # Returns the cell count on stdout. Uses `mapfile <(find ...)` so
+    # find runs in a process substitution — its exit status is decoupled
+    # from `set -euo pipefail`'s errexit. A pipeline (`find | wc -l`)
+    # would propagate find's non-zero exit (e.g., racing with the runner
+    # mid-write) through `var=$(...)` and abort the caller, which in
+    # cleanup paths means leaking in-flight passes.
+    local -a cells
+    mapfile -t cells < <(find_cell_files "$1")
+    echo "${#cells[@]}"
 }
 
 SELF_PGID=$(ps -o pgid= -p $$ | tr -d ' ')
@@ -206,15 +213,17 @@ terminate_inflight() {
     # descendants yet.
     local pid pgid
     for pid in "${!IN_FLIGHT[@]}"; do
-        # `|| true` is critical: under set -euo pipefail, if the
-        # tracked process exited between `for` enumeration and `ps`
-        # running, ps exits 1 → pipefail propagates → `var=$(pipeline)`
-        # errexits the script *during cleanup*, leaving sibling
-        # passes alive. The `|| true` keeps cleanup running.
-        pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
-        if [[ -z "$pgid" ]]; then
-            continue  # process already gone
-        fi
+        # Test-then-act: skip dead PIDs cheaply with `kill -0` (no
+        # signal sent, just a permission/existence check). Then read
+        # pgid via plain command substitution (no pipe → no pipefail
+        # exposure) and strip whitespace with bash parameter expansion
+        # rather than a `tr` subprocess. The explicit `|| continue`
+        # handles the residual race (process exits between `kill -0`
+        # and `ps`) without a blanket `|| true`.
+        kill -0 "$pid" 2>/dev/null || continue
+        pgid=$(ps -o pgid= -p "$pid" 2>/dev/null) || continue
+        pgid=${pgid// /}
+        [[ -z "$pgid" ]] && continue
         if [[ "$pgid" == "$SELF_PGID" ]]; then
             kill -TERM "$pid" 2>/dev/null || true
         else
@@ -254,7 +263,7 @@ for pass in $(seq 1 "$N_PASSES"); do
     pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
     existing_cells=0
     if [[ -d "$pass_dir" ]]; then
-        existing_cells=$(find_cell_files "$pass_dir" | wc -l)
+        existing_cells=$(count_cell_files "$pass_dir")
     fi
     if [[ "$existing_cells" -ge "$EXPECTED_CELLS_PER_PASS" ]]; then
         echo "pass $pass: $existing_cells/$EXPECTED_CELLS_PER_PASS cells complete, skipping"
@@ -348,7 +357,7 @@ echo "Cell-count check:"
 total_cells=0
 for pass in $(seq 1 "$N_PASSES"); do
     pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
-    n=$(find_cell_files "$pass_dir" | wc -l)
+    n=$(count_cell_files "$pass_dir")
     total_cells=$((total_cells + n))
 done
 expected_total=$((N_PASSES * EXPECTED_CELLS_PER_PASS))
