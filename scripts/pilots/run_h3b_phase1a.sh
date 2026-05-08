@@ -27,6 +27,7 @@ N_PASSES=20
 SEED=42
 BANK="configs/banks/h3b_calibrated_v1.yaml"
 RUNNER_CONFIG="configs/exp3a_runner_h3b_2026-05-07.yaml"
+DRY_RUN=0
 
 usage() {
     cat <<'USAGE'
@@ -49,6 +50,9 @@ Optional:
   --max-parallel N      Max concurrent passes in flight (default: 20).
   --n-passes N          Number of passes (default: 20).
   --seed N              Sampler seed (default: 42).
+  --dry-run             Pass --dry-run through to affect-battery (canned
+                        responses, no API calls; bypasses pre-reg/power
+                        gates). For wiring/E2E sanity checks.
 
 Pre-registration: docs/preregistrations/h3b_2026-05-07.md
 Environment:      OPENAI_API_KEY must be set.
@@ -61,7 +65,8 @@ while [[ $# -gt 0 ]]; do
         --output-base)   OUTPUT_BASE="$2";   shift 2;;
         --max-parallel)  MAX_PARALLEL="$2";  shift 2;;
         --n-passes)      N_PASSES="$2";      shift 2;;
-        --seed)          SEED="$2";          shift 2;;
+        --seed)           SEED="$2";          shift 2;;
+        --dry-run)        DRY_RUN=1;          shift;;
         -h|--help)       usage; exit 0;;
         *) echo "unknown flag: $1" >&2; usage >&2; exit 1;;
     esac
@@ -230,17 +235,25 @@ for pass in $(seq 1 "$N_PASSES"); do
     # bash's $! point at the program itself: bash forks, the child
     # execs `setsid`, setsid calls setsid() and execs the program in
     # place. PID == pgid == sid for the running pass.
+    extra_args=()
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        extra_args+=("--dry-run")
+    fi
+    # exp3a's task items come from --transfer-bank (a YAML path);
+    # --bank is unused for exp3a (it would route through the
+    # ArithmeticBank loader which our calibrated task bank is not).
     setsid affect-battery run \
         --experiment exp3a \
         --provider openai \
         --model gpt-5.4-nano \
-        --bank "$BANK" \
+        --transfer-bank "$BANK" \
         --num-runs 18 \
         --seed "$SEED" \
         --temperature 0.7 \
         --runner-config "$RUNNER_CONFIG" \
         --pre-registration-github-commit "$PREREG_COMMIT" \
-        --output-dir "$pass_dir" &
+        --output-dir "$pass_dir" \
+        "${extra_args[@]}" &
     IN_FLIGHT[$!]=$pass
     if [[ "${#IN_FLIGHT[@]}" -ge "$MAX_PARALLEL" ]]; then
         # Drain the next finishing background job. `wait -n -p` returns

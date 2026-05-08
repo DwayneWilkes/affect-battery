@@ -35,6 +35,11 @@ STUB_AFFECT_BATTERY = textwrap.dedent("""\
     #!/usr/bin/env bash
     set -e
     OUTPUT_DIR=""
+    # Log every arg the wrapper invoked us with, so tests can assert
+    # on flag presence (e.g., --transfer-bank, --dry-run).
+    if [[ -n "${STUB_ARGS_LOG:-}" ]]; then
+        printf '%s\\n' "$@" > "$STUB_ARGS_LOG"
+    fi
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --output-dir) OUTPUT_DIR="$2"; shift 2;;
@@ -493,6 +498,44 @@ def test_malformed_bank_yaml_fails_derivation(env_setup):
     result = _run(cwd, env, ["--prereg-commit", "owner/repo@x"])
     assert result.returncode == 1
     assert "could not derive" in result.stderr
+
+
+def test_invocation_passes_transfer_bank_not_bank(env_setup):
+    """exp3a's task items come from --transfer-bank (a YAML path);
+    --bank routes through the ArithmeticBank loader and rejects the
+    calibrated task bank's schema. The wrapper must pass the bank
+    YAML via --transfer-bank, not --bank."""
+    cwd, env = env_setup
+    args_log = cwd / "stub_args.log"
+    env["STUB_ARGS_LOG"] = str(args_log)
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    args = args_log.read_text().splitlines()
+    assert "--transfer-bank" in args, f"--transfer-bank missing from {args}"
+    tb_idx = args.index("--transfer-bank")
+    assert args[tb_idx + 1].endswith("h3b_calibrated_v1.yaml"), (
+        f"--transfer-bank should point to the calibrated bank YAML, "
+        f"got {args[tb_idx + 1]}"
+    )
+
+
+def test_dry_run_flag_passes_through(env_setup):
+    """When --dry-run is on, the wrapper must include --dry-run in the
+    runner invocation."""
+    cwd, env = env_setup
+    args_log = cwd / "stub_args.log"
+    env["STUB_ARGS_LOG"] = str(args_log)
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1",
+         "--dry-run"],
+    )
+    assert result.returncode == 0
+    args = args_log.read_text().splitlines()
+    assert "--dry-run" in args, f"--dry-run missing from {args}"
 
 
 def test_malformed_runner_config_fails_derivation(env_setup):
