@@ -153,12 +153,36 @@ def count_bank_items(bank_path: Path) -> int:
 
 
 def count_intensity_levels(runner_config: Path) -> int:
-    """Count integers in the runner config's `intensity_levels: [...]` line."""
+    """Count integers in the runner config's `intensity_levels` field.
+
+    Handles both YAML forms:
+      inline   `intensity_levels: [1, 2, 3]`
+      block    `intensity_levels:\\n  - 1\\n  - 2\\n  - 3`
+    The block form's continuation lines are at deeper indent than the
+    key line, so we accept the key line plus any subsequent lines that
+    are either indented or start with `-` until we hit a sibling key
+    (column-0 non-comment line)."""
     text = runner_config.read_text()
-    m = re.search(r"^intensity_levels:.*$", text, re.MULTILINE)
-    if not m:
+    lines = text.splitlines()
+    in_block = False
+    captured: list[str] = []
+    for line in lines:
+        if not in_block:
+            if re.match(r"^intensity_levels:", line):
+                in_block = True
+                captured.append(line)
+                # Inline form: the value is on the same line, done after this.
+                if re.search(r"\[.*\]", line):
+                    break
+            continue
+        # In block: continuation lines are indented (or empty); a column-0
+        # non-comment line ends the block.
+        if line and not line[0].isspace() and not line.lstrip().startswith("#"):
+            break
+        captured.append(line)
+    if not captured:
         return 0
-    return len(re.findall(r"\d+", m.group(0)))
+    return len(re.findall(r"\d+", "\n".join(captured)))
 
 
 def find_cell_files(directory: Path) -> list[Path]:
@@ -294,6 +318,16 @@ class PassRunner:
         return False
 
     def dispatch(self, pass_num: int) -> None:
+        # Known minor race: a signal arriving between `Popen` returning
+        # and the IN_FLIGHT assignment below would let _ShutdownRequested
+        # propagate before the proc is registered, orphaning that one
+        # pass. The window is between two adjacent Python bytecodes
+        # (microseconds) — the obvious mitigation (pthread_sigmask
+        # SIG_BLOCK) breaks signal delivery to children because the
+        # blocked mask is inherited across fork() and Python preserves
+        # it across exec(). preexec_fn could reset the child mask but
+        # has its own deadlock caveats. Documented as a limitation;
+        # operationally negligible for a few-hours pilot.
         proc = subprocess.Popen(
             self.build_command(pass_num),
             start_new_session=True,
@@ -354,16 +388,32 @@ class PassRunner:
         self.output_base.mkdir(parents=True, exist_ok=True)
         self.write_manifest_header()
 
-        for pass_num in range(1, self.args.n_passes + 1):
-            if self.maybe_skip(pass_num):
-                continue
-            self.dispatch(pass_num)
-            if len(self.in_flight) >= self.args.max_parallel:
-                self.reap_one()
-                if self.cleanup_triggered:
-                    break
-
-        self.drain()
+        # Dispatch + drain phases share a try/finally: if Popen raises
+        # mid-loop (e.g., affect-battery missing from PATH, fork fails
+        # under resource pressure) after some passes have already been
+        # dispatched, the prior in-flight passes still need to be
+        # terminated and reaped. Without this, the exception propagates
+        # leaving orphaned children. _ShutdownRequested has its own
+        # path through main(), so let it through unmodified.
+        try:
+            for pass_num in range(1, self.args.n_passes + 1):
+                if self.maybe_skip(pass_num):
+                    continue
+                self.dispatch(pass_num)
+                if len(self.in_flight) >= self.args.max_parallel:
+                    self.reap_one()
+                    if self.cleanup_triggered:
+                        break
+            self.drain()
+        except _ShutdownRequested:
+            raise
+        except BaseException:
+            self.terminate_inflight()
+            try:
+                self.drain()
+            except BaseException:
+                pass  # best-effort; the original exception is what matters
+            raise
 
         self.append_manifest(f"completed_utc:         {utc_now_iso()}")
         self.append_manifest(f"failed_passes:         {len(self.failed_passes)}")

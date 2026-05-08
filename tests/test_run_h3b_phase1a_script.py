@@ -114,7 +114,8 @@ def env_setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     env["OPENAI_API_KEY"] = "test-key"
-    for var in ("STUB_FAIL_ON_PASS", "STUB_SLEEP_SECONDS", "STUB_PRODUCE_OUTPUT"):
+    for var in ("STUB_FAIL_ON_PASS", "STUB_SLEEP_SECONDS",
+                "STUB_PRODUCE_OUTPUT", "STUB_ARGS_LOG"):
         env.pop(var, None)
     return tmp_path, env
 
@@ -700,6 +701,23 @@ def test_unit_count_intensity_levels_zero_when_absent(tmp_path: Path):
     cfg = tmp_path / "runner.yaml"
     cfg.write_text("sampling_mode: within_subjects\n")
     assert h3b_runner.count_intensity_levels(cfg) == 0
+
+
+def test_unit_count_intensity_levels_handles_block_list_yaml(tmp_path: Path):
+    """The runner config YAML may use either inline list (`[1, 2, 3]`)
+    or block list form. The count must not silently drop to zero on the
+    block form, which would route through "could not derive" and exit 1
+    with a misleading diagnostic."""
+    cfg = tmp_path / "runner.yaml"
+    cfg.write_text(
+        "intensity_levels:\n"
+        "  - 1\n"
+        "  - 2\n"
+        "  - 3\n"
+        "  - 4\n"
+        "sampling_mode: within_subjects\n"
+    )
+    assert h3b_runner.count_intensity_levels(cfg) == 4
 
 
 def test_unit_find_cell_files_excludes_non_cell_jsons(tmp_path: Path):
