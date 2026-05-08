@@ -554,6 +554,45 @@ def test_dry_run_skips_openai_api_key_requirement(env_setup):
     )
 
 
+def test_n_passes_zero_rejected(env_setup):
+    """--n-passes 0 silently runs zero passes and exits 0 today, which
+    is a footgun: an operator typo could "succeed" without producing
+    any data. Reject as user error."""
+    cwd, env = env_setup
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "0"],
+    )
+    assert result.returncode == 1
+    assert "n-passes" in result.stderr.lower() or "passes" in result.stderr.lower()
+
+
+def test_n_passes_non_integer_rejected(env_setup):
+    """--n-passes abc should fail with a clear error before reaching
+    `seq 1 abc` deep in the dispatch loop."""
+    cwd, env = env_setup
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "abc"],
+    )
+    assert result.returncode == 1
+    assert "n-passes" in result.stderr.lower() or "integer" in result.stderr.lower()
+
+
+def test_max_parallel_zero_rejected(env_setup):
+    """--max-parallel 0 makes the bounded-concurrency check trip on
+    every dispatch (1 >= 0), effectively serialising — but harmlessly.
+    More importantly, 0 has no operational meaning. Reject as user
+    error so a typo doesn't silently change behavior."""
+    cwd, env = env_setup
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--max-parallel", "0"],
+    )
+    assert result.returncode == 1
+    assert "max-parallel" in result.stderr.lower() or "parallel" in result.stderr.lower()
+
+
 def test_cell_count_check_scopes_to_requested_passes(env_setup):
     """If OUTPUT_BASE already holds passes from a prior larger run, a
     re-invocation with smaller --n-passes must only count the cells

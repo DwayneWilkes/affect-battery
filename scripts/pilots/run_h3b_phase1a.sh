@@ -13,10 +13,11 @@
 #   bash scripts/pilots/run_h3b_phase1a.sh \
 #     --prereg-commit DwayneWilkes/affect-battery@<squash-sha> \
 #     [--output-base results/h3b_2026-05-07] \
-#     [--max-parallel 20]
+#     [--max-parallel 20] \
+#     [--n-passes 20] [--seed 42] [--dry-run]
 #
 # Environment:
-#   OPENAI_API_KEY must be set.
+#   OPENAI_API_KEY must be set (skipped under --dry-run).
 
 set -euo pipefail
 
@@ -75,6 +76,21 @@ done
 if [[ -z "$PREREG_COMMIT" ]]; then
     echo "ERROR: --prereg-commit is required" >&2
     echo "  format: <owner/repo>@<sha>, e.g. DwayneWilkes/affect-battery@abc1234" >&2
+    exit 1
+fi
+# Numeric arg validation. Reject non-integers and non-positive values
+# up-front so a typo (`--n-passes 0`, `--n-passes abc`) doesn't silently
+# run zero passes or fail deep in `seq` with a confusing error.
+if ! [[ "$N_PASSES" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --n-passes must be a positive integer (got '$N_PASSES')" >&2
+    exit 1
+fi
+if ! [[ "$MAX_PARALLEL" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --max-parallel must be a positive integer (got '$MAX_PARALLEL')" >&2
+    exit 1
+fi
+if ! [[ "$SEED" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: --seed must be a non-negative integer (got '$SEED')" >&2
     exit 1
 fi
 if [[ -z "${OPENAI_API_KEY:-}" && "$DRY_RUN" -eq 0 ]]; then
@@ -165,7 +181,12 @@ declare -a FAILED_PASSES=()
 # clause excludes per-pass `manifest.yaml` and any non-cell scratch
 # JSONs an operator might drop in.
 find_cell_files() {
-    find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null
+    # `|| true` so a transient find error (unreadable subdir, race with
+    # the runner writing files) doesn't propagate non-zero through the
+    # pipeline this is usually called inside. Under `set -euo pipefail`,
+    # `var=$(find_cell_files dir | wc -l)` would otherwise errexit the
+    # caller — which can land mid-cleanup and leak in-flight passes.
+    find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null || true
 }
 
 SELF_PGID=$(ps -o pgid= -p $$ | tr -d ' ')
@@ -185,7 +206,12 @@ terminate_inflight() {
     # descendants yet.
     local pid pgid
     for pid in "${!IN_FLIGHT[@]}"; do
-        pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+        # `|| true` is critical: under set -euo pipefail, if the
+        # tracked process exited between `for` enumeration and `ps`
+        # running, ps exits 1 → pipefail propagates → `var=$(pipeline)`
+        # errexits the script *during cleanup*, leaving sibling
+        # passes alive. The `|| true` keeps cleanup running.
+        pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
         if [[ -z "$pgid" ]]; then
             continue  # process already gone
         fi
@@ -298,8 +324,7 @@ for pid in "${!IN_FLIGHT[@]}"; do
     account_status "$pass" "$rc"
 done
 
-trap - INT
-trap - TERM
+trap - INT TERM
 
 {
     echo "completed_utc:         $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -308,7 +333,7 @@ trap - TERM
 
 if [[ "$FAILED_COUNT" -gt 0 ]]; then
     echo
-    echo "FAILURE: $FAILED_COUNT pass(es) failed: ${FAILED_PASSES[*]:-(killed before completion)}" >&2
+    echo "FAILURE: $FAILED_COUNT pass(es) failed: ${FAILED_PASSES[*]}" >&2
     echo "Manifest: $MANIFEST" >&2
     exit 1
 fi
