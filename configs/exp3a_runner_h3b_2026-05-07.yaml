@@ -4,9 +4,15 @@
 # items in configs/banks/h3b_calibrated_v1.yaml is paired with each of
 # the 7 intensity levels every pass. The 20-pass design specified in
 # docs/preregistrations/h3b_2026-05-07.md is realised by running the
-# experiment 20 times with this config, accumulating into the same
-# output directory; aggregation happens at the (item_id, level) cell
-# level regardless of pass order.
+# experiment 20 times with this config, each pass writing to a
+# distinct pass_NN/ subdirectory under the run's output base. Per-pass
+# subdirs are required: the runner's per-cell cache layer skips API
+# calls when a valid result file already exists at the target path,
+# so reusing one output directory across passes would yield 1 fresh
+# pass plus 19 cache hits rather than 20 independent stochastic
+# samples per (item_id, level) cell. The wrapper at
+# scripts/pilots/run_h3b_phase1a.py handles per-pass dir naming;
+# aggregation at analysis time globs across pass_*/data/level_*/.
 #
 # Pre-registration: docs/preregistrations/h3b_2026-05-07.md
 # Bank:             configs/banks/h3b_calibrated_v1.yaml (passed via --bank)
