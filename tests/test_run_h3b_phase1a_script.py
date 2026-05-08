@@ -1,6 +1,6 @@
-"""Tests for `scripts/pilots/run_h3b_phase1a.sh`.
+"""Tests for `scripts/pilots/run_h3b_phase1a.py`.
 
-The wrapper orchestrates 20 within-subjects passes of run_exp3a, each
+The wrapper orchestrates N within-subjects passes of run_exp3a, each
 writing to its own output subdirectory. Tests exercise every branch:
 argument validation, cell-count derivation, pass-skipping discipline
 (fresh / partial / complete), parallel-failure cleanup, and manifest
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import textwrap
 import time
 from pathlib import Path
@@ -23,7 +24,12 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = REPO_ROOT / "scripts" / "pilots" / "run_h3b_phase1a.sh"
+SCRIPT = REPO_ROOT / "scripts" / "pilots" / "run_h3b_phase1a.py"
+
+# Import the wrapper as a module so unit tests can exercise its parsing
+# helpers directly without spawning a subprocess.
+sys.path.insert(0, str(SCRIPT.parent))
+import run_h3b_phase1a as h3b_runner  # noqa: E402
 
 
 # Stub `affect-battery` that pretends to be the runner. Behavior knobs:
@@ -115,7 +121,7 @@ def env_setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
 
 def _run(cwd: Path, env: dict[str, str], args: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", str(SCRIPT), *args],
+        [sys.executable, str(SCRIPT), *args],
         cwd=cwd,
         env=env,
         capture_output=True,
@@ -132,7 +138,7 @@ def test_help_prints_usage_and_exits_zero(env_setup):
     cwd, env = env_setup
     result = _run(cwd, env, ["--help"])
     assert result.returncode == 0
-    assert "Usage:" in result.stdout
+    assert "usage:" in result.stdout.lower()
     assert "--prereg-commit" in result.stdout
 
 
@@ -140,7 +146,8 @@ def test_missing_prereg_commit_exits_one(env_setup):
     cwd, env = env_setup
     result = _run(cwd, env, [])
     assert result.returncode == 1
-    assert "--prereg-commit is required" in result.stderr
+    assert "--prereg-commit" in result.stderr
+    assert "required" in result.stderr.lower()
 
 
 def test_missing_openai_api_key_exits_one(env_setup):
@@ -171,8 +178,8 @@ def test_unknown_flag_exits_one_with_usage(env_setup):
     cwd, env = env_setup
     result = _run(cwd, env, ["--prereg-commit", "x", "--bogus", "y"])
     assert result.returncode == 1
-    assert "unknown flag" in result.stderr
-    assert "Usage:" in result.stderr
+    assert "unrecognized" in result.stderr.lower() or "unknown" in result.stderr.lower()
+    assert "usage:" in result.stderr.lower()
 
 
 # ----------------------------------------------------------------------
@@ -471,7 +478,7 @@ def _send_signal_and_assert(env_setup, signal_name, expected_rc):
     cwd, env = env_setup
     env["STUB_SLEEP_SECONDS"] = "10"
     proc = subprocess.Popen(
-        ["bash", str(SCRIPT),
+        [sys.executable, str(SCRIPT),
          "--prereg-commit", "owner/repo@x",
          "--n-passes", "5", "--max-parallel", "5"],
         cwd=cwd, env=env,
@@ -654,3 +661,59 @@ def test_malformed_runner_config_fails_derivation(env_setup):
     result = _run(cwd, env, ["--prereg-commit", "owner/repo@x"])
     assert result.returncode == 1
     assert "could not derive" in result.stderr
+
+
+# ----------------------------------------------------------------------
+# Unit tests on the parsing helpers (no subprocess spawn).
+# ----------------------------------------------------------------------
+
+def test_unit_count_bank_items_matches_id_lines(tmp_path: Path):
+    bank = tmp_path / "bank.yaml"
+    bank.write_text(
+        "bank_id: x\nbank_type: task\nitems:\n"
+        "- id: gsm8k_0001\n  question: q\n"
+        "- id: gsm8k_0002\n  question: q\n"
+        "- id: gsm8k_0003\n  question: q\n"
+    )
+    assert h3b_runner.count_bank_items(bank) == 3
+
+
+def test_unit_count_bank_items_ignores_id_substrings(tmp_path: Path):
+    """Only `^- id:` (column 0, hyphen-space-id-colon) counts. Item IDs
+    that include the substring `id:` elsewhere shouldn't inflate."""
+    bank = tmp_path / "bank.yaml"
+    bank.write_text(
+        "bank_id: x\nitems:\n"
+        "- id: a\n  description: 'note: this id: pattern in body should not count'\n"
+        "- id: b\n"
+    )
+    assert h3b_runner.count_bank_items(bank) == 2
+
+
+def test_unit_count_intensity_levels_counts_integers(tmp_path: Path):
+    cfg = tmp_path / "runner.yaml"
+    cfg.write_text("intensity_levels: [1, 2, 3, 4, 5, 6, 7]\n")
+    assert h3b_runner.count_intensity_levels(cfg) == 7
+
+
+def test_unit_count_intensity_levels_zero_when_absent(tmp_path: Path):
+    cfg = tmp_path / "runner.yaml"
+    cfg.write_text("sampling_mode: within_subjects\n")
+    assert h3b_runner.count_intensity_levels(cfg) == 0
+
+
+def test_unit_find_cell_files_excludes_non_cell_jsons(tmp_path: Path):
+    pass_dir = tmp_path / "pass_01"
+    neutral = pass_dir / "data" / "level_3" / "neutral"
+    neutral.mkdir(parents=True)
+    (neutral / "0001.json").write_text("{}")
+    (neutral / "0017.json").write_text("{}")
+    (neutral / "scratch_notes.json").write_text("{}")  # non-cell debris
+    (pass_dir / "manifest.yaml").write_text("k: v\n")  # non-cell at root
+    cells = h3b_runner.find_cell_files(pass_dir)
+    names = sorted(c.name for c in cells)
+    assert names == ["0001.json", "0017.json"]
+
+
+def test_unit_find_cell_files_returns_empty_for_missing_dir(tmp_path: Path):
+    assert h3b_runner.find_cell_files(tmp_path / "nonexistent") == []
