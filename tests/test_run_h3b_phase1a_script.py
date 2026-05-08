@@ -538,6 +538,48 @@ def test_dry_run_flag_passes_through(env_setup):
     assert "--dry-run" in args, f"--dry-run missing from {args}"
 
 
+def test_dry_run_skips_openai_api_key_requirement(env_setup):
+    """--dry-run uses canned responses, no API. The OPENAI_API_KEY
+    preflight check should be skipped so dry-run E2E sanity checks
+    work without real credentials in the environment."""
+    cwd, env = env_setup
+    del env["OPENAI_API_KEY"]
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1",
+         "--dry-run"],
+    )
+    assert result.returncode == 0, (
+        f"--dry-run should not require OPENAI_API_KEY. stderr: {result.stderr[:300]}"
+    )
+
+
+def test_cell_count_check_scopes_to_requested_passes(env_setup):
+    """If OUTPUT_BASE already holds passes from a prior larger run, a
+    re-invocation with smaller --n-passes must only count the cells
+    in passes 1..N_PASSES, not the full OUTPUT_BASE total."""
+    cwd, env = env_setup
+    # First run: 3 passes, all complete.
+    result1 = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "3", "--max-parallel", "3"],
+    )
+    assert result1.returncode == 0, f"baseline 3-pass run failed: {result1.stderr}"
+    # Second run: only 1 pass requested. The wrapper sees pass_01 already
+    # complete (skips it). The cell-count enforcement must only consider
+    # pass_01 (126 cells expected, 126 found) and not the full base
+    # (3 × 126 = 378 cells, which would mismatch and falsely fail).
+    result2 = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1", "--max-parallel", "1"],
+    )
+    assert result2.returncode == 0, (
+        f"second run with --n-passes 1 should pass; cell-count check "
+        f"must scope to the requested range, not the full OUTPUT_BASE.\n"
+        f"stderr: {result2.stderr[:400]}\nstdout: {result2.stdout[:400]}"
+    )
+
+
 def test_malformed_runner_config_fails_derivation(env_setup):
     """A runner config with intensity_levels in an unparseable form
     (e.g., a string instead of a list of integers) must fail

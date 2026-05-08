@@ -77,8 +77,9 @@ if [[ -z "$PREREG_COMMIT" ]]; then
     echo "  format: <owner/repo>@<sha>, e.g. DwayneWilkes/affect-battery@abc1234" >&2
     exit 1
 fi
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+if [[ -z "${OPENAI_API_KEY:-}" && "$DRY_RUN" -eq 0 ]]; then
     echo "ERROR: OPENAI_API_KEY env var must be set" >&2
+    echo "  (skip this check by adding --dry-run for offline E2E sanity)" >&2
     exit 1
 fi
 if [[ ! -f "$BANK" ]]; then
@@ -315,7 +316,16 @@ fi
 echo
 echo "All $N_PASSES passes complete. Manifest: $MANIFEST"
 echo "Cell-count check:"
-total_cells=$(find_cell_files "$OUTPUT_BASE" | wc -l)
+# Sum cells over only the passes this invocation requested (1..N_PASSES),
+# not the whole OUTPUT_BASE. A re-invocation against an output base that
+# already holds more passes from a prior larger run would otherwise
+# read the leftover cells and falsely flag a mismatch.
+total_cells=0
+for pass in $(seq 1 "$N_PASSES"); do
+    pass_dir=$(printf "%s/pass_%02d" "$OUTPUT_BASE" "$pass")
+    n=$(find_cell_files "$pass_dir" | wc -l)
+    total_cells=$((total_cells + n))
+done
 expected_total=$((N_PASSES * EXPECTED_CELLS_PER_PASS))
 echo "  total result JSONs: $total_cells (expected $expected_total = $N_PASSES passes × $N_BANK_ITEMS items × $N_LEVELS levels)"
 if [[ "$total_cells" -ne "$expected_total" ]]; then
