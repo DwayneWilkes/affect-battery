@@ -78,7 +78,7 @@ STUB_AFFECT_BATTERY = textwrap.dedent("""\
 """)
 
 STUB_BANK_HEADER = textwrap.dedent("""\
-    bank_id: h3b_calibrated_v1
+    bank_id: h3b_calibrated_v2
     bank_version: 1
     bank_type: task
     items:
@@ -104,7 +104,7 @@ def env_setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     """Build a tmp repo skeleton with stub bank, runner-config, and a
     stub `affect-battery` on PATH. Returns (cwd, env)."""
     (tmp_path / "configs" / "banks").mkdir(parents=True)
-    (tmp_path / "configs" / "banks" / "h3b_calibrated_v1.yaml").write_text(_build_bank())
+    (tmp_path / "configs" / "banks" / "h3b_calibrated_v2.yaml").write_text(_build_bank())
     (tmp_path / "configs" / "exp3a_runner_h3b_2026-05-07.yaml").write_text(STUB_RUNNER_CONFIG)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -161,7 +161,7 @@ def test_missing_openai_api_key_exits_one(env_setup):
 
 def test_missing_bank_yaml_exits_one(env_setup):
     cwd, env = env_setup
-    (cwd / "configs" / "banks" / "h3b_calibrated_v1.yaml").unlink()
+    (cwd / "configs" / "banks" / "h3b_calibrated_v2.yaml").unlink()
     result = _run(cwd, env, ["--prereg-commit", "owner/repo@abc1234"])
     assert result.returncode == 1
     assert "bank YAML not found" in result.stderr
@@ -202,7 +202,7 @@ def test_expected_cells_per_pass_derived_correctly(env_setup):
 
 def test_zero_items_in_bank_fails_derivation(env_setup):
     cwd, env = env_setup
-    (cwd / "configs" / "banks" / "h3b_calibrated_v1.yaml").write_text(
+    (cwd / "configs" / "banks" / "h3b_calibrated_v2.yaml").write_text(
         "bank_id: empty\nitems: []\n"
     )
     result = _run(cwd, env, ["--prereg-commit", "owner/repo@x"])
@@ -524,7 +524,7 @@ def test_malformed_bank_yaml_fails_derivation(env_setup):
     must trip the count-derivation check, not silently produce an
     empty experiment."""
     cwd, env = env_setup
-    (cwd / "configs" / "banks" / "h3b_calibrated_v1.yaml").write_text(
+    (cwd / "configs" / "banks" / "h3b_calibrated_v2.yaml").write_text(
         "bank_id: malformed\nfoo: bar\nbaz: [1, 2, 3]\n"
     )
     result = _run(cwd, env, ["--prereg-commit", "owner/repo@x"])
@@ -548,7 +548,7 @@ def test_invocation_passes_transfer_bank_not_bank(env_setup):
     args = args_log.read_text().splitlines()
     assert "--transfer-bank" in args, f"--transfer-bank missing from {args}"
     tb_idx = args.index("--transfer-bank")
-    assert args[tb_idx + 1].endswith("h3b_calibrated_v1.yaml"), (
+    assert args[tb_idx + 1].endswith("h3b_calibrated_v2.yaml"), (
         f"--transfer-bank should point to the calibrated bank YAML, "
         f"got {args[tb_idx + 1]}"
     )
@@ -820,7 +820,7 @@ def test_e2e_dry_run_produces_analyzable_corpus(tmp_path: Path):
     )
     cfg = data["config"]
     assert cfg.get("experiment_type") == "exp3a"
-    assert cfg.get("transfer_bank", "").endswith("h3b_calibrated_v1.yaml"), (
+    assert cfg.get("transfer_bank", "").endswith("h3b_calibrated_v2.yaml"), (
         f"transfer_bank does not point at the calibrated YAML: "
         f"{cfg.get('transfer_bank')}"
     )

@@ -30,10 +30,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_OUTPUT_BASE = "results/h3b_2026-05-07"
-DEFAULT_BANK = "configs/banks/h3b_calibrated_v1.yaml"
+DEFAULT_BANK = "configs/banks/h3b_calibrated_v2.yaml"
 DEFAULT_RUNNER_CONFIG = "configs/exp3a_runner_h3b_2026-05-07.yaml"
 PREREG_PATH = "docs/preregistrations/h3b_2026-05-07.md"
-NUM_RUNS = 18
 TEMPERATURE = "0.7"
 MODEL = "gpt-5.4-nano"
 
@@ -279,13 +278,19 @@ class PassRunner:
         return count_cell_files(self.pass_dir(pass_num))
 
     def build_command(self, pass_num: int) -> list[str]:
+        # --num-runs is the per-level item count for the within_subjects
+        # sampler; for "every item appears at every level" to hold, it
+        # must equal the bank's item count. Derive from self.n_items
+        # (already counted from the bank YAML on startup) instead of
+        # hardcoding, so a recalibrated bank with a different item count
+        # doesn't silently undercount.
         cmd = [
             "affect-battery", "run",
             "--experiment", "exp3a",
             "--provider", "openai",
             "--model", MODEL,
             "--transfer-bank", str(self.bank),
-            "--num-runs", str(NUM_RUNS),
+            "--num-runs", str(self.n_items),
             "--seed", str(self.args.seed),
             "--temperature", TEMPERATURE,
             "--runner-config", str(self.runner_config),
