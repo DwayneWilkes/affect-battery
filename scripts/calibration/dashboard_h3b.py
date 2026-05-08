@@ -10,7 +10,7 @@ prose.
 Usage:
     python scripts/calibration/dashboard_h3b.py \\
         configs/h3b_calibration_2026-05-08.json \\
-        [--refresh 5] [--expected-total 1319] [--min-items 17]
+        [--refresh 5] [--expected-total 1319] [--min-items 32]
 
 Run from a second terminal while the calibration is in flight. Exits
 when the final JSON appears (calibration complete) or on Ctrl-C.
@@ -544,11 +544,12 @@ def main() -> int:
     ap.add_argument("--expected-total", type=int, default=None,
                     help="Override total candidate count for progress %% "
                          "(default: read from run_metadata.json's n_candidates)")
-    ap.add_argument("--min-items", type=int, default=17,
+    ap.add_argument("--min-items", type=int, default=32,
                     help="Minimum in-band items needed to satisfy the "
-                         "follow-on bank's --min-items floor. Default 17 "
-                         "matches the simulation-derived strong-claim n "
-                         "(CI half-width < 0.05 in ≥80%% of trials, per "
+                         "follow-on bank's --min-items floor. Default 32 "
+                         "matches the simulation-derived strong-claim n at "
+                         "100%% reliability (CI half-width < 0.05 in every "
+                         "trial, per "
                          "results/probes/h3b_precision_report_2026-05-08.json). "
                          "The histogram headline shows progress toward this "
                          "and projects how many more candidates are "

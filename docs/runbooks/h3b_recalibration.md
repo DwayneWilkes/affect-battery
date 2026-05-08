@@ -89,7 +89,7 @@ Tunables and their trade-offs:
 ```bash
 direnv exec . uv run --active python scripts/calibration/dashboard_h3b.py \
   configs/h3b_calibration_<YYYY-MM-DD>.json \
-  --refresh 10 --min-items 17
+  --refresh 10 --min-items 32
 ```
 
 The dashboard surfaces overall + recent-window in-band yield, blocked count, projected total, and items-needed-math (how many more candidates at current yield to clear the `--min-items` floor). Refresh interval can stay at 10s for a multi-hour run; tighter intervals add no signal at this cadence.
@@ -102,10 +102,10 @@ direnv exec . uv run --active python scripts/calibration/build_h3b_bank.py \
   --output configs/banks/h3b_calibrated_v<N>.yaml \
   --bank-id h3b_calibrated_v<N> \
   --bank-version <N> \
-  --min-items 17
+  --min-items 32
 ```
 
-The `--min-items` floor is the simulation-derived precision threshold (see "Why `--min-items 17`?" below). The bank includes **every** in-band item from the calibration's `calibrated_subset` (no top-N truncation): simulation under H0 showed all-qualifiers gives strictly better contrast precision than rank-and-truncate without bias cost.
+The `--min-items` floor is the simulation-derived precision threshold (see "Why `--min-items 32`?" below). The bank includes **every** in-band item from the calibration's `calibrated_subset` (no top-N truncation): simulation under H0 showed all-qualifiers gives strictly better contrast precision than rank-and-truncate without bias cost.
 
 ### 5. Update SHA pins in the pre-reg
 
@@ -157,9 +157,9 @@ git commit -m "calib(h3b): recalibrate bank to v<N>"
 
 The tracker directory `configs/h3b_calibration_<date>.json.tracker/` is gitignored and not part of the commit; bank-build only needs the calibration JSON.
 
-## Why `--min-items 17`?
+## Why `--min-items 32`?
 
-The default is the simulation-derived n at which the item-level percentile bootstrap CI half-width on the H3b folded contrast `c = m_mag2 − ½(m_mag1 + m_mag3)` reliably (≥80% of Monte Carlo trials) stays below 0.05, the prereg's "bounded-small" strong-claim threshold. Below this, the prereg's interpretive thresholds put us at material risk of the "uninformative" claim (`c_ci95_hi ≥ 0.10`).
+The default is the simulation-derived n at which 100% of Monte Carlo trials clear the prereg's strong-claim threshold (item-level percentile bootstrap CI half-width below 0.05 on the H3b folded contrast `c = m_mag2 − ½(m_mag1 + m_mag3)`). The reliability curve is sharp: n=14 hits 70%, n=17 hits 81%, n=18 hits 84%, n=32 saturates at 100%. Locking the floor at the saturation point removes the residual risk of an unlucky run landing in the prereg's "uninformative" claim (`c_ci95_hi ≥ 0.10`) just because we sat near the 80%-reliability shoulder.
 
 To rerun the simulation against a fresh calibration:
 
@@ -170,13 +170,13 @@ direnv exec . uv run --active python scripts/probes/h3b_precision_report.py \
   --n-simulations 200 --n-bootstrap 2000
 ```
 
-The report's `thresholds.strong_claim.recommended_n_items` is the value to seed `--min-items` from. Reliability scales roughly as 1/√n: n=14 hits 70%, n=17 hits 81%, n=32 saturates at 100% (per `results/probes/h3b_precision_report_2026-05-08.json`). Bank-build refuses runs below the floor.
+The report's saturation n is the value to seed `--min-items` from. Bank-build refuses runs below the floor.
 
 ## Diagnostic helpers
 
 - `scripts/dev/smoke_gsm_hard.py` — confirms HF mirror reachability and item count
 - `scripts/dev/inspect_calibration_state.py --bank <...> [--calibration <...>] --source gsm-hard` — side-by-side audit of bank `expected` formatting against a calibration's in-band items
-- `scripts/dev/smoke_dashboard.py --n-scored 30 --min-items 17` — render one dashboard frame against synthetic data; useful when iterating on the dashboard layout offline
+- `scripts/dev/smoke_dashboard.py --n-scored 30 --min-items 32` — render one dashboard frame against synthetic data; useful when iterating on the dashboard layout offline
 - `scripts/dev/summarize_openai_export.py --usage <usage>.json --cost <cost>.json --model-prefix gpt-5.4-nano` — back out per-call cost and implied output-token rate from an OpenAI dashboard export. Run after each fresh export to keep the runbook's cost numbers honest.
 
 ## Operational notes

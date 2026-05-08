@@ -28,13 +28,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--calibration", required=True, type=Path,
                     help="Calibration JSON from h3b_calibration_robust.py")
-    ap.add_argument("--min-items", type=int, default=17,
-                    help="Minimum acceptable yield from calibration. Default 17 "
+    ap.add_argument("--min-items", type=int, default=32,
+                    help="Minimum acceptable yield from calibration. Default 32 "
                          "is the n at which the simulated bootstrap CI half-width "
-                         "on c stays below 0.05 in ≥80%% of trials, per "
+                         "on c stays below 0.05 in 100%% of trials (vs 81%% at "
+                         "n=17 and 84%% at n=18), per "
                          "results/probes/h3b_precision_report_2026-05-08.json. "
                          "Below this, the prereg's strong 'bounded-small' claim "
-                         "(c_ci95_hi < 0.05) becomes unreliable.")
+                         "(c_ci95_hi < 0.05) is at material risk of failing to "
+                         "lock in.")
     ap.add_argument("--output", required=True, type=Path,
                     help="Output bank YAML path")
     ap.add_argument("--bank-id", default="h3b_calibrated_v2",
