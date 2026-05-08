@@ -348,6 +348,30 @@ def test_failed_count_no_double_count_with_max_parallel_one(env_setup):
     )
 
 
+def test_failure_with_max_parallel_exceeding_n_passes_kills_quickly(env_setup):
+    """When --max-parallel >= --n-passes the dispatch loop's wait -n
+    branch is never entered, so all passes flow into the final drain.
+    The drain must still react to failures fast: detecting the first
+    failed pass and terminating its siblings, rather than blocking
+    sequentially on each wait $pid until natural completion. Wall-
+    clock with sleep=4 should be well under 4s."""
+    cwd, env = env_setup
+    env["STUB_FAIL_ON_PASS"] = "1"
+    env["STUB_SLEEP_SECONDS"] = "4"
+    start = time.time()
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "3", "--max-parallel", "10"],
+    )
+    elapsed = time.time() - start
+    assert result.returncode == 1
+    assert elapsed < 4.0, (
+        f"drain-only failure path took {elapsed:.1f}s; "
+        f"siblings should be SIGTERM'd on first failure detected in drain.\n"
+        f"stderr: {result.stderr[:300]}"
+    )
+
+
 def test_failure_kills_inflight_passes_quickly(env_setup):
     """If a pass fails while siblings are sleeping, terminate_inflight
     must kill the siblings rather than letting them run to completion.

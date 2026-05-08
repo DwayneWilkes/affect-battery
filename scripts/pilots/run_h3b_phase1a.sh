@@ -166,6 +166,7 @@ MANIFEST="$OUTPUT_BASE/run_manifest.txt"
 declare -A IN_FLIGHT=()       # pid → pass number, for currently-running passes
 declare -i FAILED_COUNT=0
 declare -a FAILED_PASSES=()
+declare -i CLEANUP_TRIGGERED=0
 
 # Cell files match `<digits>.json` under `level_*/neutral/`. The
 # `neutral/` path segment comes from the runner's condition-named
@@ -249,13 +250,67 @@ trap_handler() {
 trap 'trap_handler INT' INT
 trap 'trap_handler TERM' TERM
 
-# Account a pass's exit code: 0 = success (no-op), anything else =
-# failure. Called from both the wait -n branch and the final drain.
+# Wait for any one in-flight pass to finish, capture its exit status
+# and pass number, and account it. `wait -n -p` reports the reaped
+# PID via a named variable; capture rc via `|| rc=$?` not `if ! wait`
+# (bash negates the pipeline's exit status under `!`, so `$?` in the
+# `then` block is always 0). Used by both the dispatch and drain
+# loops — putting them on the same primitive means the fail-fast
+# guarantee holds whether the failure surfaces in bounded-concurrency
+# territory or in the final unbounded drain.
+reap_one() {
+    local caught_pid="" rc=0 caught_pass pid
+    # `wait -n` can fail with "no such job" if SIGCHLD reaped one of
+    # the listed pids before this call (common after terminate_inflight
+    # in the cleanup path: SIGTERM races with the next wait). In that
+    # case caught_pid stays empty and rc is non-zero. Fall through to
+    # the per-PID drain below, which uses plain `wait $pid` — that
+    # form returns 127 for already-reaped pids without erroring out.
+    wait -n -p caught_pid "${!IN_FLIGHT[@]}" 2>/dev/null || rc=$?
+    # `wait -n -p VAR` unsets VAR before assigning per the bash spec.
+    # If wait failed before populating it (e.g., listed pids already
+    # reaped), VAR stays unset and trips `set -u`. Rebind to empty.
+    caught_pid="${caught_pid:-}"
+    if [[ -n "$caught_pid" && -v "IN_FLIGHT[$caught_pid]" ]]; then
+        caught_pass="${IN_FLIGHT[$caught_pid]}"
+        unset "IN_FLIGHT[$caught_pid]"
+        account_status "$caught_pass" "$rc"
+        return
+    fi
+    # Fallback: wait -n didn't return a tracked pid (race with cleanup
+    # reaping). Drain one tracked pid directly. wait $pid on an already-
+    # reaped pid returns 127, which we treat as "already accounted for
+    # by the kill that put it there" — record as 143 (SIGTERM) since
+    # that's what cleanup signals, and move on.
+    for pid in "${!IN_FLIGHT[@]}"; do
+        caught_pass="${IN_FLIGHT[$pid]}"
+        unset "IN_FLIGHT[$pid]"
+        rc=0
+        wait "$pid" 2>/dev/null || rc=$?
+        if [[ "$rc" -eq 127 ]]; then
+            rc=143  # already reaped via SIGTERM during cleanup
+        fi
+        account_status "$caught_pass" "$rc"
+        return
+    done
+}
+
+# Account a pass's exit code and trigger fail-fast cleanup on the
+# first failure. Called from `reap_one` after each `wait -n -p`.
+# Centralising the terminate trigger here means whichever loop sees
+# the first failure tears down siblings, regardless of whether
+# `--max-parallel` ever caused the dispatch loop to enter its
+# `wait -n` branch.
 account_status() {
     local pass="$1" rc="$2"
     if [[ "$rc" -ne 0 ]]; then
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_PASSES+=("$pass")
+        if [[ "$CLEANUP_TRIGGERED" -eq 0 ]]; then
+            echo "ERROR: pass $pass failed (exit $rc); terminating remaining in-flight passes" >&2
+            terminate_inflight
+            CLEANUP_TRIGGERED=1
+        fi
     fi
 }
 
@@ -303,34 +358,22 @@ for pass in $(seq 1 "$N_PASSES"); do
     if [[ "${#IN_FLIGHT[@]}" -ge "$MAX_PARALLEL" ]]; then
         # Drain the next finishing background job. `wait -n -p` returns
         # the reaped PID via the named variable so we can attribute the
-        # exit status to its pass number. On non-zero exit, terminate
-        # remaining passes immediately rather than burning more API
-        # budget on a pre-reg that can no longer reach its locked cell
-        # count.
-        caught_pid=""
-        rc=0
-        wait -n -p caught_pid "${!IN_FLIGHT[@]}" || rc=$?
-        caught_pass="${IN_FLIGHT[$caught_pid]:-?}"
-        unset "IN_FLIGHT[$caught_pid]"
-        account_status "$caught_pass" "$rc"
-        if [[ "$rc" -ne 0 ]]; then
-            echo "ERROR: pass $caught_pass failed (exit $rc); terminating remaining in-flight passes" >&2
-            terminate_inflight
+        # exit status to its pass number. account_status records the
+        # outcome and triggers terminate_inflight on first failure.
+        reap_one
+        if [[ "$CLEANUP_TRIGGERED" -eq 1 ]]; then
             break
         fi
     fi
 done
 
-# Drain whatever is still in flight. Per-PID `wait` returns the
-# child's exit code (or 143 for SIGTERM'd passes). Capture via
-# `|| rc=$?` not `if ! wait; then rc=$?` — bash negates the pipeline's
-# exit status when `!` is used, so `$?` inside the `then` block is
-# always 0 and would silently mis-attribute statuses.
-for pid in "${!IN_FLIGHT[@]}"; do
-    pass="${IN_FLIGHT[$pid]}"
-    rc=0
-    wait "$pid" 2>/dev/null || rc=$?
-    account_status "$pass" "$rc"
+# Drain whatever is still in flight using the same `wait -n -p` loop
+# as the dispatch path. A per-PID `wait $pid` drain would block
+# sequentially on each pass in iteration order, missing the chance to
+# fail-fast when --max-parallel >= --n-passes (the dispatch loop's
+# wait -n branch is never entered, so all failures land here).
+while [[ "${#IN_FLIGHT[@]}" -gt 0 ]]; do
+    reap_one
 done
 
 trap - INT TERM
