@@ -150,10 +150,16 @@ declare -A IN_FLIGHT=()       # pid → pass number, for currently-running passe
 declare -i FAILED_COUNT=0
 declare -a FAILED_PASSES=()
 
-# Cell files match `<digits>.json` under `level_*/neutral/`. Centralise
-# the find filter so the dispatch-loop "skip complete" check (line ~190)
-# and the post-run total enforcement (bottom of script) cannot drift
-# apart and silently miscount.
+# Cell files match `<digits>.json` under `level_*/neutral/`. The
+# `neutral/` segment is the runner's condition-named subdirectory:
+# `affect-battery run` defaults `--condition` to "neutral" when the
+# flag is omitted (which is required for exp3a — see cli.py
+# `condition_value` and the prereg §3.4.1 "no condition" rule), so
+# every exp3a cell lands under `level_<N>/neutral/`. Centralised
+# helper so the dispatch-loop "skip complete pass" check and the
+# post-run total cannot drift apart and silently miscount. The
+# `-name '[0-9]*.json'` clause excludes per-pass `manifest.yaml`-style
+# debris and any non-cell scratch JSONs an operator might drop in.
 find_cell_files() {
     find "$1" -path '*/level_*/neutral/*.json' -name '[0-9]*.json' 2>/dev/null
 }
