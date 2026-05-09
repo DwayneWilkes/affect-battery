@@ -304,6 +304,23 @@ async def run_probe(args):
     # tracker.stage gives us auto-recorded start/end/duration in the
     # run_metadata.json, so the calibration's wall-clock is captured
     # alongside the params and metrics.
+    def _log_usage_snapshot():
+        """Push the current per-call usage totals to run_metadata.json so
+        the dashboard's API-usage panel can update live (otherwise it
+        only populates after the whole run finishes)."""
+        if not hasattr(client, "usage_summary"):
+            return
+        kwargs = {}
+        if (args.input_usd_per_million is not None
+                and args.output_usd_per_million is not None):
+            kwargs["input_usd_per_million"] = args.input_usd_per_million
+            kwargs["output_usd_per_million"] = args.output_usd_per_million
+        snap = client.usage_summary(**kwargs)
+        tracker.log_metrics(**{
+            f"usage_{k}": v for k, v in snap.items()
+            if isinstance(v, (int, float))
+        })
+
     with tracker.stage("pre_screen"):
         for i in range(0, total_new, batch_size):
             batch = to_dispatch[i : i + batch_size]
@@ -329,6 +346,8 @@ async def run_probe(args):
                     f"last={result['item_id']} p̂={result['p_hat']:.2f}",
                     refresh=False,
                 )
+            # End of batch: refresh usage metrics so dashboard sees live cost.
+            _log_usage_snapshot()
     pbar.close()
 
     # Reorder by original bank order (cache iteration + as_completed
