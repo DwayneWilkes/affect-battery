@@ -108,7 +108,23 @@ async def run_one_candidate(client, item, n_reps: int, sem: asyncio.Semaphore):
                     ))
                 except NonRetryableAPIError as exc:
                     msg = str(exc)
-                    if "rate-limit" in msg.lower() and attempt < 3:
+                    msg_l = msg.lower()
+                    if ("insufficient_quota" in msg_l
+                            or "out of credit" in msg_l):
+                        # Account exhausted: bail the whole run instead
+                        # of continuing to mark every remaining candidate
+                        # as blocked. Surfaces the actual cost driver to
+                        # the operator and preserves the cache so a re-run
+                        # after top-up resumes cleanly.
+                        print(
+                            f"\nABORTING: {msg}\n"
+                            "Top up at "
+                            "platform.openai.com/settings/organization/billing,\n"
+                            "then re-run the same command to resume from cache.",
+                            file=sys.stderr,
+                        )
+                        raise SystemExit(2)
+                    if "rate-limit" in msg_l and attempt < 3:
                         # Fall through to back off outside the semaphore,
                         # then retry. Don't return yet.
                         retry_msg = msg
