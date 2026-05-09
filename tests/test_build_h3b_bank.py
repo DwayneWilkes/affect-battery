@@ -99,8 +99,9 @@ def test_builder_items_sorted_by_closeness_to_0_5(tmp_path: Path):
 
 def test_builder_preserves_required_per_item_fields(tmp_path: Path):
     """The affect-battery loader requires id/question/expected per item.
-    The bank generator must emit those plus the optional difficulty,
-    answer_aliases, p_hat_calib used downstream."""
+    The bank generator must emit those plus difficulty and
+    answer_aliases (read by the runtime task loader) and p_hat_calib
+    (used by selection-bias audit tooling)."""
     items = [_build_item("gsm8k_0001", 0.50)]
     calib = _make_calibration(tmp_path, items)
     out = tmp_path / "bank.yaml"
