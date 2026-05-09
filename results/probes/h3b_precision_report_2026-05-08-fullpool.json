@@ -199,5 +199,52 @@
     "percentile_95_ci_half_width": 0.021977570564516127,
     "max_ci_half_width": 0.023252688172043012,
     "interpretation": "At the actual calibrated bank size of n=93, the item-level percentile bootstrap CI half-width on the H3b folded contrast c is projected to a median of 0.019 with a 95th-percentile worst case of 0.022. Both are well below the prereg's 0.05 strong-claim threshold; 100% of simulations clear it. The bank is saturated against the prereg's informative-vs-uninformative gradient."
+  },
+  "h1_sensitivity_at_actual_bank_size": {
+    "description": "Monte Carlo CI behavior at n=93 across a sweep of true effect sizes c. Confirms that the bootstrap recovers the assumed c with negligible bias and that the prereg-binding inferential thresholds (c_ci95_lo > 0 vs c_ci95_hi < 0.05) discriminate cleanly across the plausible-effect range.",
+    "n_simulations": 300,
+    "n_bootstrap": 2000,
+    "sweep": {
+      "c_assumed_0.00": {
+        "c_assumed": 0.0,
+        "n_items": 93,
+        "median_c_observed": -0.0004032258064516145,
+        "mean_c_observed": 0.00019713261648745615,
+        "bias": -0.0004032258064516145,
+        "median_ci_half_width": 0.01939012096774193,
+        "pct_ci_excludes_zero": 5.333333333333333,
+        "pct_ci_null_consistent": 94.66666666666667
+      },
+      "c_assumed_0.02": {
+        "c_assumed": 0.02,
+        "n_items": 93,
+        "median_c_observed": 0.019287634408602143,
+        "mean_c_observed": 0.020107974910394268,
+        "bias": -0.0007123655913978573,
+        "median_ci_half_width": 0.019425403225806437,
+        "pct_ci_excludes_zero": 49.666666666666664,
+        "pct_ci_null_consistent": 50.333333333333336
+      },
+      "c_assumed_0.05": {
+        "c_assumed": 0.05,
+        "n_items": 93,
+        "median_c_observed": 0.04939516129032258,
+        "mean_c_observed": 0.04986872759856631,
+        "bias": -0.0006048387096774244,
+        "median_ci_half_width": 0.019428763440860197,
+        "pct_ci_excludes_zero": 100.0,
+        "pct_ci_null_consistent": 0.0
+      },
+      "c_assumed_0.10": {
+        "c_assumed": 0.1,
+        "n_items": 93,
+        "median_c_observed": 0.09973118279569892,
+        "mean_c_observed": 0.09928225806451611,
+        "bias": -0.0002688172043010806,
+        "median_ci_half_width": 0.019223790322580647,
+        "pct_ci_excludes_zero": 100.0,
+        "pct_ci_null_consistent": 0.0
+      }
+    }
   }
 }
