@@ -584,6 +584,33 @@ def test_dry_run_flag_passes_through(env_setup):
     assert "--dry-run" in args, f"--dry-run missing from {args}"
 
 
+def test_skip_power_gate_forwarded_as_bare_flag(env_setup):
+    """--skip-power-gate is a store_true flag in the downstream runner
+    (src/cli.py). The wrapper must forward it as a bare flag, not as
+    `--skip-power-gate <value>` — argparse will misparse the trailing
+    positional and either error or eat an unrelated arg."""
+    cwd, env = env_setup
+    args_log = cwd / "stub_args.log"
+    env["STUB_ARGS_LOG"] = str(args_log)
+    result = _run(
+        cwd, env,
+        ["--prereg-commit", "owner/repo@x", "--n-passes", "1",
+         "--max-parallel", "1", "--dry-run", "--skip-power-gate"],
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr[:300]}"
+    args = args_log.read_text().splitlines()
+    assert "--skip-power-gate" in args, (
+        f"--skip-power-gate missing from forwarded args: {args}"
+    )
+    idx = args.index("--skip-power-gate")
+    next_token = args[idx + 1] if idx + 1 < len(args) else ""
+    assert next_token == "" or next_token.startswith("--"), (
+        f"--skip-power-gate forwarded with a value {next_token!r}; "
+        f"downstream cli.py defines it as action='store_true', so a "
+        f"trailing positional misparses. Full args: {args}"
+    )
+
+
 def test_dry_run_skips_openai_api_key_requirement(env_setup):
     """--dry-run uses canned responses, no API. The OPENAI_API_KEY
     preflight check should be skipped so dry-run E2E sanity checks
@@ -748,6 +775,136 @@ def test_unit_find_cell_files_excludes_non_cell_jsons(tmp_path: Path):
 
 def test_unit_find_cell_files_returns_empty_for_missing_dir(tmp_path: Path):
     assert h3b_runner.find_cell_files(tmp_path / "nonexistent") == []
+
+
+# ----------------------------------------------------------------------
+# Race-free dispatch: SIGTERM/SIGINT during dispatch must not orphan a
+# just-spawned child by interrupting the in_flight registration.
+# ----------------------------------------------------------------------
+
+def _make_test_runner(tmp_path: Path) -> "h3b_runner.PassRunner":
+    """Build a PassRunner with synthetic args. Tests override
+    `build_command` so dispatch can spawn a fast no-op subprocess
+    without the affect-battery CLI on PATH."""
+    import argparse
+    args = argparse.Namespace(
+        output_base=str(tmp_path),
+        n_passes=1, max_parallel=1, seed=42,
+        prereg_commit="owner/repo@x", dry_run=True,
+        power_report_path=None, power_report_sha=None,
+        skip_power_gate=False,
+    )
+    runner = h3b_runner.PassRunner(args, n_items=1, n_levels=1)
+    runner.build_command = lambda pass_num: ["true"]  # no-op subprocess
+    return runner
+
+
+def test_dispatch_blocks_signals_during_critical_section(tmp_path: Path,
+                                                        monkeypatch):
+    """Race window: between Popen returning and `self.in_flight[pid] =`,
+    a SIGTERM/SIGINT raises _ShutdownRequested before the child is
+    registered. Cleanup then can't SIGTERM it. Fix: pthread_sigmask
+    SIG_BLOCK around the critical section so the signal is queued, not
+    delivered, until after the pid is recorded."""
+    import signal
+    runner = _make_test_runner(tmp_path)
+    h3b_runner.install_signal_handlers(runner)
+
+    snapshot: list[set] = []
+    real_popen = subprocess.Popen
+
+    def faux_popen(*args, **kwargs):
+        # Query the current signal mask without modifying it.
+        mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+        snapshot.append(mask)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", faux_popen)
+    try:
+        runner.dispatch(1)
+    finally:
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        for proc, _ in runner.in_flight.values():
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    assert snapshot, "Popen was not called"
+    blocked = snapshot[0]
+    assert signal.SIGTERM in blocked, (
+        f"SIGTERM not blocked during Popen+register; race window open. "
+        f"Blocked set during dispatch: {blocked}"
+    )
+    assert signal.SIGINT in blocked, (
+        f"SIGINT not blocked during Popen+register; race window open. "
+        f"Blocked set during dispatch: {blocked}"
+    )
+
+
+def test_dispatch_passes_preexec_to_unblock_child(tmp_path: Path, monkeypatch):
+    """If the parent blocks SIGTERM/SIGINT around dispatch, the child
+    inherits that mask via fork(). exec() preserves the mask, so the
+    spawned program would silently ignore SIGTERM from terminate_inflight.
+    The fix: pass preexec_fn that unblocks signals between fork() and
+    exec(). Without preexec_fn, terminate_inflight becomes a no-op."""
+    runner = _make_test_runner(tmp_path)
+    h3b_runner.install_signal_handlers(runner)
+
+    captured: list[dict] = []
+    real_popen = subprocess.Popen
+
+    def faux_popen(*args, **kwargs):
+        captured.append(dict(kwargs))
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", faux_popen)
+    import signal as signal_mod
+    try:
+        runner.dispatch(1)
+    finally:
+        signal_mod.signal(signal_mod.SIGINT, signal_mod.SIG_DFL)
+        signal_mod.signal(signal_mod.SIGTERM, signal_mod.SIG_DFL)
+        for proc, _ in runner.in_flight.values():
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    assert captured, "Popen was not called"
+    kwargs = captured[0]
+    assert "preexec_fn" in kwargs and kwargs["preexec_fn"] is not None, (
+        "Popen did not receive a preexec_fn — children would inherit a "
+        "blocked SIGTERM mask and ignore terminate_inflight."
+    )
+
+
+def test_dispatch_restores_signal_mask_after_assignment(tmp_path: Path,
+                                                       monkeypatch):
+    """The block-during-dispatch must be scoped: leaving SIGTERM blocked
+    after dispatch returns would defer all subsequent shutdowns. The
+    finally branch must SIG_SETMASK back to the prior mask."""
+    import signal
+    runner = _make_test_runner(tmp_path)
+    h3b_runner.install_signal_handlers(runner)
+
+    pre_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    try:
+        runner.dispatch(1)
+    finally:
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        for proc, _ in runner.in_flight.values():
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    post_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    assert pre_mask == post_mask, (
+        f"signal mask leaked across dispatch: pre={pre_mask}, "
+        f"post={post_mask}"
+    )
 
 
 # ----------------------------------------------------------------------

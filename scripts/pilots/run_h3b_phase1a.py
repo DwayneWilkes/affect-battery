@@ -52,6 +52,17 @@ class _ShutdownRequested(BaseException):
         self.exit_code = exit_code
 
 
+_DISPATCH_BLOCKED_SIGNALS = frozenset({signal.SIGINT, signal.SIGTERM})
+
+
+def _unblock_signals_in_child() -> None:
+    """preexec_fn for subprocess.Popen: runs in the forked child between
+    fork() and exec(). Resets the child's mask so SIGTERM/SIGINT sent to
+    its pgroup (e.g. by terminate_inflight) actually reach it. Uses only
+    async-signal-safe syscalls — no Python locks acquired."""
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, _DISPATCH_BLOCKED_SIGNALS)
+
+
 class _ArgParser(argparse.ArgumentParser):
     """Argparse subclass that exits with code 1 (not the default 2) on
     argument errors, matching the rest of the wrapper's "exit 1 = user
@@ -128,12 +139,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--skip-power-gate",
-        default=None,
+        action="store_true",
         help=(
-            "Bypass the power-gate with a written rationale (passed through "
-            "verbatim to affect-battery). For smoke runs where the power "
-            "report is not yet pinned. Use sparingly; rationale appears in "
-            "the run's audit log."
+            "Bypass the power-gate guardrail. Forwarded as a bare flag to "
+            "affect-battery (cli.py defines it as store_true). Use only "
+            "for smoke runs where the power report is not yet pinned."
         ),
     )
     return p
@@ -256,7 +266,13 @@ class PassRunner:
     `subprocess.Popen` synchronizes via an internal pipe so it does not
     return until the child's exec has succeeded; by then setsid has run
     and the pgid is established, so any signal sent to the pgid reaches
-    the entire process group with no parent-child race."""
+    the entire process group with no parent-child race.
+
+    Race-free in_flight registration: `dispatch` masks SIGINT/SIGTERM
+    around the Popen+register critical section so a signal arriving in
+    that window cannot raise _ShutdownRequested before the pid is in
+    in_flight. The child unblocks via preexec_fn so terminate_inflight
+    still reaches it."""
 
     def __init__(
         self,
@@ -331,8 +347,8 @@ class PassRunner:
             cmd += ["--power-report-path", str(self.args.power_report_path)]
         if self.args.power_report_sha is not None:
             cmd += ["--power-report-sha", self.args.power_report_sha]
-        if self.args.skip_power_gate is not None:
-            cmd += ["--skip-power-gate", self.args.skip_power_gate]
+        if self.args.skip_power_gate:
+            cmd.append("--skip-power-gate")
         return cmd
 
     def maybe_skip(self, pass_num: int) -> bool:
@@ -357,21 +373,26 @@ class PassRunner:
         return False
 
     def dispatch(self, pass_num: int) -> None:
-        # Known minor race: a signal arriving between `Popen` returning
-        # and the IN_FLIGHT assignment below would let _ShutdownRequested
-        # propagate before the proc is registered, orphaning that one
-        # pass. The window is between two adjacent Python bytecodes
-        # (microseconds) — the obvious mitigation (pthread_sigmask
-        # SIG_BLOCK) breaks signal delivery to children because the
-        # blocked mask is inherited across fork() and Python preserves
-        # it across exec(). preexec_fn could reset the child mask but
-        # has its own deadlock caveats. Documented as a limitation;
-        # operationally negligible for a few-hours pilot.
-        proc = subprocess.Popen(
-            self.build_command(pass_num),
-            start_new_session=True,
+        # Block SIGINT/SIGTERM around Popen+register so a signal arriving
+        # between Popen returning and the in_flight assignment can't raise
+        # _ShutdownRequested before the new pid is recorded (which would
+        # orphan the just-spawned pass). Pending signals are queued by the
+        # kernel and delivered when SIG_SETMASK in the finally restores
+        # the prior mask, so no signal is lost. preexec_fn unblocks in the
+        # forked child between fork() and exec() — only async-signal-safe
+        # syscalls are used there, so no fork-deadlock risk.
+        old_mask = signal.pthread_sigmask(
+            signal.SIG_BLOCK, _DISPATCH_BLOCKED_SIGNALS,
         )
-        self.in_flight[proc.pid] = (proc, pass_num)
+        try:
+            proc = subprocess.Popen(
+                self.build_command(pass_num),
+                start_new_session=True,
+                preexec_fn=_unblock_signals_in_child,
+            )
+            self.in_flight[proc.pid] = (proc, pass_num)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
 
     def terminate_inflight(self) -> None:
         """SIGTERM the pgroup of every in-flight pass. Idempotent: a
