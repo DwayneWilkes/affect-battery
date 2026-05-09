@@ -105,6 +105,52 @@ def _build_minimal_bank(tmp_path: Path, n_items: int = 3) -> Path:
     return bank
 
 
+def test_usage_carryover_sums_with_current_snapshot(monkeypatch):
+    """Resumed runs must report cumulative `usage_*` totals, not just the
+    current process's deltas. The merge helper sums each numeric field in
+    the snapshot with the matching `usage_<k>` carryover from disk."""
+    mod = _import_script(monkeypatch)
+    snapshot = {
+        "model": "gpt-5.4-nano",
+        "n_calls": 100,
+        "prompt_tokens": 5000,
+        "completion_tokens": 3000,
+        "estimated_usd": 0.5,
+    }
+    carryover = {
+        "usage_n_calls": 200,
+        "usage_prompt_tokens": 10000,
+        "usage_completion_tokens": 6000,
+        "usage_estimated_usd": 1.25,
+    }
+    merged = mod._merge_usage_carryover(snapshot, carryover)
+    assert merged == {
+        "n_calls": 300,
+        "prompt_tokens": 15000,
+        "completion_tokens": 9000,
+        "estimated_usd": 1.75,
+    }
+
+
+def test_usage_carryover_passes_through_when_no_prior(monkeypatch):
+    """First-run case: empty carryover yields the snapshot's numerics
+    unchanged."""
+    mod = _import_script(monkeypatch)
+    snapshot = {"n_calls": 100, "prompt_tokens": 5000, "model": "gpt-x"}
+    merged = mod._merge_usage_carryover(snapshot, {})
+    assert merged == {"n_calls": 100, "prompt_tokens": 5000}
+
+
+def test_usage_carryover_skips_non_numeric_carryover(monkeypatch):
+    """Stale string entries (e.g., a `usage_model` accidentally written by
+    an older script version) must not break summing."""
+    mod = _import_script(monkeypatch)
+    snapshot = {"n_calls": 100}
+    carryover = {"usage_n_calls": 50, "usage_model": "old_string_value"}
+    merged = mod._merge_usage_carryover(snapshot, carryover)
+    assert merged == {"n_calls": 150}
+
+
 def test_subprocess_dry_run_creates_tracker_with_metadata_and_cache(
     tmp_path: Path, monkeypatch
 ):

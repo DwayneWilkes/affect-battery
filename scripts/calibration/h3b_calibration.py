@@ -66,7 +66,25 @@ sys.path.insert(0, str(AFFECT_BATTERY_ROOT))
 from src.banks.loader import load_bank_items  # noqa: E402
 from src.models import OpenAIClient, AnthropicClient, DryRunClient, NonRetryableAPIError  # noqa: E402
 from src.scoring.accuracy import extract_numeric_answer  # noqa: E402
+from src.lib.tracker_io import load_run_metadata  # noqa: E402
 from src.lib.tracking import ExperimentTracker  # noqa: E402
+
+
+def _merge_usage_carryover(snapshot: dict, carryover: dict) -> dict:
+    """Sum each numeric field in `snapshot` with the matching
+    `usage_<k>` field in `carryover` so that resumed runs report
+    cumulative `usage_*` totals, not just the current process's deltas.
+    Non-numeric snapshot fields (e.g., `model`) are dropped, since they
+    are not meaningful as metrics."""
+    merged: dict = {}
+    for k, v in snapshot.items():
+        if not isinstance(v, (int, float)):
+            continue
+        prior = carryover.get(f"usage_{k}", 0)
+        if not isinstance(prior, (int, float)):
+            prior = 0
+        merged[k] = prior + v
+    return merged
 
 
 def make_client(provider: str, model: str, dry_run: bool):
@@ -226,6 +244,15 @@ async def run_probe(args):
             file=sys.stderr,
         )
 
+    # Capture cumulative usage from prior runs (if resuming) so the
+    # in-process snapshot from this run can be summed with it before
+    # writing back; otherwise resume would overwrite the canonical
+    # `usage_*` totals with this process's deltas only.
+    usage_carryover = {
+        k: v for k, v in load_run_metadata(tracker_dir).get("metrics", {}).items()
+        if k.startswith("usage_") and isinstance(v, (int, float))
+    }
+
     tracker = ExperimentTracker(
         output_dir=tracker_dir,
         experiment_name=f"h3b_calibration_{args.output.stem}",
@@ -347,8 +374,8 @@ async def run_probe(args):
             kwargs["output_usd_per_million"] = args.output_usd_per_million
         snap = client.usage_summary(**kwargs)
         tracker.log_metrics(**{
-            f"usage_{k}": v for k, v in snap.items()
-            if isinstance(v, (int, float))
+            f"usage_{k}": v
+            for k, v in _merge_usage_carryover(snap, usage_carryover).items()
         })
 
     with tracker.stage("pre_screen"):
@@ -409,9 +436,8 @@ async def run_probe(args):
         yield_pct=100.0 * len(calibrated) / max(len(selected), 1),
     )
     if usage:
-        for k, v in usage.items():
-            if isinstance(v, (int, float)):
-                metric_kwargs[f"usage_{k}"] = v
+        for k, v in _merge_usage_carryover(usage, usage_carryover).items():
+            metric_kwargs[f"usage_{k}"] = v
     tracker.log_metrics(**metric_kwargs)
 
     return {
