@@ -353,10 +353,15 @@ def make_recent_panel(cells: list[dict]) -> Panel:
         if kind == "scored":
             p = c.get("p_hat", 0)
             color = "magenta" if 0.40 <= p <= 0.60 else "white"
+            n_reps = c.get("n_reps", 0)
+            # Show the rep count only when it's unusual (some reps were
+            # dropped). At the configured 100 reps, p̂ alone is enough;
+            # at a partial count the denominator signals partial scoring.
+            note = "" if n_reps == 100 else f"({n_reps} reps)"
             t.add_row(
                 f"[{color}]{iid}[/{color}]",
                 f"[{color}]p̂={p:.2f}[/{color}]",
-                f"({c.get('n_correct', 0)}/{c.get('n_reps', 0)})",
+                note,
             )
         else:
             t.add_row(f"[yellow]{iid}[/yellow]", "[yellow]BLOCKED[/yellow]", "")
@@ -389,10 +394,12 @@ def make_in_band_panel(cells: list[dict], target_lo: float, target_hi: float) ->
     t.add_column(style="dim")
     for c in in_band[:10]:
         p = float(c.get("p_hat", 0.0))
+        n_reps = c.get("n_reps", 0)
+        note = "" if n_reps == 100 else f"({n_reps} reps)"
         t.add_row(
             f"[bold magenta]{c.get('item_id', '?')}[/bold magenta]",
             f"[bold magenta]p̂={p:.2f}[/bold magenta]",
-            f"({c.get('n_correct', 0)}/{c.get('n_reps', 0)})",
+            note,
         )
     return Panel(t, title=f"[bold]recent in-band[/bold] [dim](top 10 by recency)[/dim]",
                  border_style="magenta")
