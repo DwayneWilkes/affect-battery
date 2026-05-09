@@ -353,11 +353,13 @@ def make_recent_panel(cells: list[dict]) -> Panel:
         if kind == "scored":
             p = c.get("p_hat", 0)
             color = "magenta" if 0.40 <= p <= 0.60 else "white"
-            n_reps = c.get("n_reps", 0)
-            # Show the rep count only when it's unusual (some reps were
-            # dropped). At the configured 100 reps, p̂ alone is enough;
-            # at a partial count the denominator signals partial scoring.
-            note = "" if n_reps == 100 else f"({n_reps} reps)"
+            # Surface per-item retry pressure: blocked or errored reps
+            # within an otherwise scored candidate. Silent when zero so
+            # healthy items don't add noise.
+            n_blocked = c.get("n_blocked_reps", 0)
+            n_errors = c.get("n_error_reps", 0)
+            n_problem = (n_blocked or 0) + (n_errors or 0)
+            note = f"[yellow]({n_problem} retried)[/yellow]" if n_problem else ""
             t.add_row(
                 f"[{color}]{iid}[/{color}]",
                 f"[{color}]p̂={p:.2f}[/{color}]",
@@ -394,12 +396,22 @@ def make_in_band_panel(cells: list[dict], target_lo: float, target_hi: float) ->
     t.add_column(style="dim")
     for c in in_band[:10]:
         p = float(c.get("p_hat", 0.0))
-        n_reps = c.get("n_reps", 0)
-        note = "" if n_reps == 100 else f"({n_reps} reps)"
+        # Distance from the nearest band edge: signals how robust the
+        # in-band classification is. A 0.42 is 0.02 above the lower edge
+        # (marginal — could regress out of band on a re-screen);
+        # a 0.50 is 0.10 from either edge (solidly central).
+        margin_lo = p - target_lo
+        margin_hi = target_hi - p
+        if abs(margin_lo - margin_hi) < 1e-9:
+            edge_note = f"+{margin_lo:.2f} mid"
+        elif margin_lo < margin_hi:
+            edge_note = f"+{margin_lo:.2f} lo"
+        else:
+            edge_note = f"+{margin_hi:.2f} hi"
         t.add_row(
             f"[bold magenta]{c.get('item_id', '?')}[/bold magenta]",
             f"[bold magenta]p̂={p:.2f}[/bold magenta]",
-            note,
+            edge_note,
         )
     return Panel(t, title=f"[bold]recent in-band[/bold] [dim](top 10 by recency)[/dim]",
                  border_style="magenta")
