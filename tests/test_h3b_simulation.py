@@ -154,3 +154,74 @@ def test_find_min_n_returns_none_when_n_max_too_small():
     )
     assert n_required is None
     assert len(trace) >= 1
+
+
+# ---------------------------------------------------------------------------
+# BCa bootstrap (bias-corrected and accelerated)
+# ---------------------------------------------------------------------------
+
+
+from src.power.h3b_simulation import _bootstrap_ci_bca  # noqa: E402
+
+
+def test_bca_reduces_to_percentile_when_symmetric():
+    """When the per-item statistic is symmetric and centered, the bias
+    correction z0 ≈ 0 and acceleration â ≈ 0, so BCa's adjusted quantile
+    lookups collapse to plain percentile lookups."""
+    rng = np.random.default_rng(42)
+    statistic = rng.normal(loc=0.0, scale=1.0, size=200)
+    point, lo, hi, z0, a_hat = _bootstrap_ci_bca(
+        statistic, n_bootstrap=2000, rng=np.random.default_rng(7),
+    )
+    # Symmetric data → small bias correction and acceleration.
+    assert abs(z0) < 0.10
+    assert abs(a_hat) < 0.05
+    # Point estimate is the sample mean.
+    assert abs(point - statistic.mean()) < 1e-9
+    # CI brackets the mean.
+    assert lo < point < hi
+    # Width is in the right ballpark for n=200, σ=1: SE ≈ 0.07, 95% CI ≈ ±0.14.
+    assert 0.20 < (hi - lo) < 0.40
+
+
+def test_bca_handles_constant_data_without_crashing():
+    """All-identical statistic → degenerate jackknife (var=0). Must not
+    raise ZeroDivisionError or produce NaN bounds; should return a
+    degenerate CI at the constant value."""
+    statistic = np.full(50, 0.5)
+    point, lo, hi, z0, a_hat = _bootstrap_ci_bca(
+        statistic, n_bootstrap=500, rng=np.random.default_rng(7),
+    )
+    assert point == 0.5
+    assert lo == 0.5
+    assert hi == 0.5
+    # a_hat is undefined for constant data; convention is 0.
+    assert a_hat == 0.0
+
+
+def test_bca_skewed_data_produces_nontrivial_acceleration():
+    """For a right-skewed distribution (log-normal here), the jackknife
+    acceleration term is non-trivial — the whole point of BCa over plain
+    percentile is to handle skew."""
+    rng = np.random.default_rng(42)
+    statistic = np.exp(rng.normal(0, 1, size=100))  # log-normal: right-skewed
+    point, lo, hi, z0, a_hat = _bootstrap_ci_bca(
+        statistic, n_bootstrap=2000, rng=np.random.default_rng(7),
+    )
+    assert abs(a_hat) > 0.01, f"acceleration should be non-trivial for log-normal, got {a_hat}"
+    # CI should still bracket the sample mean.
+    assert lo < point < hi
+
+
+def test_simulation_uses_bca_internally():
+    """Smoke: simulate_h3b_precision still produces sensible CI half-widths
+    after switching the inner bootstrap to BCa."""
+    p_hats = [0.5] * 50
+    r = simulate_h3b_precision(
+        n_items=30, p_hat_per_item=p_hats,
+        n_reps_per_cell=20, n_simulations=SMALL_SIMS,
+        n_bootstrap=SMALL_BOOTSTRAP, seed=42,
+    )
+    assert 0 < r.median_ci_half_width < 0.10
+    # Under H0 with n=30, BCa half-width should be near percentile (~0.035).
+    assert r.median_ci_half_width < 0.06

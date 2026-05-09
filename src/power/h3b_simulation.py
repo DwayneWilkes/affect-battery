@@ -34,6 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.stats import norm
 
 
 # Folded-magnitude design from the prereg: 3 magnitudes pool 6 stimulated
@@ -60,11 +61,14 @@ class H3bPrecisionResult:
     n_simulations: int
     n_bootstrap: int
     c_assumed: float
+    bootstrap_method: str  # "bca" (primary, BCa-corrected)
     median_ci_half_width: float
     mean_ci_half_width: float
     pct_below_0_05: float
     pct_below_0_10: float
     median_c_estimate: float
+    median_bca_z0: float       # bias-correction term (median across sims)
+    median_bca_acceleration: float  # jackknife acceleration (median across sims)
     bootstrap_ci_half_widths: np.ndarray = field(repr=False)
     c_estimates: np.ndarray = field(repr=False)
 
@@ -122,28 +126,71 @@ def _simulate_c_per_item_batch(
     )
 
 
-def _bootstrap_ci_half_width(
-    c_per_item: np.ndarray,
+def _bootstrap_ci_bca(
+    statistic: np.ndarray,
     n_bootstrap: int,
     rng: np.random.Generator,
     alpha: float = 0.05,
-) -> tuple[float, float, float]:
-    """Item-level percentile bootstrap CI half-width on the mean contrast.
+) -> tuple[float, float, float, float, float]:
+    """Item-level BCa (bias-corrected and accelerated) bootstrap CI.
 
-    Returns (point_estimate, ci_lo, ci_hi). Half-width = (ci_hi - ci_lo)/2.
+    Returns `(point, ci_lo, ci_hi, z0, a_hat)`. The point estimate is
+    the mean of `statistic`. `z0` is the bias-correction term (Φ⁻¹ of
+    the fraction of bootstrap samples below `point`). `a_hat` is the
+    jackknife-derived acceleration.
 
-    Vectorized: draw an (n_bootstrap × n_items) index matrix of resampled
-    item indices, gather, mean across items, then percentile across the
-    bootstrap dimension. Numpy is in this hot loop — pandas would be 30x
-    slower.
+    BCa is second-order accurate (coverage error O(1/n)) vs the naive
+    percentile bootstrap's O(1/√n), and corrects for skew in the
+    sampling distribution. When the bootstrap distribution is symmetric
+    and unbiased, z0 ≈ 0 and a_hat ≈ 0 and the BCa CI collapses to the
+    percentile CI.
+
+    Edge cases:
+    - `statistic` is constant: jackknife variance is zero → a_hat = 0,
+      and the bootstrap distribution is also constant; the CI degenerates
+      to (point, point).
+    - All bootstrap samples are below or above `point`: z0 saturates;
+      we clip the empirical fraction to (1e-9, 1 - 1e-9) so Φ⁻¹ stays
+      finite.
     """
-    n_items = len(c_per_item)
+    n_items = len(statistic)
+    point = float(statistic.mean())
+
     idx = rng.integers(0, n_items, size=(n_bootstrap, n_items))
-    boot_means = c_per_item[idx].mean(axis=1)
-    lo = float(np.percentile(boot_means, 100.0 * alpha / 2.0))
-    hi = float(np.percentile(boot_means, 100.0 * (1.0 - alpha / 2.0)))
-    point = float(c_per_item.mean())
-    return point, lo, hi
+    boot_means = statistic[idx].mean(axis=1)
+
+    # Bias correction: where does `point` sit in the bootstrap distribution?
+    pct_below = float(np.mean(boot_means < point))
+    pct_below = min(max(pct_below, 1e-9), 1.0 - 1e-9)
+    z0 = float(norm.ppf(pct_below))
+
+    # Acceleration via jackknife on the mean. Leave-one-out:
+    # jack_i = (sum(statistic) - statistic_i) / (n - 1)
+    sum_all = float(statistic.sum())
+    jack = (sum_all - statistic) / (n_items - 1) if n_items > 1 else statistic
+    jack_mean = float(jack.mean())
+    diffs = jack_mean - jack
+    num = float(np.sum(diffs ** 3))
+    den = 6.0 * (float(np.sum(diffs ** 2)) ** 1.5)
+    a_hat = (num / den) if den > 0 else 0.0
+
+    # Adjusted quantiles. Guard against the (1 - a_hat * z) denominator
+    # going non-positive in pathological cases by clamping to a safe min.
+    z_lo = norm.ppf(alpha / 2.0)
+    z_hi = norm.ppf(1.0 - alpha / 2.0)
+    denom_lo = 1.0 - a_hat * (z0 + z_lo)
+    denom_hi = 1.0 - a_hat * (z0 + z_hi)
+    if denom_lo <= 1e-9 or denom_hi <= 1e-9:
+        # Degenerate acceleration: fall back to bias-corrected only.
+        alpha_1 = norm.cdf(2 * z0 + z_lo)
+        alpha_2 = norm.cdf(2 * z0 + z_hi)
+    else:
+        alpha_1 = norm.cdf(z0 + (z0 + z_lo) / denom_lo)
+        alpha_2 = norm.cdf(z0 + (z0 + z_hi) / denom_hi)
+
+    lo = float(np.percentile(boot_means, 100.0 * alpha_1))
+    hi = float(np.percentile(boot_means, 100.0 * alpha_2))
+    return point, lo, hi, z0, a_hat
 
 
 def simulate_h3b_precision(
@@ -170,12 +217,13 @@ def simulate_h3b_precision(
 
     half_widths = np.zeros(n_simulations, dtype=float)
     c_estimates = np.zeros(n_simulations, dtype=float)
+    z0_values = np.zeros(n_simulations, dtype=float)
+    a_hat_values = np.zeros(n_simulations, dtype=float)
     # Sample all n_simulations × n_items per-item p̂s in one numpy call;
     # all binomial draws also vectorized in `_simulate_c_per_item_batch`.
-    # The bootstrap stays per-sim because the index matrix
-    # (n_simulations × n_bootstrap × n_items) at production scale would
-    # exceed reasonable memory; per-sim bootstrap is already vectorized
-    # internally.
+    # The BCa bootstrap stays per-sim because batching the index matrix
+    # at production scale would exceed memory; per-sim bootstrap is
+    # already vectorized internally and the jackknife is O(n_items).
     p_per_item_batch = rng.choice(
         p_pool, size=(n_simulations, n_items), replace=True,
     )
@@ -183,11 +231,13 @@ def simulate_h3b_precision(
         p_per_item_batch, n_reps_per_cell, c_assumed, rng,
     )
     for s in range(n_simulations):
-        point, lo, hi = _bootstrap_ci_half_width(
+        point, lo, hi, z0, a_hat = _bootstrap_ci_bca(
             c_per_item_batch[s], n_bootstrap, rng,
         )
         half_widths[s] = (hi - lo) / 2.0
         c_estimates[s] = point
+        z0_values[s] = z0
+        a_hat_values[s] = a_hat
 
     pct_below_0_05 = 100.0 * float((half_widths < 0.05).mean())
     pct_below_0_10 = 100.0 * float((half_widths < 0.10).mean())
@@ -198,11 +248,14 @@ def simulate_h3b_precision(
         n_simulations=n_simulations,
         n_bootstrap=n_bootstrap,
         c_assumed=c_assumed,
+        bootstrap_method="bca",
         median_ci_half_width=float(np.median(half_widths)),
         mean_ci_half_width=float(np.mean(half_widths)),
         pct_below_0_05=pct_below_0_05,
         pct_below_0_10=pct_below_0_10,
         median_c_estimate=float(np.median(c_estimates)),
+        median_bca_z0=float(np.median(z0_values)),
+        median_bca_acceleration=float(np.median(a_hat_values)),
         bootstrap_ci_half_widths=half_widths,
         c_estimates=c_estimates,
     )
