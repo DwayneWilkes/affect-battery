@@ -25,11 +25,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+from tqdm.asyncio import tqdm as atqdm
 
 def _find_affect_battery_root() -> Path:
     """Locate the affect-battery repo for sys.path injection. Looks at:
@@ -100,6 +103,7 @@ async def run_one_candidate(client, item, n_reps: int, sem: asyncio.Semaphore):
     invalid_prompt) and unrelated exceptions still get recorded but
     don't cascade out of the per-candidate `gather`."""
     async def one_rep():
+        retry_msg = ""
         for attempt in range(4):  # initial + up to 3 patient retries
             async with sem:
                 try:
@@ -181,7 +185,6 @@ def _bank_fingerprint(bank_path: Path) -> str:
     ExperimentTracker's output_dir per-input-bank: a different bank
     file (even with overlapping item IDs) gets its own tracker
     directory; the old data is preserved unchanged."""
-    import hashlib
     return hashlib.sha256(bank_path.read_bytes()).hexdigest()
 
 
@@ -250,17 +253,6 @@ async def run_probe(args):
     #     can crash the python process at scale.
     call_sem = asyncio.Semaphore(args.max_concurrent)
 
-    # Resume: items already in tracker's cache are skipped on dispatch
-    # but counted in the final aggregation.
-    to_dispatch = [it for it in selected if not tracker.is_cached(it["id"])]
-    n_cached = len(selected) - len(to_dispatch)
-    if n_cached:
-        print(
-            f"  resuming: {n_cached} of {len(selected)} candidates cached "
-            f"at {tracker_dir / 'cache'}",
-            file=sys.stderr,
-        )
-
     async def run_and_cache(item):
         result = await run_one_candidate(client, item, args.n_reps, call_sem)
         payload = {
@@ -274,21 +266,28 @@ async def run_probe(args):
 
     per_item: list[dict] = []
     blocked_items: list[dict] = []
+    to_dispatch: list[dict] = []
 
-    # Seed per_item / blocked_items with cached entries.
+    # Single-pass cache classification: try-load each item; on FileNotFoundError
+    # or stale n_reps_target, dispatch fresh; otherwise seed per_item or
+    # blocked_items from the cell. Avoids the TOCTOU + double-stat that
+    # is_cached() + load_cached() would impose.
     for item in selected:
-        if not tracker.is_cached(item["id"]):
+        try:
+            entry = tracker.load_cached(item["id"])
+        except FileNotFoundError:
+            to_dispatch.append(item)
             continue
-        entry = tracker.load_cached(item["id"])
         if entry.get("n_reps_target") != args.n_reps:
-            continue  # stale config; will be re-run
+            to_dispatch.append(item)
+            continue
+        difficulty = entry.get("difficulty", item.get("difficulty", "?"))
         if entry.get("kind") == "blocked":
             blocked_items.append({
                 "item_id": entry["item_id"],
                 "question": entry.get("question", ""),
                 "reason": "non_retryable_api_error",
-                "difficulty": entry.get("difficulty",
-                                        item.get("difficulty", "?")),
+                "difficulty": difficulty,
             })
         else:
             rec = {
@@ -296,11 +295,17 @@ async def run_probe(args):
                 for k in ("item_id", "question", "expected",
                           "n_reps", "n_correct", "p_hat")
             }
-            rec["difficulty"] = entry.get("difficulty",
-                                          item.get("difficulty", "?"))
+            rec["difficulty"] = difficulty
             per_item.append(rec)
 
-    from tqdm.asyncio import tqdm as atqdm
+    n_cached = len(selected) - len(to_dispatch)
+    if n_cached:
+        print(
+            f"  resuming: {n_cached} of {len(selected)} candidates cached "
+            f"at {tracker_dir / 'cache'}",
+            file=sys.stderr,
+        )
+
     total_new = len(to_dispatch)
     batch_size = args.candidates_per_batch
     pbar = atqdm(

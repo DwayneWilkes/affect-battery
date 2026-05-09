@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+from tqdm.asyncio import tqdm as atqdm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -45,8 +46,6 @@ async def _run_sample(items, client, n_reps, max_concurrent):
     as candidates complete (asyncio.as_completed yields in finish order),
     so the operator sees progress and an ETA rather than silence until
     the whole gather resolves."""
-    from tqdm.asyncio import tqdm as atqdm
-
     sem = asyncio.Semaphore(max_concurrent)
     tasks = [
         asyncio.create_task(run_one_candidate(client, it, n_reps, sem))

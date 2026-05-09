@@ -398,8 +398,8 @@ class OpenAIClient(ModelClient):
         usage = getattr(resp, "usage", None)
         if usage is None:
             return
-        prompt = getattr(usage, "prompt_tokens", 0) or 0
-        completion = getattr(usage, "completion_tokens", 0) or 0
+        prompt = getattr(usage, "prompt_tokens", 0)
+        completion = getattr(usage, "completion_tokens", 0)
         reasoning: int | None = None
         details = getattr(usage, "completion_tokens_details", None)
         if details is not None:

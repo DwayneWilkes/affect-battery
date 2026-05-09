@@ -340,7 +340,7 @@ def make_histogram_panel(cells: list[dict], target_lo: float, target_hi: float,
     )
 
 
-def make_recent_panel(cells: list[dict]) -> Panel:
+def make_recent_panel(cells: list[dict], target_lo: float, target_hi: float) -> Panel:
     if not cells:
         return Panel("[dim]none[/dim]", title="[bold]recent[/bold]", border_style="blue")
     t = Table.grid(padding=(0, 2))
@@ -352,7 +352,7 @@ def make_recent_panel(cells: list[dict]) -> Panel:
         iid = c.get("item_id", "?")
         if kind == "scored":
             p = c.get("p_hat", 0)
-            color = "magenta" if 0.40 <= p <= 0.60 else "white"
+            color = "magenta" if target_lo <= p <= target_hi else "white"
             # Surface per-item retry pressure: blocked or errored reps
             # within an otherwise scored candidate. Silent when zero so
             # healthy items don't add noise.
@@ -540,7 +540,7 @@ def render(args, console: Console) -> tuple[bool, Layout]:
                name="hist", size=20),
         Layout(make_in_band_panel(cells, target_lo, target_hi),
                name="in_band", size=14),
-        Layout(make_recent_panel(cells), name="recent"),
+        Layout(make_recent_panel(cells, target_lo, target_hi), name="recent"),
     )
     layout["header"].update(
         Panel(

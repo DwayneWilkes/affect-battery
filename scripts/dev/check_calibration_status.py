@@ -20,6 +20,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -96,7 +97,6 @@ def main() -> int:
     # Anchor elapsed on the tracker's `created_at` so cache carry-over
     # (mass-copy of cells from a prior run) doesn't bias the rate
     # downward. Fall back to oldest cell mtime if the field is missing.
-    from datetime import datetime
     created_iso = md.get("created_at")
     if created_iso:
         try:
