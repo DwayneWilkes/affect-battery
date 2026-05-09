@@ -47,13 +47,9 @@ def main() -> int:
         cache_dir = bank_dir / "cache"
         cache_dir.mkdir(parents=True)
 
-        # Synthetic usage telemetry, sized as if we're partway through:
-        # ~150 input + ~280 output tokens per call (nano + reasoning),
-        # at illustrative pricing.
-        # Token counts per call calibrated against the May 2026 export
-        # (~65 input, ~176 output incl. reasoning). Pricing is gpt-5.4-nano
-        # standard tier ($0.20/M in, $1.25/M out, verified to $0.0000 drift
-        # against the actual invoice).
+        # Per-call token counts approximate gpt-5.4-nano on GSM-Hard:
+        # ~65 input, ~176 output (reasoning included). Pricing is the
+        # standard-tier published rate ($0.20/M in, $1.25/M out).
         n_calls_so_far = args.n_scored * 100  # n_reps assumed 100 per item
         synth_usage = {
             "usage_n_calls": n_calls_so_far,

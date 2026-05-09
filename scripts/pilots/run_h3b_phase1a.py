@@ -175,8 +175,8 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def count_bank_items(bank_path: Path) -> int:
     """Count items by matching `^- id:` lines. Avoids requiring a YAML
-    parser dep; the parent emitter (build_calibrated_bank.py) writes one
-    `- id:` per item at column 0."""
+    parser dep; the bank emitter (`scripts/calibration/build_h3b_bank.py`)
+    writes one `- id:` per item at column 0."""
     return len(re.findall(r"^- id:", bank_path.read_text(), re.MULTILINE))
 
 
@@ -254,10 +254,9 @@ class PassRunner:
     Race-free pgroup signaling: each dispatch uses `start_new_session=True`,
     which calls `os.setsid()` in the child between fork and exec.
     `subprocess.Popen` synchronizes via an internal pipe so it does not
-    return until the child's exec has succeeded — by then setsid has run
-    and the pgid is established. This is structurally different from
-    bash's `setsid prog &` where the parent sees `$!` immediately and
-    can race the child's setsid call."""
+    return until the child's exec has succeeded; by then setsid has run
+    and the pgid is established, so any signal sent to the pgid reaches
+    the entire process group with no parent-child race."""
 
     def __init__(
         self,

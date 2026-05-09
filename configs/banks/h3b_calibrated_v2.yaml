@@ -3,7 +3,7 @@ bank_version: 2
 bank_type: task
 status: active
 task_type_subtype: math-word-problem
-parent_bank: gsm8k_v1
+parent_bank: gsm_hard_full_v1
 alignment_review:
   reviewer: h3b calibration probe (n_candidates=1319, n_reps=100)
   date: '2026-05-09'

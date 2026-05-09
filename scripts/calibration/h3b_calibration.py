@@ -14,12 +14,12 @@ Environment:
 
 Usage:
     AFFECT_BATTERY_ROOT=/path/to/affect-battery \\
-    direnv exec . uv run --active python scripts/h3b_calibration_robust.py \\
-        --bank configs/banks/gsm8k_v1.yaml \\
+    direnv exec . uv run --active python scripts/calibration/h3b_calibration.py \\
+        --bank configs/banks/gsm_hard_full_<date>.yaml \\
         --provider openai --model gpt-5.4-nano \\
-        --n-candidates 500 --n-reps 100 \\
+        --n-candidates 1319 --n-reps 100 \\
         --target-lo 0.40 --target-hi 0.60 \\
-        --output configs/h3b_calibration_2026-05-08.json
+        --output configs/h3b_calibration_<date>.json
 """
 from __future__ import annotations
 

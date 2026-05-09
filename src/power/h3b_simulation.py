@@ -7,7 +7,7 @@ based:
 - `c_ci95_hi >= 0.10`: uninformative claim (CI too wide)
 
 So the meaningful sample-size question is "at what `n_items` does the
-item-level percentile bootstrap CI half-width on `c = m_mag2 −
+item-level BCa bootstrap CI half-width on `c = m_mag2 −
 ½(m_mag1 + m_mag3)` reliably stay below 0.05?" — not "what n gives 80%
 power to detect c > 0?"
 

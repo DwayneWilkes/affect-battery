@@ -27,7 +27,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import humanize
-import plotille
 from rich.align import Align
 from rich.console import Console, Group
 from rich.layout import Layout

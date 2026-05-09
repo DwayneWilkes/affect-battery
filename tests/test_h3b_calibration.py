@@ -2,9 +2,9 @@
 
 The script's API-call paths can't be unit-tested without burning budget,
 but the supporting machinery (repo-root discovery, bank fingerprinting,
-ExperimentTracker integration) is testable. Subprocess-level behaviour
-against the real OpenAI API is verified by smoke-running the script
-with --n-candidates 5 --n-reps 5 before any production run.
+ExperimentTracker integration) is testable. Subprocess-level behavior
+against the real API is exercised separately via the runbook's smoke
+step.
 """
 from __future__ import annotations
 

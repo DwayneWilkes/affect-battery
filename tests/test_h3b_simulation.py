@@ -102,8 +102,8 @@ def test_under_h1_median_c_estimate_recovers_assumed():
 
 def test_p_hat_resampling_used_when_pool_smaller_than_n_items():
     """With n_items > len(p_hat pool), the simulation samples with
-    replacement from the calibrated pool — this is the realistic case
-    when running with the 19-item calibration we already have."""
+    replacement from the calibrated pool, so n can exceed the pool size
+    without errors."""
     p_hats = [0.45, 0.50, 0.55]  # only 3 calibrated items
     result = simulate_h3b_precision(
         n_items=20, p_hat_per_item=p_hats, n_reps_per_cell=20,

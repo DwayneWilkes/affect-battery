@@ -601,9 +601,8 @@ def test_dry_run_skips_openai_api_key_requirement(env_setup):
 
 
 def test_n_passes_zero_rejected(env_setup):
-    """--n-passes 0 silently runs zero passes and exits 0 today, which
-    is a footgun: an operator typo could "succeed" without producing
-    any data. Reject as user error."""
+    """--n-passes 0 is rejected as user error: a zero-pass run would
+    "succeed" without producing data, masking an operator typo."""
     cwd, env = env_setup
     result = _run(
         cwd, env,
@@ -614,8 +613,8 @@ def test_n_passes_zero_rejected(env_setup):
 
 
 def test_n_passes_non_integer_rejected(env_setup):
-    """--n-passes abc should fail with a clear error before reaching
-    `seq 1 abc` deep in the dispatch loop."""
+    """--n-passes abc should fail with a clear error from argparse,
+    not deep inside the dispatch loop."""
     cwd, env = env_setup
     result = _run(
         cwd, env,
@@ -840,7 +839,7 @@ def test_e2e_dry_run_produces_analyzable_corpus(tmp_path: Path):
         f"{cfg.get('transfer_bank')}"
     )
     # Calibrated bank SHA pinned in docs/preregistrations/h3b_2026-05-07.md.
-    expected_bank_sha_prefix = "9822abb3"
+    expected_bank_sha_prefix = "7198c968"
     assert cfg.get("transfer_bank_hash", "").startswith(expected_bank_sha_prefix), (
         f"transfer_bank_hash doesn't match pinned SHA "
         f"({expected_bank_sha_prefix}...): got {cfg.get('transfer_bank_hash')}"

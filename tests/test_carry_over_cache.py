@@ -105,8 +105,8 @@ def test_unmatched_old_cells_skipped(tmp_path: Path):
 
 def test_does_not_overwrite_existing_new_cache_cells(tmp_path: Path):
     """If a new-cache cell already exists for the matched ID, leave it
-    alone — don't clobber. The cache-isolation invariant from MEMORY.md
-    forbids overwrite-on-input-change."""
+    alone — don't clobber. Cache-isolation invariant: do not overwrite
+    existing cells when bridging from a prior bank's cache."""
     old_bank = [{"id": "old_0", "question": "Q?", "expected": "5",
                  "source_dataset": "gsm-hard"}]
     new_bank = [{"id": "new_0", "question": "Q?", "expected": "5",

@@ -64,9 +64,8 @@ def _run_builder(calib_path: Path, output_path: Path,
 
 def test_builds_bank_with_all_qualifiers_no_truncation(tmp_path: Path):
     """The bank must include every item from calibrated_subset; no
-    truncation, no ranking-by-closest-to-0.5 limit. (The simulation
-    found 'all qualifiers' has strictly better precision than the
-    earlier rank-and-truncate rule.)"""
+    truncation, no top-N limit. All-qualifiers selection minimizes the
+    bootstrap CI half-width on the contrast at fixed n_calibrated."""
     items = [_build_item(f"gsm8k_{i:04d}", 0.40 + 0.01 * i) for i in range(35)]
     calib = _make_calibration(tmp_path, items)
     out = tmp_path / "bank.yaml"
@@ -130,7 +129,7 @@ def test_builder_emits_bank_level_metadata(tmp_path: Path):
     assert bank["bank_version"] == 2
     assert bank["bank_type"] == "task"
     assert bank["status"] == "active"
-    assert bank["parent_bank"] == "gsm8k_v1"
+    assert bank["parent_bank"] == "gsm_hard_full_v1"
     review = bank["alignment_review"]
     assert review["verdict"] == "pass"
     assert "sha256" in review["rationale"]

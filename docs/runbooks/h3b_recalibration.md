@@ -57,7 +57,7 @@ direnv exec . uv run --active python scripts/calibration/h3b_calibration.py \
   --output configs/h3b_calibration_<YYYY-MM-DD>.json
 ```
 
-Cost / time (anchored to the May 2026 export at `research/SF/affect_battery/artifacts/api_exports/` and OpenAI's standard-tier published rates for `gpt-5.4-nano`: $0.20 input + $1.25 output per 1M tokens; rerun `scripts/dev/summarize_openai_export.py` against fresh exports to recalibrate if pricing changes):
+Cost / time (anchored to OpenAI's standard-tier published rates for `gpt-5.4-nano`: $0.20 input + $1.25 output per 1M tokens; rerun `scripts/dev/summarize_openai_export.py` against a fresh OpenAI dashboard export to recalibrate if pricing changes):
 
 - Calls: 131,900 (1,319 × 100)
 - Per-call avg: ~$0.000233 on `gpt-5.4-nano-2026-03-17` (65 input, 176 output tokens; output count includes hidden reasoning tokens, billed at the output rate)
@@ -134,7 +134,7 @@ Update `scripts/pilots/run_h3b_phase1a.py`:
 DEFAULT_BANK = "configs/banks/h3b_calibrated_v<N>.yaml"
 ```
 
-`NUM_RUNS` is no longer hardcoded — the wrapper derives the per-level item count from the bank YAML's `^- id:` line count at startup. No edit needed there.
+The wrapper derives the per-level item count from the bank YAML's `^- id:` line count at startup; no `NUM_RUNS` constant needs editing.
 
 ### 7. Re-run the wrapper test suite
 

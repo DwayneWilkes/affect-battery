@@ -1,9 +1,9 @@
 """Carry over per-item cache cells from an old bank's tracker dir to a new bank's.
 
-When the bank YAML is replaced (e.g. expanding from a 286-item subset
-to the full 1,319-item GSM-Hard pool), the calibration script's
-per-bank cache fingerprint changes and the new run starts from scratch
-unless we explicitly bridge.
+When the bank YAML is replaced with a content-superset (e.g. expanding
+a sampled bank to the full source pool), the calibration script's
+per-bank cache fingerprint changes and the new run would re-screen
+every item unless an explicit bridge is performed.
 
 This script matches each old cache cell to a new-bank item by content
 (question + expected, looked up via the OLD BANK YAML — bank-driven, not
@@ -11,8 +11,8 @@ cell-driven, so blocked cells without question/expected fields still
 carry over). When a match exists, the cell is copied into the new
 cache dir under its NEW item_id, with the cell's `item_id` field
 rewritten in place so downstream consumers stay consistent. Existing
-cells in the new cache are never overwritten — the cache-isolation
-invariant from MEMORY.md is preserved.
+cells in the new cache are never overwritten; the cache-isolation
+invariant (do not overwrite existing cells when bridging) is preserved.
 
 Usage:
     uv run --active python scripts/dev/carry_over_cache.py \\

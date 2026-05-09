@@ -1,15 +1,13 @@
 """Build an H3b calibrated bank YAML from a calibration JSON.
 
-Reads the JSON output of h3b_calibration_robust.py and writes a task-bank
-YAML containing every item in the calibration's `calibrated_subset` (no
-truncation, no ranking by closeness to 0.5). Simulation under H0 shows
-"all qualifiers" gives strictly better contrast precision than truncating
-to a fixed n with no bias cost; ranking by `|p̂ - 0.5|` was an arbitrary
-limit that cost ~14-50% in CI width with no scientific gain.
+Reads the JSON output of `scripts/calibration/h3b_calibration.py` and
+writes a task-bank YAML containing every item in the calibration's
+`calibrated_subset`. All-qualifiers selection: no top-N truncation,
+sorted by closeness to p̂=0.5 for display order only.
 
 Usage:
-    direnv exec . uv run --active python scripts/h3b_build_bank_from_calibration.py \\
-        --calibration configs/h3b_calibration_2026-05-08.json \\
+    direnv exec . uv run --active python scripts/calibration/build_h3b_bank.py \\
+        --calibration configs/h3b_calibration_<date>.json \\
         --output configs/banks/h3b_calibrated_v2.yaml
 """
 from __future__ import annotations
@@ -27,7 +25,7 @@ import yaml
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--calibration", required=True, type=Path,
-                    help="Calibration JSON from h3b_calibration_robust.py")
+                    help="Calibration JSON from scripts/calibration/h3b_calibration.py")
     ap.add_argument("--min-items", type=int, default=32,
                     help="Minimum acceptable yield from calibration. Default 32 "
                          "is the n at which the simulated bootstrap CI half-width "
@@ -42,7 +40,9 @@ def main() -> int:
     ap.add_argument("--bank-id", default="h3b_calibrated_v2",
                     help="bank_id field for the output")
     ap.add_argument("--bank-version", type=int, default=2)
-    ap.add_argument("--parent-bank", default="gsm8k_v1")
+    ap.add_argument("--parent-bank", default="gsm_hard_full_v1",
+                    help="bank_id of the source bank that the calibration "
+                         "screened. Default matches the full-pool source bank.")
     args = ap.parse_args()
 
     calibration = json.loads(args.calibration.read_text())
@@ -56,8 +56,8 @@ def main() -> int:
         )
         return 1
 
-    # Take ALL qualifiers — no truncation, no ranking-by-closeness-to-0.5.
-    # See module docstring for the simulation result that motivates this.
+    # Sort by closeness to p̂=0.5 for display order; every in-band item
+    # is included — no top-N truncation.
     selected = sorted(calibrated, key=lambda p: abs(p["p_hat"] - 0.5))
 
     # Read target band from the calibration JSON itself rather than CLI
