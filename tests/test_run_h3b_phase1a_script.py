@@ -26,6 +26,20 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "pilots" / "run_h3b_phase1a.py"
 
+
+def _count_bank_items(bank_path: Path) -> int:
+    """Count `- id:` lines in the bank YAML — same heuristic as the
+    wrapper. Tests derive expected cell counts from this so a recalibrated
+    bank doesn't require test updates."""
+    return sum(
+        1 for line in bank_path.read_text().splitlines()
+        if line.startswith("- id:")
+    )
+
+
+_DEFAULT_BANK_PATH = REPO_ROOT / "configs" / "banks" / "h3b_calibrated_v2.yaml"
+N_ITEMS = _count_bank_items(_DEFAULT_BANK_PATH) if _DEFAULT_BANK_PATH.exists() else 18
+
 # Import the wrapper as a module so unit tests can exercise its parsing
 # helpers directly without spawning a subprocess.
 sys.path.insert(0, str(SCRIPT.parent))
@@ -785,23 +799,24 @@ def test_e2e_dry_run_produces_analyzable_corpus(tmp_path: Path):
         f"stdout: {result.stdout[-400:]}"
     )
 
-    # Total cell count: 2 passes × 18 items × 7 levels.
+    # Total cell count: 2 passes × N_ITEMS × 7 levels.
     cells = sorted(output_base.glob("pass_*/data/level_*/neutral/*.json"))
-    assert len(cells) == 252, (
-        f"expected 252 cells (2×18×7), got {len(cells)}.\n"
+    expected_total = 2 * N_ITEMS * 7
+    assert len(cells) == expected_total, (
+        f"expected {expected_total} cells (2×{N_ITEMS}×7), got {len(cells)}.\n"
         f"layout: {[str(c.relative_to(output_base)) for c in cells[:5]]}"
     )
 
     # Per-pass × per-level coverage: within_subjects pairs every item
     # with every level on every pass, so each `level_<L>/neutral/` dir
-    # under a pass should hold exactly 18 cells.
+    # under a pass should hold exactly N_ITEMS cells.
     for pass_n in (1, 2):
         for level in range(1, 8):
             d = (output_base / f"pass_{pass_n:02d}"
                  / "data" / f"level_{level}" / "neutral")
             n = len(list(d.glob("*.json")))
-            assert n == 18, (
-                f"pass {pass_n} level {level}: expected 18 cells, got {n}"
+            assert n == N_ITEMS, (
+                f"pass {pass_n} level {level}: expected {N_ITEMS} cells, got {n}"
             )
 
     # Cell files share the schema the analysis pipeline indexes on.
@@ -825,7 +840,7 @@ def test_e2e_dry_run_produces_analyzable_corpus(tmp_path: Path):
         f"{cfg.get('transfer_bank')}"
     )
     # Calibrated bank SHA pinned in docs/preregistrations/h3b_2026-05-07.md.
-    expected_bank_sha_prefix = "337dddd0"
+    expected_bank_sha_prefix = "9822abb3"
     assert cfg.get("transfer_bank_hash", "").startswith(expected_bank_sha_prefix), (
         f"transfer_bank_hash doesn't match pinned SHA "
         f"({expected_bank_sha_prefix}...): got {cfg.get('transfer_bank_hash')}"
@@ -858,4 +873,7 @@ def test_e2e_dry_run_each_cell_has_unique_path(tmp_path: Path):
         f"duplicate cell paths detected: {len(cells)} files, "
         f"{len(paths)} unique paths"
     )
-    assert len(cells) == 378, f"expected 378 cells (3×18×7), got {len(cells)}"
+    expected_total = 3 * N_ITEMS * 7
+    assert len(cells) == expected_total, (
+        f"expected {expected_total} cells (3×{N_ITEMS}×7), got {len(cells)}"
+    )
