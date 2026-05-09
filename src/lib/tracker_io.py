@@ -27,7 +27,13 @@ def tracker_root_for(output_path: Path) -> Path:
 
 def find_bank_subdir(tracker_root: Path) -> Path | None:
     """Most-recently-touched `bank_*` subdir under the tracker root,
-    or None if the root doesn't exist or holds no bank dirs."""
+    or None if the root doesn't exist or holds no bank dirs.
+
+    Recency is the max mtime across the bank dir itself, its
+    `run_metadata.json`, and its `cache/` directory. Directory mtime
+    alone is unreliable: ExperimentTracker rewrites `run_metadata.json`
+    in place via tmp+rename, and per-cell writes go through the cache
+    subdir, so the parent bank dir's mtime can lag behind active work."""
     if not tracker_root.is_dir():
         return None
     candidates = [
@@ -36,7 +42,17 @@ def find_bank_subdir(tracker_root: Path) -> Path | None:
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
+    return max(candidates, key=_bank_recency_key)
+
+
+def _bank_recency_key(bank_dir: Path) -> float:
+    times = [bank_dir.stat().st_mtime]
+    for child in (bank_dir / "run_metadata.json", bank_dir / "cache"):
+        try:
+            times.append(child.stat().st_mtime)
+        except OSError:
+            pass
+    return max(times)
 
 
 def cache_dir_for(bank_subdir: Path) -> Path:

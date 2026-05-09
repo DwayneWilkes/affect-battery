@@ -62,6 +62,8 @@ def main() -> int:
     params = md.get("params", {})
     metrics = md.get("metrics", {})
     target = int(params.get("n_candidates", 0))
+    target_lo = float(params.get("target_lo", 0.40))
+    target_hi = float(params.get("target_hi", 0.60))
 
     cells = load_cache_items(bank_dir)
     if not cells:
@@ -76,7 +78,7 @@ def main() -> int:
             scored += 1
             p = float(d.get("p_hat", 0.0))
             p_hats.append(p)
-            if 0.40 <= p <= 0.60:
+            if target_lo <= p <= target_hi:
                 in_band += 1
         elif kind == "blocked":
             blocked += 1
