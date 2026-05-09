@@ -42,6 +42,10 @@ import numpy as np
 N_MAGNITUDES = 3
 N_LEVELS_PER_MAGNITUDE = 2
 
+# Column indices for arrays shaped (..., N_MAGNITUDES). Names make the
+# folded-contrast formula self-checking against `_per_magnitude_offsets`.
+MAG1_IDX, MAG2_IDX, MAG3_IDX = 0, 1, 2
+
 
 @dataclass
 class H3bPrecisionResult:
@@ -82,33 +86,39 @@ def _per_magnitude_offsets(c_assumed: float) -> dict[int, float]:
     }
 
 
-def _simulate_c_per_item(
-    p_per_item: np.ndarray,
+def _simulate_c_per_item_batch(
+    p_per_item_batch: np.ndarray,
     n_reps_per_cell: int,
     c_assumed: float,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Vectorized per-item folded contrast under one simulated experiment.
+    """Vectorized per-item folded contrast across a batch of simulations.
 
-    Returns a 1-D array of shape (n_items,) where each entry is
-    `m_mag2[i] − ½(m_mag1[i] + m_mag3[i])`. The two signed levels per
-    magnitude share the same offset, so we draw a single
-    Binomial(n_reps × 2, p_cell) per (item, magnitude) instead of
-    materializing per-rep Bernoullis.
+    `p_per_item_batch` is shape `(n_simulations, n_items)`; output is
+    shape `(n_simulations, n_items)` of per-item contrasts
+    `m_mag2[s,i] − ½(m_mag1[s,i] + m_mag3[s,i])`. Both the simulation
+    axis and the magnitude axis are collapsed by numpy broadcasting,
+    so a single `rng.binomial` call covers every (simulation, item,
+    magnitude) cell.
+
+    The two signed levels per magnitude share the same offset under
+    `_per_magnitude_offsets`, so the variance of the mean of `2n` shared-
+    `p` Bernoullis equals the variance of `Binomial(2n, p) / 2n`. That
+    equivalence lets the per-rep loop collapse into a single binomial
+    draw per cell — the load-bearing step that makes the whole batch
+    one numpy call.
     """
-    offsets = _per_magnitude_offsets(c_assumed)
-    # Index 0 → mag 1, index 1 → mag 2, index 2 → mag 3.
-    offsets_arr = np.array([offsets[1], offsets[2], offsets[3]])
-
-    # p_cell[i, k] = clipped p_item[i] + offset(mag=k+1)
+    offsets_arr = np.array(
+        [_per_magnitude_offsets(c_assumed)[m] for m in (1, 2, 3)]
+    )
     p_cell = np.clip(
-        p_per_item[:, None] + offsets_arr[None, :], 0.0, 1.0,
+        p_per_item_batch[..., None] + offsets_arr[None, None, :], 0.0, 1.0,
     )
     n_per_mag = n_reps_per_cell * N_LEVELS_PER_MAGNITUDE
-    counts = rng.binomial(n_per_mag, p_cell)
-    m_per_item_mag = counts / n_per_mag
-    return m_per_item_mag[:, 1] - 0.5 * (
-        m_per_item_mag[:, 0] + m_per_item_mag[:, 2]
+    m_per_item_mag = rng.binomial(n_per_mag, p_cell) / n_per_mag
+    return (
+        m_per_item_mag[..., MAG2_IDX]
+        - 0.5 * (m_per_item_mag[..., MAG1_IDX] + m_per_item_mag[..., MAG3_IDX])
     )
 
 
@@ -160,14 +170,22 @@ def simulate_h3b_precision(
 
     half_widths = np.zeros(n_simulations, dtype=float)
     c_estimates = np.zeros(n_simulations, dtype=float)
+    # Sample all n_simulations × n_items per-item p̂s in one numpy call;
+    # all binomial draws also vectorized in `_simulate_c_per_item_batch`.
+    # The bootstrap stays per-sim because the index matrix
+    # (n_simulations × n_bootstrap × n_items) at production scale would
+    # exceed reasonable memory; per-sim bootstrap is already vectorized
+    # internally.
+    p_per_item_batch = rng.choice(
+        p_pool, size=(n_simulations, n_items), replace=True,
+    )
+    c_per_item_batch = _simulate_c_per_item_batch(
+        p_per_item_batch, n_reps_per_cell, c_assumed, rng,
+    )
     for s in range(n_simulations):
-        # Sample n_items per-item p̂s. With replacement so n_items can
-        # exceed pool size.
-        p_per_item = rng.choice(p_pool, size=n_items, replace=True)
-        c_per_item = _simulate_c_per_item(
-            p_per_item, n_reps_per_cell, c_assumed, rng,
+        point, lo, hi = _bootstrap_ci_half_width(
+            c_per_item_batch[s], n_bootstrap, rng,
         )
-        point, lo, hi = _bootstrap_ci_half_width(c_per_item, n_bootstrap, rng)
         half_widths[s] = (hi - lo) / 2.0
         c_estimates[s] = point
 

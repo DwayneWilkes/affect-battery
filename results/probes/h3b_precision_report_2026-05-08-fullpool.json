@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-05-09T07:04:32.249835+00:00",
+  "generated_utc": "2026-05-09T07:10:49.399119+00:00",
   "calibration_source": "configs/h3b_calibration_2026-05-08-fullpool.json",
   "n_calibrated_in_pool": 93,
   "p_hat_pool_mean": 0.4798924731182796,
@@ -20,71 +20,71 @@
           "n_items": 100,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.01869062499999999,
-          "mean_ci_half_width": 0.018659445312499995,
+          "median_ci_half_width": 0.01856328125,
+          "mean_ci_half_width": 0.018743898437499993,
           "pct_below_0_05": 100.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": 0.000125000000000004
+          "median_c_estimate": -0.0009374999999999995
         },
         {
           "n_items": 52,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.025486778846153822,
-          "mean_ci_half_width": 0.025638746995192297,
+          "median_ci_half_width": 0.025902944711538457,
+          "mean_ci_half_width": 0.025918509615384607,
           "pct_below_0_05": 100.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0002403846153846092
+          "median_c_estimate": -0.0012019230769230744
         },
         {
           "n_items": 28,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.03370814732142856,
-          "mean_ci_half_width": 0.034177706473214275,
+          "median_ci_half_width": 0.03482142857142857,
+          "mean_ci_half_width": 0.03481068638392856,
           "pct_below_0_05": 100.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0011160714285714196
+          "median_c_estimate": -0.002455357142857136
         },
         {
           "n_items": 16,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.045322265624999976,
-          "mean_ci_half_width": 0.045517578124999986,
-          "pct_below_0_05": 73.5,
+          "median_ci_half_width": 0.04453124999999999,
+          "mean_ci_half_width": 0.044511914062499984,
+          "pct_below_0_05": 75.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0007812500000000076
+          "median_c_estimate": 0.00156250000000001
         },
         {
           "n_items": 22,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.03863991477272725,
-          "mean_ci_half_width": 0.03878650568181817,
-          "pct_below_0_05": 95.0,
+          "median_ci_half_width": 0.037645596590909075,
+          "mean_ci_half_width": 0.038122301136363626,
+          "pct_below_0_05": 98.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -6.308085367188389e-18
+          "median_c_estimate": 0.0017045454545454473
         },
         {
           "n_items": 19,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.041459703947368406,
-          "mean_ci_half_width": 0.041451932565789454,
-          "pct_below_0_05": 85.5,
+          "median_ci_half_width": 0.04111842105263156,
+          "mean_ci_half_width": 0.04117405427631578,
+          "pct_below_0_05": 91.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0016447368421052485
+          "median_c_estimate": -0.0009868421052631558
         },
         {
           "n_items": 17,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.04301470588235294,
-          "mean_ci_half_width": 0.04317228860294117,
-          "pct_below_0_05": 80.0,
+          "median_ci_half_width": 0.042656249999999965,
+          "mean_ci_half_width": 0.04316534926470586,
+          "pct_below_0_05": 84.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0014705882352941272
+          "median_c_estimate": 0.0014705882352941207
         }
       ]
     },
@@ -98,81 +98,81 @@
           "n_items": 100,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.01869062499999999,
-          "mean_ci_half_width": 0.018659445312499995,
+          "median_ci_half_width": 0.01856328125,
+          "mean_ci_half_width": 0.018743898437499993,
           "pct_below_0_05": 100.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": 0.000125000000000004
+          "median_c_estimate": -0.0009374999999999995
         },
         {
           "n_items": 52,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.025486778846153822,
-          "mean_ci_half_width": 0.025638746995192297,
+          "median_ci_half_width": 0.025902944711538457,
+          "mean_ci_half_width": 0.025918509615384607,
           "pct_below_0_05": 100.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0002403846153846092
+          "median_c_estimate": -0.0012019230769230744
         },
         {
           "n_items": 28,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.03370814732142856,
-          "mean_ci_half_width": 0.034177706473214275,
+          "median_ci_half_width": 0.03482142857142857,
+          "mean_ci_half_width": 0.03481068638392856,
           "pct_below_0_05": 100.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0011160714285714196
+          "median_c_estimate": -0.002455357142857136
         },
         {
           "n_items": 16,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.045322265624999976,
-          "mean_ci_half_width": 0.045517578124999986,
-          "pct_below_0_05": 73.5,
+          "median_ci_half_width": 0.04453124999999999,
+          "mean_ci_half_width": 0.044511914062499984,
+          "pct_below_0_05": 75.0,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": -0.0007812500000000076
+          "median_c_estimate": 0.00156250000000001
         },
         {
           "n_items": 10,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.054687499999999986,
-          "mean_ci_half_width": 0.05468343749999999,
-          "pct_below_0_05": 34.5,
+          "median_ci_half_width": 0.05282812499999996,
+          "mean_ci_half_width": 0.054011171874999986,
+          "pct_below_0_05": 44.5,
           "pct_below_0_10": 100.0,
-          "median_c_estimate": 0.0037499999999999977
+          "median_c_estimate": 0.001875000000000007
         },
         {
           "n_items": 7,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.0611607142857143,
-          "mean_ci_half_width": 0.06378270089285712,
-          "pct_below_0_05": 19.0,
-          "pct_below_0_10": 97.5,
-          "median_c_estimate": 0.002678571428571423
+          "median_ci_half_width": 0.06117187499999992,
+          "mean_ci_half_width": 0.062407031249999995,
+          "pct_below_0_05": 28.000000000000004,
+          "pct_below_0_10": 96.0,
+          "median_c_estimate": -0.005357142857142835
         },
         {
           "n_items": 5,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.07124999999999998,
-          "mean_ci_half_width": 0.07094234375,
-          "pct_below_0_05": 24.0,
-          "pct_below_0_10": 84.0,
-          "median_c_estimate": 0.0025000000000000135
+          "median_ci_half_width": 0.06687499999999999,
+          "mean_ci_half_width": 0.06854999999999997,
+          "pct_below_0_05": 27.0,
+          "pct_below_0_10": 88.5,
+          "median_c_estimate": -0.004999999999999954
         },
         {
           "n_items": 6,
           "n_reps_per_cell": 20,
           "c_assumed": 0.0,
-          "median_ci_half_width": 0.065625,
-          "mean_ci_half_width": 0.06596966145833333,
-          "pct_below_0_05": 21.5,
-          "pct_below_0_10": 94.0,
-          "median_c_estimate": -0.00625
+          "median_ci_half_width": 0.06406250000000001,
+          "mean_ci_half_width": 0.06662695312499997,
+          "pct_below_0_05": 23.0,
+          "pct_below_0_10": 91.0,
+          "median_c_estimate": 0.0031250000000000167
         }
       ]
     }
@@ -181,57 +181,57 @@
     "n_items": 93,
     "n_simulations": 300,
     "n_bootstrap": 3000,
-    "median_ci_half_width": 0.019289314516129037,
-    "mean_ci_half_width": 0.01940797491039427,
+    "median_ci_half_width": 0.019223790322580654,
+    "mean_ci_half_width": 0.01930121527777778,
     "pct_below_0_05": 100.0,
     "pct_below_0_025": 100.0,
-    "pct_below_0_020": 67.0,
-    "percentile_95_ci_half_width": 0.02197748655913978,
-    "max_ci_half_width": 0.023993615591397857,
+    "pct_below_0_020": 69.66666666666667,
+    "percentile_95_ci_half_width": 0.021841397849462364,
+    "max_ci_half_width": 0.02392641129032258,
     "interpretation": "At the actual calibrated bank size of n=93, the item-level percentile bootstrap CI half-width on the H3b folded contrast c is projected to a median of 0.019 with a 95th-percentile worst case of 0.022. Both are well below the prereg's 0.05 strong-claim threshold; 100% of simulations clear it. The bank is saturated against the prereg's informative-vs-uninformative gradient."
   },
   "h1_sensitivity_at_actual_bank_size": {
-    "description": "Monte Carlo CI behavior at n=93 across a sweep of true effect sizes c. Confirms that the bootstrap recovers the assumed c with negligible bias and that the prereg-binding inferential thresholds (c_ci95_lo > 0 vs c_ci95_hi < 0.05) discriminate cleanly across the plausible-effect range.",
+    "description": "Monte Carlo CI behavior at n=93 across a sweep of true effect sizes c. Confirms the bootstrap recovers the assumed c with negligible bias and the prereg-binding inferential thresholds discriminate cleanly across the plausible-effect range.",
     "n_simulations": 300,
     "n_bootstrap": 2000,
     "sweep": {
       "c_assumed_0.00": {
         "c_assumed": 0.0,
         "n_items": 93,
-        "median_c_observed": 0.0014112903225806427,
-        "mean_c_observed": 0.0006913082437275997,
-        "bias": 0.0014112903225806427,
-        "median_ci_half_width": 0.01928763440860215,
-        "pct_ci_excludes_zero": 6.666666666666667,
-        "pct_ci_null_consistent": 93.33333333333333
+        "median_c_observed": 0.00013440860215053774,
+        "mean_c_observed": 0.00038620071684587927,
+        "bias": 0.00013440860215053774,
+        "median_ci_half_width": 0.0192229502688172,
+        "pct_ci_excludes_zero": 7.0,
+        "pct_ci_null_consistent": 93.0
       },
       "c_assumed_0.02": {
         "c_assumed": 0.02,
         "n_items": 93,
-        "median_c_observed": 0.020900537634408606,
-        "mean_c_observed": 0.020353046594982077,
-        "bias": 0.0009005376344086054,
-        "median_ci_half_width": 0.019154065860215046,
-        "pct_ci_excludes_zero": 57.0,
-        "pct_ci_null_consistent": 43.0
+        "median_c_observed": 0.020900537634408602,
+        "mean_c_observed": 0.02037858422939068,
+        "bias": 0.0009005376344086019,
+        "median_ci_half_width": 0.019156586021505367,
+        "pct_ci_excludes_zero": 55.666666666666664,
+        "pct_ci_null_consistent": 44.333333333333336
       },
       "c_assumed_0.05": {
         "c_assumed": 0.05,
         "n_items": 93,
-        "median_c_observed": 0.05040322580645161,
-        "mean_c_observed": 0.05032482078853047,
-        "bias": 0.000403225806451607,
-        "median_ci_half_width": 0.0192229502688172,
+        "median_c_observed": 0.05047043010752687,
+        "mean_c_observed": 0.05023700716845878,
+        "bias": 0.0004704301075268702,
+        "median_ci_half_width": 0.01922127016129032,
         "pct_ci_excludes_zero": 100.0,
         "pct_ci_null_consistent": 0.0
       },
       "c_assumed_0.10": {
         "c_assumed": 0.1,
         "n_items": 93,
-        "median_c_observed": 0.09993279569892471,
-        "mean_c_observed": 0.09987589605734766,
-        "bias": -6.720430107529096e-05,
-        "median_ci_half_width": 0.01908770161290321,
+        "median_c_observed": 0.1012768817204301,
+        "mean_c_observed": 0.10054077060931899,
+        "bias": 0.001276881720430098,
+        "median_ci_half_width": 0.0192271505376344,
         "pct_ci_excludes_zero": 100.0,
         "pct_ci_null_consistent": 0.0
       }

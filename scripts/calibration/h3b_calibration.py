@@ -268,14 +268,23 @@ async def run_probe(args):
     blocked_items: list[dict] = []
     to_dispatch: list[dict] = []
 
-    # Single-pass cache classification: try-load each item; on FileNotFoundError
-    # or stale n_reps_target, dispatch fresh; otherwise seed per_item or
-    # blocked_items from the cell. Avoids the TOCTOU + double-stat that
-    # is_cached() + load_cached() would impose.
+    # Single-pass cache classification: try-load each item; on FileNotFoundError,
+    # JSONDecodeError, or stale n_reps_target, dispatch fresh; otherwise seed
+    # per_item or blocked_items from the cell. Avoids the TOCTOU + double-stat
+    # that is_cached() + load_cached() would impose. JSONDecodeError covers
+    # the kill-during-write failure mode where a partial JSON byte sequence
+    # is on disk; emit a warning and re-screen rather than crash the run.
     for item in selected:
         try:
             entry = tracker.load_cached(item["id"])
         except FileNotFoundError:
+            to_dispatch.append(item)
+            continue
+        except json.JSONDecodeError:
+            print(
+                f"  warn: cache for {item['id']} unreadable, re-screening",
+                file=sys.stderr,
+            )
             to_dispatch.append(item)
             continue
         if entry.get("n_reps_target") != args.n_reps:
