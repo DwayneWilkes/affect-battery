@@ -329,8 +329,8 @@ def test_manifest_records_failure_count(env_setup):
 def test_failed_count_matches_dispatched_failures_exactly(env_setup):
     """The manifest's `failed_passes` count must equal the number of
     passes that actually failed (1 by error + N-1 by SIGTERM cleanup),
-    not some inflated total caused by double-counting in both the
-    wait -n branch and the per-PID drain. With FAIL_ON_PASS=1 and
+    not an inflated total from counting the same failed pass in the
+    dispatch reaper and the final drain. With FAIL_ON_PASS=1 and
     N_PASSES=5, MAX_PARALLEL=5, exactly 5 passes are dispatched and
     all 5 should be marked failed (1 from error 17, 4 from SIGTERM)."""
     cwd, env = env_setup
@@ -351,9 +351,9 @@ def test_failed_count_matches_dispatched_failures_exactly(env_setup):
 
 
 def test_failed_count_no_double_count_with_max_parallel_one(env_setup):
-    """With MAX_PARALLEL=1, every pass goes through wait -n. A failure
-    must be counted exactly once, not once in wait -n and again in the
-    drain loop."""
+    """With MAX_PARALLEL=1, every pass is reaped serially in dispatch
+    rather than in the final drain. A failure must be counted exactly
+    once across the dispatch and drain stages."""
     cwd, env = env_setup
     env["STUB_FAIL_ON_PASS"] = "2"
     result = _run(
@@ -371,12 +371,12 @@ def test_failed_count_no_double_count_with_max_parallel_one(env_setup):
 
 
 def test_failure_with_max_parallel_exceeding_n_passes_kills_quickly(env_setup):
-    """When --max-parallel >= --n-passes the dispatch loop's wait -n
-    branch is never entered, so all passes flow into the final drain.
-    The drain must still react to failures fast: detecting the first
-    failed pass and terminating its siblings, rather than blocking
-    sequentially on each wait $pid until natural completion. Wall-
-    clock with sleep=4 should be well under 4s."""
+    """When --max-parallel >= --n-passes the dispatch reaper is never
+    triggered, so all passes flow into the final drain. The drain must
+    still react to failures fast: detecting the first failed pass and
+    terminating its siblings, rather than blocking sequentially on each
+    pid until natural completion. Wall-clock with sleep=4 should be
+    well under 4s."""
     cwd, env = env_setup
     env["STUB_FAIL_ON_PASS"] = "1"
     env["STUB_SLEEP_SECONDS"] = "4"
