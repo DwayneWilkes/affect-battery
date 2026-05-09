@@ -107,6 +107,35 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "API calls; bypasses pre-reg/power gates). For wiring/E2E sanity."
         ),
     )
+    p.add_argument(
+        "--power-report-path",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the power/precision report JSON pinned by the prereg. "
+            "Required for non-dry-run invocations unless --skip-power-gate "
+            "is set. Passed through to affect-battery."
+        ),
+    )
+    p.add_argument(
+        "--power-report-sha",
+        default=None,
+        help=(
+            "SHA-256 of the power-report file. The runner verifies the "
+            "file's hash matches; mismatch aborts the run. Passed through "
+            "to affect-battery."
+        ),
+    )
+    p.add_argument(
+        "--skip-power-gate",
+        default=None,
+        help=(
+            "Bypass the power-gate with a written rationale (passed through "
+            "verbatim to affect-battery). For smoke runs where the power "
+            "report is not yet pinned. Use sparingly; rationale appears in "
+            "the run's audit log."
+        ),
+    )
     return p
 
 
@@ -299,6 +328,12 @@ class PassRunner:
         ]
         if self.args.dry_run:
             cmd.append("--dry-run")
+        if self.args.power_report_path is not None:
+            cmd += ["--power-report-path", str(self.args.power_report_path)]
+        if self.args.power_report_sha is not None:
+            cmd += ["--power-report-sha", self.args.power_report_sha]
+        if self.args.skip_power_gate is not None:
+            cmd += ["--skip-power-gate", self.args.skip_power_gate]
         return cmd
 
     def maybe_skip(self, pass_num: int) -> bool:
