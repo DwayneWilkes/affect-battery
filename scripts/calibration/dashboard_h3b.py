@@ -37,6 +37,14 @@ from rich.progress_bar import ProgressBar
 from rich.table import Table
 from rich.text import Text
 
+# Wired up via sys.path import after this module's own dataclasses.
+# (The script runs as `python scripts/calibration/dashboard_h3b.py ...`
+# without affect-battery installed, so we add the repo root to sys.path.)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.lib.tracker_io import (  # noqa: E402
+    find_bank_subdir, load_cache_items, load_run_metadata, tracker_root_for,
+)
+
 
 @dataclass
 class BandStats:
@@ -114,44 +122,6 @@ def compute_band_stats(
         candidates_needed_for_min=needed,
         p_hats=p_hats,
     )
-
-
-def find_bank_subdir(tracker_root: Path) -> Path | None:
-    if not tracker_root.is_dir():
-        return None
-    candidates = [
-        p for p in tracker_root.iterdir()
-        if p.is_dir() and p.name.startswith("bank_")
-    ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
-
-
-def load_metadata(bank_dir: Path) -> dict:
-    path = bank_dir / "run_metadata.json"
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text())
-    except Exception:
-        return {}
-
-
-def load_cache_items(bank_dir: Path) -> list[dict]:
-    cache_dir = bank_dir / "cache"
-    if not cache_dir.is_dir():
-        return []
-    items = []
-    for p in cache_dir.glob("*.json"):
-        try:
-            data = json.loads(p.read_text())
-            data["_mtime"] = p.stat().st_mtime
-            items.append(data)
-        except Exception:
-            continue
-    items.sort(key=lambda d: d["_mtime"])
-    return items
 
 
 def fmt_dur(seconds: float) -> str:
@@ -472,7 +442,7 @@ def render(args, console: Console) -> tuple[bool, Layout]:
     """Build a Layout for one frame. Returns (done, layout)."""
     output_path = args.output_path
     final_json = output_path.is_file()
-    tracker_root = output_path.with_suffix(output_path.suffix + ".tracker")
+    tracker_root = tracker_root_for(output_path)
     bank_dir = find_bank_subdir(tracker_root)
 
     layout = Layout()
@@ -506,7 +476,7 @@ def render(args, console: Console) -> tuple[bool, Layout]:
         ))
         return False, layout
 
-    md = load_metadata(bank_dir)
+    md = load_run_metadata(bank_dir)
     params = md.get("params", {})
     cells = load_cache_items(bank_dir)
 

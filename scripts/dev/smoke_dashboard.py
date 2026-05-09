@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from rich.console import Console
 
 from scripts.calibration.dashboard_h3b import render
+from src.lib.tracker_io import tracker_root_for
 
 
 def main() -> int:
@@ -41,7 +42,7 @@ def main() -> int:
     rng = random.Random(42)
     with tempfile.TemporaryDirectory() as tmp:
         out_path = Path(tmp) / "calib.json"
-        tracker_root = out_path.with_suffix(out_path.suffix + ".tracker")
+        tracker_root = tracker_root_for(out_path)
         bank_dir = tracker_root / "bank_abc123def456"
         cache_dir = bank_dir / "cache"
         cache_dir.mkdir(parents=True)

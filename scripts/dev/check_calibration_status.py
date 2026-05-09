@@ -23,15 +23,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-
-def _find_bank_subdir(tracker_root: Path) -> Path | None:
-    if not tracker_root.is_dir():
-        return None
-    candidates = [p for p in tracker_root.iterdir()
-                  if p.is_dir() and p.name.startswith("bank_")]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+from src.lib.tracker_io import (  # noqa: E402
+    find_bank_subdir, load_cache_items, load_run_metadata, tracker_root_for,
+)
 
 
 def main() -> int:
@@ -56,31 +52,25 @@ def main() -> int:
                 print(f"  cost         : ${u['estimated_usd']:.4f}")
         return 0
 
-    tracker_root = args.output_path.with_suffix(args.output_path.suffix + ".tracker")
-    bank_dir = _find_bank_subdir(tracker_root)
+    tracker_root = tracker_root_for(args.output_path)
+    bank_dir = find_bank_subdir(tracker_root)
     if bank_dir is None:
         print(f"no tracker dir at {tracker_root} — calibration hasn't started yet")
         return 0
 
-    md_path = bank_dir / "run_metadata.json"
-    md = json.loads(md_path.read_text()) if md_path.is_file() else {}
+    md = load_run_metadata(bank_dir)
     params = md.get("params", {})
     metrics = md.get("metrics", {})
     target = int(params.get("n_candidates", 0))
 
-    cache_dir = bank_dir / "cache"
-    cells = sorted(cache_dir.glob("*.json")) if cache_dir.is_dir() else []
+    cells = load_cache_items(bank_dir)
     if not cells:
         print(f"tracker exists but cache empty (yet) — {bank_dir}")
         return 0
 
     scored = blocked = in_band = 0
     p_hats = []
-    for f in cells:
-        try:
-            d = json.loads(f.read_text())
-        except Exception:
-            continue
+    for d in cells:
         kind = d.get("kind")
         if kind == "scored":
             scored += 1
@@ -93,7 +83,7 @@ def main() -> int:
 
     n_cached = len(cells)
     pct = 100.0 * n_cached / target if target else 0.0
-    last_t = max(f.stat().st_mtime for f in cells)
+    last_t = max(d["_mtime"] for d in cells)
     # Anchor elapsed on the tracker's `created_at` so cache carry-over
     # (mass-copy of cells from a prior run) doesn't bias the rate
     # downward. Fall back to oldest cell mtime if the field is missing.
@@ -103,13 +93,13 @@ def main() -> int:
             created_dt = datetime.fromisoformat(created_iso.replace("Z", "+00:00"))
             first_t = created_dt.timestamp()
         except Exception:
-            first_t = min(f.stat().st_mtime for f in cells)
+            first_t = min(d["_mtime"] for d in cells)
     else:
-        first_t = min(f.stat().st_mtime for f in cells)
+        first_t = min(d["_mtime"] for d in cells)
     elapsed = max(time.time() - first_t, 1)
     # Count only cells modified after `created_at` for the rate calc
     # (skip carryover cells that pre-date the run start).
-    fresh_cells = [f for f in cells if f.stat().st_mtime >= first_t]
+    fresh_cells = [d for d in cells if d["_mtime"] >= first_t]
     rate_per_min = len(fresh_cells) * 60.0 / elapsed
     remaining = max(0, target - n_cached)
     eta_sec = remaining / max(rate_per_min / 60.0, 1e-9)
