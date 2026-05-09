@@ -135,8 +135,9 @@ def main() -> int:
         reasoning = int(metrics.get("usage_reasoning_tokens", 0))
         print(f"api calls     : {n_calls:,}")
         print(f"  prompt tk   : {prompt:,}")
-        print(f"  output tk   : {compl + reasoning:,}  "
-              f"({reasoning:,} reasoning)")
+        # `completion_tokens` already includes reasoning tokens for
+        # reasoning models; reasoning is reported as a breakdown.
+        print(f"  output tk   : {compl:,}  ({reasoning:,} reasoning)")
         if cost is not None:
             per_call = float(cost) / max(n_calls, 1)
             # Project remaining cost at observed avg.

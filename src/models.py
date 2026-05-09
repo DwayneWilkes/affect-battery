@@ -252,10 +252,11 @@ class OpenAIClient(ModelClient):
     ) -> dict:
         """Aggregate per-call usage records.
 
-        Output cost (when pricing is supplied) bills both
-        `completion_tokens` and `reasoning_tokens` at the output rate —
-        OpenAI's reasoning-token line item is itemized but priced as
-        output. Without pricing, `estimated_usd` is omitted.
+        Output cost (when pricing is supplied) bills `completion_tokens`
+        at the output rate. `reasoning_tokens` from
+        `completion_tokens_details` is a breakdown of `completion_tokens`,
+        not an additional billable line item; it is reported separately
+        for visibility but is already included in the completion total.
         """
         n_calls = len(self.usage_log)
         prompt = sum(r.prompt_tokens for r in self.usage_log)
@@ -273,7 +274,7 @@ class OpenAIClient(ModelClient):
         if input_usd_per_million is not None and output_usd_per_million is not None:
             out["estimated_usd"] = (
                 prompt * input_usd_per_million / 1_000_000
-                + (completion + reasoning) * output_usd_per_million / 1_000_000
+                + completion * output_usd_per_million / 1_000_000
             )
         return out
 

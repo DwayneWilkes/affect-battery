@@ -414,7 +414,8 @@ def make_usage_panel(md: dict) -> Panel:
     t.add_row("prompt", f"{int(prompt):,} tokens")
     t.add_row("completion", f"{int(completion):,} tokens")
     if reasoning:
-        t.add_row("reasoning", f"[yellow]{int(reasoning):,}[/yellow] tokens")
+        # reasoning_tokens is a breakdown of completion_tokens, not additive.
+        t.add_row("reasoning", f"[yellow]{int(reasoning):,}[/yellow] (in completion)")
     if cost is not None:
         t.add_row("cost", f"[bold green]${float(cost):.4f}[/bold green]")
         # Per-call average lets the operator extrapolate to remaining work.

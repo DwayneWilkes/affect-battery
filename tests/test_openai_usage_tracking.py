@@ -154,14 +154,16 @@ class TestOpenAIUsageTracking:
     @pytest.mark.asyncio
     async def test_usage_summary_estimates_cost_with_pricing(self):
         """Given pricing in $ per 1M tokens, summary returns USD estimate.
-        Output cost includes reasoning tokens (they bill at the output rate)."""
+        OpenAI's `reasoning_tokens` field is a breakdown of `completion_tokens`,
+        not a separate billable line — the output rate applies to
+        `completion_tokens` only, and reasoning is already inside that count."""
         from src.models import OpenAIClient
 
         with patch("openai.AsyncOpenAI") as mock_ctor:
             mock_inst = MagicMock()
             mock_inst.chat.completions.create = AsyncMock(
                 return_value=_mock_openai_response(
-                    "x", prompt_tokens=1_000_000, completion_tokens=500_000,
+                    "x", prompt_tokens=1_000_000, completion_tokens=1_000_000,
                     reasoning_tokens=500_000,
                 )
             )
@@ -172,7 +174,8 @@ class TestOpenAIUsageTracking:
             await client.complete([{"role": "user", "content": "Q"}])
 
             # $0.05 per 1M input, $0.40 per 1M output → $0.05 + $0.40 = $0.45
-            # output rate applies to completion + reasoning (1M total).
+            # Reasoning tokens (500K) are a subset of the 1M completion total,
+            # not added separately. Cost = prompt × in_rate + completion × out_rate.
             summary = client.usage_summary(
                 input_usd_per_million=0.05,
                 output_usd_per_million=0.40,
