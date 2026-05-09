@@ -41,9 +41,41 @@ from scripts.calibration.h3b_calibration import (
 
 
 async def _run_sample(items, client, n_reps, max_concurrent):
+    """Re-screen items concurrently with a tqdm progress bar. Bar updates
+    as candidates complete (asyncio.as_completed yields in finish order),
+    so the operator sees progress and an ETA rather than silence until
+    the whole gather resolves."""
+    from tqdm.asyncio import tqdm as atqdm
+
     sem = asyncio.Semaphore(max_concurrent)
-    tasks = [run_one_candidate(client, it, n_reps, sem) for it in items]
-    return await asyncio.gather(*tasks)
+    tasks = [
+        asyncio.create_task(run_one_candidate(client, it, n_reps, sem))
+        for it in items
+    ]
+    results: list = []
+    pbar = atqdm(asyncio.as_completed(tasks), total=len(tasks),
+                 desc="re-screen", unit="item")
+    async for fut in pbar:
+        result = await fut
+        # Inline status update so the user sees per-item p_hat and
+        # in-band status without waiting for the final summary.
+        if result["kind"] == "scored":
+            p = result["p_hat"]
+            in_band = 0.40 <= p <= 0.60
+            pbar.set_postfix_str(
+                f"last={result['item_id']} p̂={p:.2f} "
+                f"{'in' if in_band else 'OUT'}",
+                refresh=False,
+            )
+        else:
+            pbar.set_postfix_str(
+                f"last={result['item_id']} BLOCKED", refresh=False
+            )
+        results.append(result)
+    # Reorder back to input order so per-item drift comparison aligns
+    # with the sample list (otherwise rows are in finish-order).
+    by_id = {r.get("item_id"): r for r in results}
+    return [by_id[it["id"]] for it in items]
 
 
 def main() -> int:
