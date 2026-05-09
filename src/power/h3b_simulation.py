@@ -13,15 +13,17 @@ power to detect c > 0?"
 
 The simulation:
 
-1. Build a long-format pandas DataFrame of simulated cells: one row per
-   (item, magnitude, level_within_magnitude, rep), with an `accuracy ∈
-   {0, 1}` column drawn from Bernoulli(`p_item + offset(magnitude)`)
-   where `offset` is parametrized to inject `c_assumed`.
-2. Aggregate to per-item per-magnitude means via groupby.
-3. Pivot to per-item contrast `c_per_item`.
-4. Bootstrap CI by resampling the n_items items with replacement
-   (numpy-vectorized — pandas would be too slow in the hot loop).
-5. Repeat across `n_simulations` and aggregate metrics.
+1. Sample n_items per-item p̂s from the calibrated pool with replacement.
+2. Compute per-cell p_cell = clip(p_item + offset(magnitude), 0, 1)
+   where `offset` injects the assumed contrast c_assumed symmetrically
+   so the contrast sums to c exactly.
+3. Draw all (item, magnitude) Binomial counts in a single
+   broadcast call: success counts ~ Binomial(n_reps_per_cell × 2, p_cell)
+   for the 2 signed levels per magnitude (which share the same offset).
+4. Reduce to per-item folded contrast directly in numpy: no DataFrame.
+5. Bootstrap CI by resampling the n_items items with replacement
+   (also numpy-vectorized).
+6. Repeat across `n_simulations` and aggregate metrics.
 
 `find_min_n_for_precision` binary-searches for the smallest `n_items`
 that hits a target CI half-width threshold with at least
@@ -32,7 +34,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-import pandas as pd
 
 
 # Folded-magnitude design from the prereg: 3 magnitudes pool 6 stimulated
@@ -81,42 +82,34 @@ def _per_magnitude_offsets(c_assumed: float) -> dict[int, float]:
     }
 
 
-def _simulate_one_dataset(
+def _simulate_c_per_item(
     p_per_item: np.ndarray,
     n_reps_per_cell: int,
     c_assumed: float,
     rng: np.random.Generator,
-) -> pd.DataFrame:
-    """Build the long-format cell DataFrame for one simulated experiment.
+) -> np.ndarray:
+    """Vectorized per-item folded contrast under one simulated experiment.
 
-    Columns: item_id (int), magnitude (1..3), level_within_mag (0..1),
-    accuracy (0/1). Each row is one rep.
+    Returns a 1-D array of shape (n_items,) where each entry is
+    `m_mag2[i] − ½(m_mag1[i] + m_mag3[i])`. The two signed levels per
+    magnitude share the same offset, so we draw a single
+    Binomial(n_reps × 2, p_cell) per (item, magnitude) instead of
+    materializing per-rep Bernoullis.
     """
-    n_items = len(p_per_item)
     offsets = _per_magnitude_offsets(c_assumed)
-    rows = []
-    for item_id, p_item in enumerate(p_per_item):
-        for mag in (1, 2, 3):
-            p_cell = float(np.clip(p_item + offsets[mag], 0.0, 1.0))
-            for lvl in range(N_LEVELS_PER_MAGNITUDE):
-                draws = rng.binomial(1, p_cell, size=n_reps_per_cell)
-                for rep_idx, acc in enumerate(draws):
-                    rows.append((item_id, mag, lvl, rep_idx, int(acc)))
-    return pd.DataFrame(
-        rows,
-        columns=["item_id", "magnitude", "level_within_mag", "rep", "accuracy"],
+    # Index 0 → mag 1, index 1 → mag 2, index 2 → mag 3.
+    offsets_arr = np.array([offsets[1], offsets[2], offsets[3]])
+
+    # p_cell[i, k] = clipped p_item[i] + offset(mag=k+1)
+    p_cell = np.clip(
+        p_per_item[:, None] + offsets_arr[None, :], 0.0, 1.0,
     )
-
-
-def _per_item_contrast(df: pd.DataFrame) -> np.ndarray:
-    """Reduce the cell-level DataFrame to per-item folded contrasts.
-
-    Returns a 1-D array `c_per_item[i] = m_mag2[i] - ½(m_mag1[i] + m_mag3[i])`.
-    """
-    per_item_mag = (
-        df.groupby(["item_id", "magnitude"])["accuracy"].mean().unstack("magnitude")
+    n_per_mag = n_reps_per_cell * N_LEVELS_PER_MAGNITUDE
+    counts = rng.binomial(n_per_mag, p_cell)
+    m_per_item_mag = counts / n_per_mag
+    return m_per_item_mag[:, 1] - 0.5 * (
+        m_per_item_mag[:, 0] + m_per_item_mag[:, 2]
     )
-    return (per_item_mag[2] - 0.5 * (per_item_mag[1] + per_item_mag[3])).to_numpy()
 
 
 def _bootstrap_ci_half_width(
@@ -171,8 +164,9 @@ def simulate_h3b_precision(
         # Sample n_items per-item p̂s. With replacement so n_items can
         # exceed pool size.
         p_per_item = rng.choice(p_pool, size=n_items, replace=True)
-        df = _simulate_one_dataset(p_per_item, n_reps_per_cell, c_assumed, rng)
-        c_per_item = _per_item_contrast(df)
+        c_per_item = _simulate_c_per_item(
+            p_per_item, n_reps_per_cell, c_assumed, rng,
+        )
         point, lo, hi = _bootstrap_ci_half_width(c_per_item, n_bootstrap, rng)
         half_widths[s] = (hi - lo) / 2.0
         c_estimates[s] = point
