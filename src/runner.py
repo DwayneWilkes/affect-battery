@@ -203,6 +203,11 @@ class RunResult:
     end_time: float = 0.0
     checksum: str = ""
     body: ExperimentBody | None = None
+    # Per-cell API usage captured at call time (n_calls, prompt_tokens,
+    # completion_tokens, reasoning_tokens). None for clients without a
+    # usage_log (DryRunClient, AnthropicClient) or when the runner has
+    # not been instrumented for usage capture.
+    usage: dict | None = None
 
     def __post_init__(self) -> None:
         # Reject unknown experiment_type values (per D6 Literal contract).
