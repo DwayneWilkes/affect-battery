@@ -8,3 +8,12 @@ __pycache__/
 dist/
 .pytest_cache/
 .coverage
+
+# Per-run experiment tracker dirs (per-bank cache + run_metadata; see
+# scripts/calibration/h3b_calibration.py). Pinned artifacts (calibration
+# JSON, calibrated bank YAML) live elsewhere; the tracker dir is rebuild-
+# from-scratch state, not source of truth.
+*.tracker/
+
+# Claude Code session state: worktrees and local agent overrides.
+.claude/

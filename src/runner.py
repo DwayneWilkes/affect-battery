@@ -189,9 +189,9 @@ class RunResult:
     experiment_type: str = "exp1a"
     model: str = ""
     condition: str = ""
-    # Legacy Exp 1a fields retained at top level for backward compatibility
-    # during the D6 migration. New code SHOULD read result.body.<field>;
-    # legacy callsites keep working via __post_init__ sync (see below).
+    # Top-level Exp 1a mirrors of Exp1aBody fields. Prefer
+    # result.body.<field> in new code; __post_init__ keeps these
+    # populated for callers that read top-level fields directly.
     conditioning_responses: list[str] = field(default_factory=list)
     conditioning_correct: list[bool] = field(default_factory=list)
     transfer_responses: list[str] = field(default_factory=list)
@@ -211,14 +211,13 @@ class RunResult:
                 f"Invalid experiment_type {self.experiment_type!r}; "
                 f"must be one of {sorted(_VALID_EXPERIMENT_TYPES)}"
             )
-        # Bi-directional sync for Exp 1a during migration: if caller passed
-        # legacy top-level conditioning/transfer fields WITHOUT a body,
-        # synthesize an Exp1aBody. If caller passed body but not top-level
-        # fields, mirror body fields to top-level for legacy reads.
-        # Defensively copy lists when synthesizing a body or mirroring
-        # body->top-level so mutations on top-level fields don't alias
-        # the body. Reject inputs where caller passes BOTH a body and
-        # legacy top-level fields whose values disagree.
+        # Bi-directional sync for Exp 1a: if caller passed top-level
+        # conditioning/transfer fields without a body, synthesize an
+        # Exp1aBody. If caller passed a body without top-level fields,
+        # mirror body fields up. Lists are defensively copied so
+        # top-level mutations don't alias the body. Reject inputs where
+        # both a body and top-level fields are passed with disagreeing
+        # values.
         if self.body is None and self.experiment_type == "exp1a":
             self.body = Exp1aBody(
                 conditioning_responses=list(self.conditioning_responses),

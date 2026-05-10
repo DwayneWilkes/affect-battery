@@ -1,0 +1,246 @@
+{
+  "generated_utc": "2026-05-09T07:53:21.641819+00:00",
+  "calibration_source": "configs/h3b_calibration_2026-05-08-fullpool.json",
+  "n_calibrated_in_pool": 93,
+  "p_hat_pool_mean": 0.4798924731182796,
+  "p_hat_pool_min": 0.4,
+  "p_hat_pool_max": 0.6,
+  "n_reps_per_cell": 20,
+  "n_simulations": 200,
+  "n_bootstrap": 2000,
+  "seed": 42,
+  "thresholds": {
+    "strong_claim": {
+      "ci_half_width_max": 0.05,
+      "target_reliability_pct": 80.0,
+      "recommended_n_items": 17,
+      "interpretation": "Smallest n_items at which the bootstrap CI half-width on c stays below 0.05 in at least the target % of simulations. This is the n needed to reliably reach the prereg's 'bounded-small' inferential claim (c_ci95_hi < 0.05).",
+      "trace": [
+        {
+          "n_items": 100,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.018625,
+          "mean_ci_half_width": 0.018751448902347492,
+          "pct_below_0_05": 100.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.0009374999999999995
+        },
+        {
+          "n_items": 52,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.02573825932701889,
+          "mean_ci_half_width": 0.025931881592479274,
+          "pct_below_0_05": 100.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.0012019230769230744
+        },
+        {
+          "n_items": 28,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.03466156819633148,
+          "mean_ci_half_width": 0.03489006218298024,
+          "pct_below_0_05": 100.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.002455357142857136
+        },
+        {
+          "n_items": 16,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.04493107634443448,
+          "mean_ci_half_width": 0.04501694869871296,
+          "pct_below_0_05": 73.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": 0.00156250000000001
+        },
+        {
+          "n_items": 22,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.03809110845910674,
+          "mean_ci_half_width": 0.038369643892354845,
+          "pct_below_0_05": 97.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": 0.0017045454545454473
+        },
+        {
+          "n_items": 19,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.04122508811798337,
+          "mean_ci_half_width": 0.041391801039597054,
+          "pct_below_0_05": 91.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.0009868421052631558
+        },
+        {
+          "n_items": 17,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.04301470588235294,
+          "mean_ci_half_width": 0.04342264863971023,
+          "pct_below_0_05": 82.5,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": 0.0014705882352941207
+        }
+      ]
+    },
+    "informative_claim": {
+      "ci_half_width_max": 0.1,
+      "target_reliability_pct": 95.0,
+      "recommended_n_items": 8,
+      "interpretation": "Smallest n_items at which CI half-width stays below 0.10 in \u2265 target %. Below this, the prereg's 'uninformative' inferential claim (c_ci95_hi >= 0.10) becomes likely.",
+      "trace": [
+        {
+          "n_items": 100,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.018625,
+          "mean_ci_half_width": 0.018751448902347492,
+          "pct_below_0_05": 100.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.0009374999999999995
+        },
+        {
+          "n_items": 52,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.02573825932701889,
+          "mean_ci_half_width": 0.025931881592479274,
+          "pct_below_0_05": 100.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.0012019230769230744
+        },
+        {
+          "n_items": 28,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.03466156819633148,
+          "mean_ci_half_width": 0.03489006218298024,
+          "pct_below_0_05": 100.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": -0.002455357142857136
+        },
+        {
+          "n_items": 16,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.04493107634443448,
+          "mean_ci_half_width": 0.04501694869871296,
+          "pct_below_0_05": 73.0,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": 0.00156250000000001
+        },
+        {
+          "n_items": 10,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.05374999999999999,
+          "mean_ci_half_width": 0.054888693297074104,
+          "pct_below_0_05": 41.5,
+          "pct_below_0_10": 100.0,
+          "median_c_estimate": 0.001875000000000007
+        },
+        {
+          "n_items": 7,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.06245609021411973,
+          "mean_ci_half_width": 0.06376065874702544,
+          "pct_below_0_05": 24.5,
+          "pct_below_0_10": 94.5,
+          "median_c_estimate": -0.005357142857142835
+        },
+        {
+          "n_items": 8,
+          "n_reps_per_cell": 20,
+          "c_assumed": 0.0,
+          "median_ci_half_width": 0.05925856644170968,
+          "mean_ci_half_width": 0.059435642687758465,
+          "pct_below_0_05": 28.499999999999996,
+          "pct_below_0_10": 99.5,
+          "median_c_estimate": -0.0015625000000000153
+        }
+      ]
+    }
+  },
+  "at_actual_bank_size": {
+    "n_items": 93,
+    "n_simulations": 300,
+    "n_bootstrap": 3000,
+    "bootstrap_method": "bca",
+    "median_bca_z0": -0.0012533145748050587,
+    "median_bca_acceleration": -0.0002533438342038853,
+    "median_ci_half_width": 0.01925505447744774,
+    "mean_ci_half_width": 0.019317755040952508,
+    "pct_below_0_05": 100.0,
+    "pct_below_0_025": 100.0,
+    "pct_below_0_020": 70.66666666666667,
+    "percentile_95_ci_half_width": 0.021827533568701967,
+    "max_ci_half_width": 0.023991935483870967,
+    "interpretation": "At the actual calibrated bank size of n=93, the item-level BCa bootstrap CI half-width on the H3b folded contrast c is projected to a median of 0.019 with a 95th-percentile worst case of 0.022. Both are well below the prereg's 0.05 strong-claim threshold; 100% of simulations clear it. BCa correction terms are near zero (median z0=-0.0013, median a_hat=-0.0003), confirming the bootstrap distribution is empirically near-symmetric at our scale."
+  },
+  "h1_sensitivity_at_actual_bank_size": {
+    "description": "Monte Carlo CI behavior at n=93 across a sweep of true effect sizes c. Confirms the BCa bootstrap recovers the assumed c with negligible bias and that the prereg-binding inferential thresholds discriminate cleanly across the plausible-effect range.",
+    "n_simulations": 300,
+    "n_bootstrap": 2000,
+    "sweep": {
+      "c_assumed_0.00": {
+        "c_assumed": 0.0,
+        "n_items": 93,
+        "bootstrap_method": "bca",
+        "median_c_observed": 0.00013440860215053774,
+        "mean_c_observed": 0.00038620071684587927,
+        "bias": 0.00013440860215053774,
+        "median_ci_half_width": 0.019287634408602143,
+        "median_bca_z0": 0.003759951271145795,
+        "median_bca_acceleration": -0.0002533438342038853,
+        "pct_ci_excludes_zero": 6.666666666666667,
+        "pct_ci_null_consistent": 93.33333333333333
+      },
+      "c_assumed_0.02": {
+        "c_assumed": 0.02,
+        "n_items": 93,
+        "bootstrap_method": "bca",
+        "median_c_observed": 0.020900537634408602,
+        "mean_c_observed": 0.02037858422939068,
+        "bias": 0.0009005376344086019,
+        "median_ci_half_width": 0.019153225806451617,
+        "median_bca_z0": 0.0,
+        "median_bca_acceleration": 0.00011020719456807831,
+        "pct_ci_excludes_zero": 55.666666666666664,
+        "pct_ci_null_consistent": 44.333333333333336
+      },
+      "c_assumed_0.05": {
+        "c_assumed": 0.05,
+        "n_items": 93,
+        "bootstrap_method": "bca",
+        "median_c_observed": 0.05047043010752687,
+        "mean_c_observed": 0.05023700716845878,
+        "bias": 0.0004704301075268702,
+        "median_ci_half_width": 0.019179065353054418,
+        "median_bca_z0": -0.0012533144654325557,
+        "median_bca_acceleration": 0.00016706476057778502,
+        "pct_ci_excludes_zero": 100.0,
+        "pct_ci_null_consistent": 0.0
+      },
+      "c_assumed_0.10": {
+        "c_assumed": 0.1,
+        "n_items": 93,
+        "bootstrap_method": "bca",
+        "median_c_observed": 0.1012768817204301,
+        "mean_c_observed": 0.10054077060931899,
+        "bias": 0.001276881720430098,
+        "median_ci_half_width": 0.019218642749575476,
+        "median_bca_z0": -0.0012533144654325557,
+        "median_bca_acceleration": 0.0003844649222670614,
+        "pct_ci_excludes_zero": 100.0,
+        "pct_ci_null_consistent": 0.0
+      }
+    }
+  },
+  "bootstrap_method": "bca"
+}

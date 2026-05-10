@@ -1456,21 +1456,28 @@ function renderExp3a() {
   for (const r of a.per_level) byLevel[r.level] = r;
   const neutral = byLevel[4];
   // Each arm: [Neutral, Mild, Moderate, Strong] = [level 4, level on
-  // that side at magnitude 1, magnitude 2, magnitude 3].
+  // that side at magnitude 1, magnitude 2, magnitude 3]. Wilson 95%
+  // binomial CIs come straight from the per_level rows (n_per_level
+  // = 122 cells), pulled as asymmetric error bars on each marker.
   const xs_arousal = ['Neutral', 'Mild', 'Moderate', 'Strong'];
-  const posMeans = neutral && byLevel[3] && byLevel[2] && byLevel[1]
-    ? [neutral.mean, byLevel[3].mean, byLevel[2].mean, byLevel[1].mean]
-    : null;
-  const negMeans = neutral && byLevel[5] && byLevel[6] && byLevel[7]
-    ? [neutral.mean, byLevel[5].mean, byLevel[6].mean, byLevel[7].mean]
-    : null;
-  if (posMeans && negMeans) {
+  const posLevels = neutral && byLevel[3] && byLevel[2] && byLevel[1]
+    ? [neutral, byLevel[3], byLevel[2], byLevel[1]] : null;
+  const negLevels = neutral && byLevel[5] && byLevel[6] && byLevel[7]
+    ? [neutral, byLevel[5], byLevel[6], byLevel[7]] : null;
+  if (posLevels && negLevels) {
+    const posMeans = posLevels.map(r => r.mean);
+    const negMeans = negLevels.map(r => r.mean);
+    const posErrLo = posLevels.map(r => r.mean - r.ci95_lo);
+    const posErrHi = posLevels.map(r => r.ci95_hi - r.mean);
+    const negErrLo = negLevels.map(r => r.mean - r.ci95_lo);
+    const negErrHi = negLevels.map(r => r.ci95_hi - r.mean);
     const posTrace = {
       x: xs_arousal, y: posMeans,
       type: 'scatter', mode: 'lines+markers',
       name: 'Positive valence',
       line: { color: POS_COLOR, width: 2.5 },
       marker: { size: 14, color: POS_COLOR, line: { width: 1, color: '#e6edf6' } },
+      error_y: { type: 'data', symmetric: false, array: posErrHi, arrayminus: posErrLo, thickness: 1.5, color: POS_COLOR },
       hovertemplate: '%{x} (positive)<br>mean: %{y:.3f}<extra></extra>',
     };
     const negTrace = {
@@ -1479,10 +1486,11 @@ function renderExp3a() {
       name: 'Negative valence',
       line: { color: NEG_COLOR, width: 2.5 },
       marker: { size: 14, color: NEG_COLOR, line: { width: 1, color: '#e6edf6' } },
+      error_y: { type: 'data', symmetric: false, array: negErrHi, arrayminus: negErrLo, thickness: 1.5, color: NEG_COLOR },
       hovertemplate: '%{x} (negative)<br>mean: %{y:.3f}<extra></extra>',
     };
     const arousalLayout = plotlyLayout({
-      yaxis: { title: 'Mean accuracy', range: [0.55, 0.75] },
+      yaxis: { title: 'Mean accuracy', range: [0.45, 0.80] },
       xaxis: { title: 'Arousal magnitude (|level − 4|)' },
       legend: { bgcolor: 'rgba(0,0,0,0)', orientation: 'h', y: -0.18 },
       showlegend: true,

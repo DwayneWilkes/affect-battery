@@ -190,17 +190,21 @@ def sample_balanced(
     return sampled
 
 
-def to_bank_item(raw: dict, idx: int) -> dict:
+def to_bank_item(raw: dict, idx: int, id_prefix: str = "gsm8k") -> dict:
     """Convert a sampled raw item to bank-yaml format.
 
     GSM8K items don't have alias lists (numeric answers are exact-match),
     so `expected_aliases` is empty. The expected answer is the canonical
     numeric value extracted from `#### N` tail. Difficulty is assigned by
     step count + source.
+
+    `id_prefix` distinguishes IDs across banks built from different pools
+    (e.g. `gsm_hard` for the all-GSM-Hard pool); items must have unique
+    IDs within a single bank.
     """
     steps = step_count(raw["answer_text"])
     return {
-        "id": f"gsm8k_{idx:04d}",
+        "id": f"{id_prefix}_{idx:04d}",
         "question": raw["question"],
         "expected": extract_final_answer(raw["answer_text"]),
         "answer_aliases": [],
@@ -208,6 +212,62 @@ def to_bank_item(raw: dict, idx: int) -> dict:
         "source_dataset": raw["source"],
         "step_count": steps,
     }
+
+
+def emit_gsm_hard_full_bank_yaml(items: list[dict]) -> str:
+    """Render a single-source bank YAML containing every GSM-Hard item.
+
+    Used when we want to pre-screen the entire GSM-Hard pool during
+    calibration (yields more in-band items than a sampled bank would).
+    All items are hard tier; the difficulty_profile cites only Gao 2023.
+    """
+    import yaml
+    total = len(items)
+    bank = {
+        "bank_id": "gsm_hard_full_v1",
+        "bank_version": 1,
+        "bank_type": "task",
+        "status": "active",
+        "task_type_subtype": "math-word-problem",
+        "alignment_review": {
+            "reviewer": "scripts/banks/source_gsm8k.py + author",
+            "date": "2026-05-08",
+            "verdict": "pass",
+            "rationale": (
+                "Full GSM-Hard (Gao et al. 2023, arXiv:2211.10435) pool used "
+                "as a single-source hard-tier bank for calibration. Adversarial "
+                "numeric magnitudes from the PAL paper's variant break "
+                "memorization shortcuts on GSM8K-shaped problems. Every "
+                "available item is included to maximize the in-band yield "
+                "during calibration to p̂ ≈ 0.5."
+            ),
+        },
+        "difficulty_profile": {
+            "sources": [
+                {
+                    "name": "GSM-Hard",
+                    "split": "train",
+                    "license": "MIT (per source repo)",
+                    "citation": (
+                        "Gao, L., Madaan, A., Zhou, S., Alon, U., Liu, P., Yang, "
+                        "Y., Callan, J., & Neubig, G. (2023). PAL: Program-aided "
+                        "Language Models. ICML 2023. arXiv:2211.10435."
+                    ),
+                    "n_sampled": total,
+                },
+            ],
+            "ingestion_seed": None,
+            "n_total": total,
+            "n_per_tier": {"hard": total},
+            "rationale": (
+                "All items are GSM-Hard adversarial variants of GSM8K problems "
+                "and assigned to the hard tier directly (no step-count "
+                "stratification needed — single source)."
+            ),
+        },
+        "items": items,
+    }
+    return yaml.safe_dump(bank, sort_keys=False, allow_unicode=True, width=100)
 
 
 def emit_bank_yaml(items: list[dict], total: int) -> str:
@@ -280,25 +340,38 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--output", required=True, type=Path,
                     help="Path to write the bank YAML")
+    ap.add_argument("--mode", choices=("balanced", "gsm-hard-all"),
+                    default="balanced",
+                    help="balanced: 1/3 each tier from GSM8K + GSM-Hard. "
+                         "gsm-hard-all: every available GSM-Hard item, all "
+                         "hard tier (used to maximize calibration yield).")
     ap.add_argument("--total-items", type=int, default=200,
-                    help="Total items in the bank (split ~equally across tiers)")
+                    help="Total items in the bank (balanced mode only)")
     ap.add_argument("--seed", type=int, default=42,
-                    help="Sampling seed")
+                    help="Sampling seed (balanced mode only)")
     args = ap.parse_args()
 
-    print(f"Loading GSM8K test split...", file=sys.stderr)
-    gsm8k = load_gsm8k_split("test")
-    print(f"  {len(gsm8k)} items", file=sys.stderr)
+    if args.mode == "gsm-hard-all":
+        print(f"Loading GSM-Hard (full pool)...", file=sys.stderr)
+        gsm_hard = load_gsm_hard()
+        print(f"  {len(gsm_hard)} items", file=sys.stderr)
+        bank_items = [to_bank_item(raw, i, id_prefix="gsm_hard")
+                      for i, raw in enumerate(gsm_hard)]
+        yaml_text = emit_gsm_hard_full_bank_yaml(bank_items)
+    else:
+        print(f"Loading GSM8K test split...", file=sys.stderr)
+        gsm8k = load_gsm8k_split("test")
+        print(f"  {len(gsm8k)} items", file=sys.stderr)
 
-    print(f"Loading GSM-Hard...", file=sys.stderr)
-    gsm_hard = load_gsm_hard()
-    print(f"  {len(gsm_hard)} items", file=sys.stderr)
+        print(f"Loading GSM-Hard...", file=sys.stderr)
+        gsm_hard = load_gsm_hard()
+        print(f"  {len(gsm_hard)} items", file=sys.stderr)
 
-    print(f"Sampling {args.total_items} items (1/3 each tier, seed={args.seed})...", file=sys.stderr)
-    raw_items = sample_balanced(gsm8k, gsm_hard, args.total_items, args.seed)
-
-    bank_items = [to_bank_item(raw, i) for i, raw in enumerate(raw_items)]
-    yaml_text = emit_bank_yaml(bank_items, args.total_items)
+        print(f"Sampling {args.total_items} items (1/3 each tier, seed={args.seed})...",
+              file=sys.stderr)
+        raw_items = sample_balanced(gsm8k, gsm_hard, args.total_items, args.seed)
+        bank_items = [to_bank_item(raw, i) for i, raw in enumerate(raw_items)]
+        yaml_text = emit_bank_yaml(bank_items, args.total_items)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(yaml_text, encoding="utf-8")
