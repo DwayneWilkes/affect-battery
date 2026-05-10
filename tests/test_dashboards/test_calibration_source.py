@@ -64,13 +64,19 @@ def test_calibration_source_reads_tracker_layout(tmp_path: Path):
     assert snap.is_done is False
 
 
-def test_calibration_source_extras_carry_target_band(tmp_path: Path):
+def test_calibration_source_target_band_lives_in_metadata_params(tmp_path: Path):
+    """target_lo/target_hi are run params; the calibration renderer
+    reads them from `metadata.params` rather than duplicating into
+    `extras`. Single source of truth."""
     output_path = _make_calibration_tracker(
         tmp_path, target_lo=0.42, target_hi=0.58,
     )
     snap = CalibrationSource().load(output_path)
-    assert snap.extras["target_lo"] == 0.42
-    assert snap.extras["target_hi"] == 0.58
+    assert snap.metadata["params"]["target_lo"] == 0.42
+    assert snap.metadata["params"]["target_hi"] == 0.58
+    # Should NOT be duplicated in extras.
+    assert "target_lo" not in snap.extras
+    assert "target_hi" not in snap.extras
 
 
 def test_calibration_source_reports_done_when_final_json_exists(tmp_path: Path):

@@ -4,8 +4,9 @@ panels live alongside their source module and are passed in at render
 time."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import humanize
 from rich.align import Align
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
@@ -13,6 +14,14 @@ from rich.table import Table
 from rich.text import Text
 
 from scripts.dashboards.snapshot import RunSnapshot
+
+
+def _fmt_dur(seconds: float) -> str:
+    """Human-readable duration. Sub-second falls back to numeric since
+    `humanize.precisedelta` rounds anything < 1s to '0 seconds'."""
+    if seconds < 1.0:
+        return f"{seconds:.2f}s"
+    return humanize.precisedelta(timedelta(seconds=seconds), minimum_unit="seconds")
 
 
 def header_panel(snap: RunSnapshot) -> Panel:
@@ -112,5 +121,5 @@ def stages_panel(snap: RunSnapshot) -> Panel:
         if dur is None:
             table.add_row(name, "[dim]in flight[/dim]")
         else:
-            table.add_row(name, f"{float(dur):.2f}s")
+            table.add_row(name, _fmt_dur(float(dur)))
     return Panel(table, title="stages", border_style="yellow")

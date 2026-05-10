@@ -114,6 +114,22 @@ def test_pilot_source_extras_carry_pass_breakdown(tmp_path: Path):
     assert breakdown[2]["cells_done"] == 0
 
 
+def test_pilot_source_skips_title_line_in_manifest(tmp_path: Path):
+    """The wrapper's run_manifest.txt opens with a free-form title
+    line ('H3b Phase 1A: single-turn ...') that has whitespace in the
+    'key' position. The parser must skip it rather than coercing it
+    into a spurious params entry."""
+    _write_run_manifest(tmp_path, n_passes=1, n_items=1, n_levels=1)
+    snap = PilotSource().load(tmp_path)
+    # Spurious keys derived from the title line would have shape
+    # like 'H3b_Phase_1A' (replace(' ','_')); none of the canonical
+    # keys contain that prefix.
+    for key in snap.metadata.get("params", {}):
+        assert "H3b_Phase" not in str(key), (
+            f"manifest title line leaked into params as key {key!r}"
+        )
+
+
 def test_pilot_source_carries_run_metadata(tmp_path: Path):
     """The first pass's manifest.yaml carries the run's model,
     provider, and seed; the dashboard config panel renders these."""

@@ -12,7 +12,11 @@ import yaml
 from scripts.dashboards.snapshot import RunSnapshot
 
 
-_MANIFEST_LINE = re.compile(r"^([\w/\s-]+?):\s+(.+?)\s*$")
+_MANIFEST_LINE = re.compile(r"^(\w[\w/-]*?):\s+(.+?)\s*$")
+# Cells are written by `affect-battery run` with numeric-only basenames
+# (e.g., `0042.json`); filter strays like `manifest.yaml` or scratch
+# files. Mirrors `CELL_BASENAME_RE` in `scripts/pilots/run_h3b_phase1a.py`.
+_CELL_BASENAME = re.compile(r"^\d+\.json$")
 
 
 def _parse_run_manifest(path: Path) -> dict:
@@ -39,11 +43,16 @@ def _parse_run_manifest(path: Path) -> dict:
 
 
 def _count_cells(pass_dir: Path) -> int:
-    """Count `*.json` cells under `pass_NN/data/level_*/neutral/`."""
+    """Count numeric-basename `*.json` cells under
+    `pass_NN/data/level_*/neutral/`. Strays (manifest, scratch files)
+    are filtered."""
     data = pass_dir / "data"
     if not data.is_dir():
         return 0
-    return sum(1 for _ in data.glob("level_*/neutral/*.json"))
+    return sum(
+        1 for p in data.glob("level_*/neutral/*.json")
+        if _CELL_BASENAME.match(p.name)
+    )
 
 
 def _load_pass_manifest(pass_dir: Path) -> dict:

@@ -39,11 +39,6 @@ class CalibrationSource:
                         "target_lo": final.get("target_lo"),
                         "target_hi": final.get("target_hi"),
                     }, "metrics": {}, "stages": {}},
-                    cells=[],
-                    extras={
-                        "target_lo": final.get("target_lo", 0.40),
-                        "target_hi": final.get("target_hi", 0.60),
-                    },
                     final=final,
                 )
             except (json.JSONDecodeError, OSError):
@@ -61,8 +56,6 @@ class CalibrationSource:
         md = load_run_metadata(bank_dir)
         params = md.get("params", {})
         cells = load_cache_items(bank_dir)
-        target_lo = float(params.get("target_lo", 0.40))
-        target_hi = float(params.get("target_hi", 0.60))
 
         return RunSnapshot(
             title=title,
@@ -70,9 +63,5 @@ class CalibrationSource:
             cells_total=int(params.get("n_candidates", 0)),
             metadata=md,
             cells=cells,
-            extras={
-                "target_lo": target_lo,
-                "target_hi": target_hi,
-                "bank_dir_name": bank_dir.name,
-            },
+            extras={"bank_dir_name": bank_dir.name},
         )

@@ -46,20 +46,39 @@ from scripts.dashboards.sources.calibration import CalibrationSource  # noqa: E4
 from scripts.dashboards.sources.pilot import PilotSource  # noqa: E402
 from scripts.dashboards.sources import pilot_extras  # noqa: E402
 
+MODE_CALIBRATION = "calibration"
+MODE_PILOT = "pilot"
+MODE_AUTO = "auto"
+_MODES = (MODE_CALIBRATION, MODE_PILOT)
+
 
 def detect_mode(path: Path) -> str:
-    """Heuristic: a JSON file (or path that ends in .json) is
-    calibration; a directory that contains `run_manifest.txt` (or
-    looks like a pilot output dir by name) is pilot."""
+    """A `.json` path (existent or not) is calibration; any other path
+    is pilot. The wrapper's `--output-base` is always a directory; the
+    calibrator's `--output` is always a `.json` file. There's no
+    overlap, so suffix is a sufficient discriminator."""
     if path.suffix == ".json":
-        return "calibration"
-    if path.is_file() and path.suffix == ".json":
-        return "calibration"
-    if path.is_dir() and (path / "run_manifest.txt").is_file():
-        return "pilot"
-    if path.is_dir():
-        return "pilot"
-    return "calibration"
+        return MODE_CALIBRATION
+    return MODE_PILOT
+
+
+def _frame_with_left_extras(layout: Layout, snap: RunSnapshot,
+                            left_extras: list) -> None:
+    """Build the standard 2-column frame: header on top, then body
+    with config + progress + usage in the left column followed by any
+    `left_extras`. The `right` column is left for the caller to fill."""
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="body"),
+    )
+    layout["body"].split_row(Layout(name="left"), Layout(name="right"))
+    layout["left"].split_column(
+        Layout(panels.config_panel(snap), name="config"),
+        Layout(panels.progress_panel(snap), name="progress", size=6),
+        Layout(panels.usage_panel(snap), name="usage", size=10),
+        *left_extras,
+    )
+    layout["header"].update(panels.header_panel(snap))
 
 
 def render_calibration(snap: RunSnapshot) -> Layout:
@@ -77,22 +96,12 @@ def render_calibration(snap: RunSnapshot) -> Layout:
         layout.update(Panel(body, title=snap.title, border_style="green"))
         return layout
 
-    layout.split_column(
-        Layout(name="header", size=3),
-        Layout(name="body"),
-    )
-    layout["body"].split_row(Layout(name="left"), Layout(name="right"))
-    layout["left"].split_column(
-        Layout(panels.config_panel(snap), name="config"),
-        Layout(panels.progress_panel(snap), name="progress", size=6),
-        Layout(panels.usage_panel(snap), name="usage", size=10),
+    _frame_with_left_extras(layout, snap, [
         Layout(panels.stages_panel(snap), name="stages", size=8),
-    )
-    # Right column: per-cell summary (count of in-band cells when
-    # extras provide target band). Kept compact pending histogram
-    # port-back from dashboard_h3b.py.
-    target_lo = snap.extras.get("target_lo")
-    target_hi = snap.extras.get("target_hi")
+    ])
+    params = snap.metadata.get("params", {})
+    target_lo = params.get("target_lo")
+    target_hi = params.get("target_hi")
     if target_lo is not None and target_hi is not None and snap.cells:
         in_band = sum(
             1 for c in snap.cells
@@ -109,30 +118,19 @@ def render_calibration(snap: RunSnapshot) -> Layout:
     else:
         right = Text.from_markup("[dim](waiting for cells)[/dim]")
     layout["right"].update(Panel(right, title="cells", border_style="cyan"))
-    layout["header"].update(panels.header_panel(snap))
     return layout
 
 
 def render_pilot(snap: RunSnapshot) -> Layout:
     layout = Layout()
-    layout.split_column(
-        Layout(name="header", size=3),
-        Layout(name="body"),
-    )
-    layout["body"].split_row(Layout(name="left"), Layout(name="right"))
-    layout["left"].split_column(
-        Layout(panels.config_panel(snap), name="config"),
-        Layout(panels.progress_panel(snap), name="progress", size=6),
-        Layout(panels.usage_panel(snap), name="usage", size=10),
-    )
+    _frame_with_left_extras(layout, snap, [])
     layout["right"].update(pilot_extras.passes_panel(snap))
-    layout["header"].update(panels.header_panel(snap))
     return layout
 
 
 SOURCES = {
-    "calibration": (CalibrationSource(), render_calibration),
-    "pilot": (PilotSource(), render_pilot),
+    MODE_CALIBRATION: (CalibrationSource(), render_calibration),
+    MODE_PILOT: (PilotSource(), render_pilot),
 }
 
 
@@ -141,14 +139,14 @@ def main() -> int:
     ap.add_argument("path", type=Path,
                     help="Calibration JSON output path or pilot --output-base "
                          "directory")
-    ap.add_argument("--mode", choices=["calibration", "pilot", "auto"],
-                    default="auto",
+    ap.add_argument("--mode", choices=[*_MODES, MODE_AUTO],
+                    default=MODE_AUTO,
                     help="Override the source picked from the path shape")
     ap.add_argument("--refresh", type=float, default=5.0,
                     help="Refresh interval in seconds (default: 5)")
     args = ap.parse_args()
 
-    mode = args.mode if args.mode != "auto" else detect_mode(args.path)
+    mode = args.mode if args.mode != MODE_AUTO else detect_mode(args.path)
     if mode not in SOURCES:
         print(f"unsupported mode {mode!r}", file=sys.stderr)
         return 1
