@@ -1,9 +1,12 @@
-"""Dashboard source for N-pass pilot runs (used by
-`scripts/pilots/run_h3b_phase1a.py` and any future N-pass orchestrator
-that writes the same layout). Reads the wrapper's `run_manifest.txt`,
-per-pass `pass_NN/manifest.yaml`, and per-cell JSONs under
-`pass_NN/data/level_M/neutral/`. Also exports `passes_panel`, the
-pilot-specific per-pass progress grid."""
+"""Dashboard source for N-pass pilot runs. Reads three artifact
+classes under the wrapper's `--output-base`:
+
+- `run_manifest.txt` — run-level config (n_passes, n_items, n_levels)
+- `pass_NN/manifest.yaml` — per-pass model / provider / seed
+- `pass_NN/data/level_M/neutral/<NNNN>.json` — per-cell results
+
+Also exports `passes_panel`, the per-pass progress grid rendered in
+the pilot dashboard's right column."""
 from __future__ import annotations
 
 import re
@@ -18,19 +21,18 @@ from scripts.dashboards.snapshot import RunSnapshot
 
 
 _MANIFEST_LINE = re.compile(r"^(\w[\w/-]*?):\s+(.+?)\s*$")
-# Cells are written by `affect-battery run` with numeric-only basenames
-# (e.g., `0042.json`); filter strays like `manifest.yaml` or scratch
-# files. Mirrors `CELL_BASENAME_RE` in `scripts/pilots/run_h3b_phase1a.py`.
+# Numeric-basename cell files written by `affect-battery run`
+# (e.g., `0042.json`). Strays like `manifest.yaml` or scratch files
+# fail this check and are skipped from cell counts.
 _CELL_BASENAME = re.compile(r"^\d+\.json$")
 
 
 def _parse_run_manifest(path: Path) -> dict:
-    """Parse the wrapper's plain-text run manifest into a dict.
-
-    The wrapper writes `<key>: <value>` lines (with whitespace
-    padding); we strip the padding and coerce numeric fields. Returns
-    `{}` when the file is missing so callers can render a 'waiting'
-    panel during early startup."""
+    """Parse the wrapper's plain-text run manifest into a dict of
+    `{key: value}`. Whitespace padding is stripped; digit-only
+    values are coerced to `int`. Returns `{}` when the file is
+    absent, which lets the dashboard render a 'waiting' panel
+    during early startup."""
     if not path.is_file():
         return {}
     out: dict = {}
@@ -49,8 +51,7 @@ def _parse_run_manifest(path: Path) -> dict:
 
 def _count_cells(pass_dir: Path) -> int:
     """Count numeric-basename `*.json` cells under
-    `pass_NN/data/level_*/neutral/`. Strays (manifest, scratch files)
-    are filtered."""
+    `pass_NN/data/level_*/neutral/`."""
     data = pass_dir / "data"
     if not data.is_dir():
         return 0
@@ -73,11 +74,11 @@ def _load_pass_manifest(pass_dir: Path) -> dict:
 def _build_pass_breakdown(
     output_base: Path, n_passes: int, expected_per_pass: int,
 ) -> tuple[list[dict], int, dict]:
-    """Walk `pass_*` subdirs and synthesize per-pass status. Pads the
-    list with empty slots for not-yet-dispatched passes so the grid
-    renders the full requested picture, not just the started ones.
+    """Walk `pass_*` subdirs and produce a per-pass status list. The
+    output is padded with empty entries for the full `n_passes` range
+    so the grid shows every requested slot.
 
-    Returns (passes, total_cells_done, first_pass_manifest)."""
+    Returns `(passes, total_cells_done, first_pass_manifest)`."""
     pass_dirs = sorted(
         p for p in output_base.glob("pass_*")
         if p.is_dir() and p.name.startswith("pass_")
@@ -116,9 +117,8 @@ def _build_pass_breakdown(
 class PilotSource:
     """Constructs a `RunSnapshot` from the pilot wrapper's output dir.
 
-    `title` is the header rendered at the top of the dashboard;
-    callers customize per-experiment (e.g., 'H3b Phase 1A Pilot',
-    'H4 Pilot')."""
+    `title` is the dashboard header text. Callers set it per
+    experiment (e.g., 'H3b Phase 1A Pilot', 'H4 Pilot')."""
 
     def __init__(self, title: str = "Pilot") -> None:
         self._title = title
@@ -158,8 +158,9 @@ class PilotSource:
 
 
 def passes_panel(snap: RunSnapshot) -> Panel:
-    """Per-pass cell-count grid. Rows: pass_NN. Columns: cells_done /
-    expected, status (✓ complete / running N% / waiting)."""
+    """Per-pass cell-count grid. One row per pass with columns for
+    cell count (`cells_done / expected`) and status (`✓ complete`,
+    `running N%`, or `waiting`)."""
     passes = snap.extras.get("passes", [])
     if not passes:
         return Panel(Text.from_markup("[dim](no passes dispatched yet)[/dim]"),

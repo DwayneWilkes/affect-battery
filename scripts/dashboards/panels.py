@@ -17,8 +17,9 @@ from scripts.dashboards.snapshot import RunSnapshot
 
 
 def _fmt_dur(seconds: float) -> str:
-    """Human-readable duration. Sub-second falls back to numeric since
-    `humanize.precisedelta` rounds anything < 1s to '0 seconds'."""
+    """Human-readable duration string. Sub-second values render as
+    decimal seconds; `humanize.precisedelta` rounds anything below
+    1s to '0 seconds', so the threshold short-circuits there."""
     if seconds < 1.0:
         return f"{seconds:.2f}s"
     return humanize.precisedelta(timedelta(seconds=seconds), minimum_unit="seconds")
@@ -48,9 +49,9 @@ _DEFAULT_CONFIG_FIELDS: tuple[tuple[str, str], ...] = (
 
 
 def config_panel(snap: RunSnapshot) -> Panel:
-    """Run config: reads `(label, params_key)` pairs from
-    `snap.config_fields` if provided, else falls back to a default
-    list that covers both calibration and pilot."""
+    """Run config table. Renders the `(label, params_key)` pairs in
+    `snap.config_fields` when set; otherwise renders the default
+    field list applicable to both calibration and pilot."""
     params = snap.metadata.get("params", {})
     fields = snap.config_fields or _DEFAULT_CONFIG_FIELDS
     table = Table.grid(padding=(0, 1))
@@ -84,9 +85,9 @@ def progress_panel(snap: RunSnapshot) -> Panel:
 
 
 def usage_panel(snap: RunSnapshot) -> Panel:
-    """API usage / cost from `snap.metadata['metrics']` `usage_*`
-    fields. Renders 'no data yet' when the source doesn't carry usage
-    metrics (e.g., pilot's pre-completion state)."""
+    """API usage / cost from the `usage_*` keys in
+    `snap.metadata['metrics']`. Renders 'no data yet' when those
+    keys are absent."""
     metrics = snap.metadata.get("metrics", {})
     n_calls = metrics.get("usage_n_calls")
     if n_calls is None:
@@ -111,8 +112,9 @@ def usage_panel(snap: RunSnapshot) -> Panel:
 
 
 def stages_panel(snap: RunSnapshot) -> Panel:
-    """Stage timings from `snap.metadata['stages']`. Each stage gets a
-    row showing duration in seconds (or 'in flight' if not yet done)."""
+    """Stage timings from `snap.metadata['stages']`. Each row shows a
+    stage name and either its duration or 'in flight' for stages
+    still running."""
     stages = snap.metadata.get("stages", {})
     if not stages:
         return Panel(Text.from_markup("[dim](no stages yet)[/dim]"),

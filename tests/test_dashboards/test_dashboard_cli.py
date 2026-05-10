@@ -15,11 +15,10 @@ from scripts.dashboards.sources.pilot import PilotSource
 
 
 def _capture(layout) -> str:
-    """Render a Layout to a string so tests can assert on the actual
-    visible content rather than just 'didn't raise'. Layouts need
-    both width and height to render contents (without height,
-    rich draws borders only); 200x60 covers any reasonable panel
-    arrangement."""
+    """Render a Layout to a string so tests can assert on its visible
+    content. Rich's Layout renders both borders and bodies only when
+    given an explicit width and height; 200x60 covers the panel
+    arrangement used by both renderers with room to spare."""
     import io
     console = Console(width=200, height=60, record=True, file=io.StringIO())
     with console.capture() as cap:

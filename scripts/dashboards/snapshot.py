@@ -19,22 +19,21 @@ class RunSnapshot:
         title: Header text rendered at the top of the dashboard.
         cells_done: Cells written / scored so far.
         cells_total: Expected total cells when the run completes.
-        metadata: Run-level params and metrics (model, seed, usage_*,
-            stages). Source-shaped, but shared panels look up
-            well-known keys via `metadata.get(...)`.
-        cells: Per-cell records when the source can enumerate them
-            cheaply. Each entry should have a `_mtime` field for
-            recent-window stats. Empty when the source streams or
-            samples cells.
-        extras: Source-specific fields (e.g., calibration's
-            target_lo/target_hi/min_items). Source-contributed panels
-            read from here.
-        final: Final-state record when the run is complete (e.g., the
-            calibration JSON or pilot's summary). None while in flight.
-        config_fields: Optional list of `(label, params_key)` pairs
-            specifying which keys the config panel should render and
-            in what order. None falls back to a generic default that
-            covers both calibration and pilot.
+        metadata: Run-level params and metrics. Shared panels look up
+            well-known keys via `metadata["params"][...]` and
+            `metadata["metrics"][...]`.
+        cells: Per-cell records. Each entry should have a `_mtime`
+            field for recent-window stats. Empty when the source
+            doesn't enumerate cells (e.g., pilot, which counts files
+            without reading their contents).
+        extras: Source-contributed fields keyed by source-defined
+            names. Source-specific panels read from here.
+        final: Final-state record when the run is complete. None
+            while in flight.
+        config_fields: List of `(label, params_key)` pairs that the
+            config panel renders, in order. None means the panel
+            uses its default list applicable to both calibration
+            and pilot.
     """
 
     title: str

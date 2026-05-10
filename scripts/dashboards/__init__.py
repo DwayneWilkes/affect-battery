@@ -1,10 +1,7 @@
 """Generalized live dashboard for in-flight experiment runs.
 
-The package's submodules import from `src.lib.*`, which requires the
-repo root on `sys.path`. The entry point (`dashboard.py`) handles that
-when invoked as a script; for any other code path that imports a
-submodule directly (tests, ad-hoc REPL), this `__init__` is the
-one-shot place that adds it. Idempotent: re-add is a no-op."""
+Importing this package puts the repo root on `sys.path` so submodules
+can resolve `src.lib.*`. The check is idempotent."""
 from __future__ import annotations
 
 import sys

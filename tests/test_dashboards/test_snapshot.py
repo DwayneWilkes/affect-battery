@@ -42,14 +42,14 @@ def test_snapshot_is_done_when_cells_meet_target():
 
 
 def test_snapshot_extras_carry_source_specific_data():
-    """Sources put their experiment-specific data in `extras` so shared
-    panels stay layout-agnostic and source-contributed extras can pull
-    from a known location."""
+    """`extras` is the source-contributed dict that source-specific
+    panels read from. Shared panels read universal fields directly
+    on the snapshot."""
     snap = RunSnapshot(
-        title="H3b Calibration",
-        cells_done=50, cells_total=1319,
-        metadata={"params": {"target_lo": 0.40, "target_hi": 0.60}},
-        extras={"target_lo": 0.40, "target_hi": 0.60, "min_items": 32},
+        title="H3b Phase 1A Pilot",
+        cells_done=50, cells_total=1320,
+        metadata={"params": {"n_passes": 20}},
+        extras={"passes": [{"pass_num": 1, "cells_done": 50, "expected": 66}]},
     )
-    assert snap.extras["target_lo"] == 0.40
-    assert snap.extras["min_items"] == 32
+    assert snap.extras["passes"][0]["pass_num"] == 1
+    assert snap.extras["passes"][0]["cells_done"] == 50

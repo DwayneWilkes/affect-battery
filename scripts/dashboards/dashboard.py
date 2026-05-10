@@ -1,27 +1,24 @@
 """Live terminal dashboard for an in-flight experiment run.
 
-Works for any experiment whose source produces a `RunSnapshot`. The
-two built-in sources:
+Works for any experiment whose source produces a `RunSnapshot`. Two
+built-in sources:
 
-- `calibration` — `scripts/calibration/h3b_calibration.py` runs
-  (`<output>.tracker/bank_<sha>/cache/` layout via ExperimentTracker).
-  Path argument is the calibration JSON output path.
+- `calibration` — ExperimentTracker layout
+  (`<output>.tracker/bank_<sha>/cache/`). Path argument is the
+  calibration JSON output path.
+- `pilot` — N-pass layout
+  (`<output-base>/pass_NN/data/level_M/neutral/`). Path argument is
+  the `--output-base` directory.
 
-- `pilot` — `scripts/pilots/run_h3b_phase1a.py`-style N-pass runs
-  (`<output-base>/pass_NN/data/level_M/neutral/` layout). Path
-  argument is the `--output-base` directory.
-
-Mode is auto-detected from the path's suffix: `.json` dispatches to
-`calibration`, anything else dispatches to `pilot`. `--mode` overrides.
+Mode is detected from the path's suffix: `.json` is `calibration`,
+anything else is `pilot`. `--mode` overrides.
 
 Usage:
     python -m scripts.dashboards.dashboard <path> \\
         [--mode {calibration,pilot,auto}] [--refresh 5]
 
-Invoke via `-m` (not `python scripts/dashboards/dashboard.py`) so the
-package's relative imports resolve and `src.lib.*` is reachable via
-`__init__.py`'s path bootstrap. Run from a second terminal while the
-run is in flight. Exits when the source reports `is_done` or on Ctrl-C.
+Run from a second terminal while the run is in flight. Exits when the
+source reports `is_done` or on Ctrl-C.
 """
 from __future__ import annotations
 
@@ -48,10 +45,11 @@ _MODES = (MODE_CALIBRATION, MODE_PILOT)
 
 
 def detect_mode(path: Path) -> str:
-    """A `.json` path (existent or not) is calibration; any other path
-    is pilot. The wrapper's `--output-base` is always a directory; the
-    calibrator's `--output` is always a `.json` file. There's no
-    overlap, so suffix is a sufficient discriminator."""
+    """`.json` suffix → calibration; anything else → pilot.
+
+    The calibrator's `--output` is always a `.json` file and the
+    pilot wrapper's `--output-base` is always a directory, so the
+    suffix carries the full discriminator."""
     if path.suffix == ".json":
         return MODE_CALIBRATION
     return MODE_PILOT
@@ -59,9 +57,9 @@ def detect_mode(path: Path) -> str:
 
 def _frame_with_left_extras(layout: Layout, snap: RunSnapshot,
                             left_extras: list) -> None:
-    """Build the standard 2-column frame: header on top, then body
-    with config + progress + usage in the left column followed by any
-    `left_extras`. The `right` column is left for the caller to fill."""
+    """Build the standard 2-column frame: header row, then body with
+    `config + progress + usage + *left_extras` in the left column. The
+    caller fills `layout["right"]`."""
     layout.split_column(
         Layout(name="header", size=3),
         Layout(name="body"),
@@ -123,9 +121,7 @@ def render_pilot(snap: RunSnapshot) -> Layout:
     return layout
 
 
-# Per-experiment dashboards register here. Title is the only piece
-# that hardcodes an experiment ID; future H4 etc. extends by adding a
-# new (mode, source, renderer) tuple, no module structure changes.
+# Per-experiment dashboards register here as `mode -> (source, renderer)`.
 SOURCES = {
     MODE_CALIBRATION: (CalibrationSource(title="H3b Calibration"), render_calibration),
     MODE_PILOT: (PilotSource(title="H3b Phase 1A Pilot"), render_pilot),

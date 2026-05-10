@@ -1,6 +1,5 @@
-"""Tests for CalibrationSource — wraps the ExperimentTracker tracker
-root in a RunSnapshot. Reuses src.lib.tracker_io for layout reads so
-the convention stays in one place."""
+"""Tests for CalibrationSource: builds a RunSnapshot from an
+ExperimentTracker tracker root via `src.lib.tracker_io`."""
 from __future__ import annotations
 
 import json
@@ -65,16 +64,15 @@ def test_calibration_source_reads_tracker_layout(tmp_path: Path):
 
 
 def test_calibration_source_target_band_lives_in_metadata_params(tmp_path: Path):
-    """target_lo/target_hi are run params; the calibration renderer
-    reads them from `metadata.params` rather than duplicating into
-    `extras`. Single source of truth."""
+    """`target_lo` and `target_hi` are run params and live under
+    `metadata["params"]`. The calibration renderer reads them from
+    there; `extras` carries source-specific fields only."""
     output_path = _make_calibration_tracker(
         tmp_path, target_lo=0.42, target_hi=0.58,
     )
     snap = CalibrationSource().load(output_path)
     assert snap.metadata["params"]["target_lo"] == 0.42
     assert snap.metadata["params"]["target_hi"] == 0.58
-    # Should NOT be duplicated in extras.
     assert "target_lo" not in snap.extras
     assert "target_hi" not in snap.extras
 

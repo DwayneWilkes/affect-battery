@@ -1,6 +1,6 @@
-"""Dashboard source for ExperimentTracker-style calibration runs
-(used by `scripts/calibration/h3b_calibration.py` and any future
-calibrator that writes to `<output>.tracker/bank_<sha>/`)."""
+"""Dashboard source for ExperimentTracker-style calibration runs.
+Reads `<output>.tracker/bank_<sha>/` (the layout written by
+`scripts/calibration/h3b_calibration.py`)."""
 from __future__ import annotations
 
 import json
@@ -19,9 +19,8 @@ from scripts.dashboards.snapshot import RunSnapshot
 class CalibrationSource:
     """Constructs a `RunSnapshot` from a calibration tracker root.
 
-    `title` is the header rendered at the top of the dashboard;
-    callers customize per-experiment (e.g., 'H3b Calibration',
-    'H4 Calibration')."""
+    `title` is the dashboard header text. Callers set it per
+    experiment (e.g., 'H3b Calibration', 'H4 Calibration')."""
 
     def __init__(self, title: str = "Calibration") -> None:
         self._title = title

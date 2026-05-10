@@ -85,10 +85,9 @@ def test_pilot_source_reports_done_when_all_passes_complete(tmp_path: Path):
 
 
 def test_pilot_source_handles_missing_run_manifest(tmp_path: Path):
-    """When the wrapper hasn't written run_manifest.txt yet, the
-    source returns a snapshot with cells_total=0 (unknown target)
-    rather than raising — dashboards should still render a 'waiting'
-    panel."""
+    """During the first seconds of a run, `run_manifest.txt` does
+    not yet exist. The source returns a snapshot with
+    `cells_total=0` so the dashboard renders a 'waiting' panel."""
     snap = PilotSource().load(tmp_path)
     assert snap.cells_done == 0
     assert snap.cells_total == 0
@@ -115,15 +114,12 @@ def test_pilot_source_extras_carry_pass_breakdown(tmp_path: Path):
 
 
 def test_pilot_source_skips_title_line_in_manifest(tmp_path: Path):
-    """The wrapper's run_manifest.txt opens with a free-form title
-    line ('H3b Phase 1A: single-turn ...') that has whitespace in the
-    'key' position. The parser must skip it rather than coercing it
-    into a spurious params entry."""
+    """`run_manifest.txt` opens with a free-form title line ('H3b
+    Phase 1A: single-turn ...') whose 'key' position contains
+    whitespace. Canonical params keys are word-only, so the parser
+    accepts only those and the title row contributes no entry."""
     _write_run_manifest(tmp_path, n_passes=1, n_items=1, n_levels=1)
     snap = PilotSource().load(tmp_path)
-    # Spurious keys derived from the title line would have shape
-    # like 'H3b_Phase_1A' (replace(' ','_')); none of the canonical
-    # keys contain that prefix.
     for key in snap.metadata.get("params", {}):
         assert "H3b_Phase" not in str(key), (
             f"manifest title line leaked into params as key {key!r}"
