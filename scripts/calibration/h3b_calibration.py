@@ -87,6 +87,16 @@ def _merge_usage_carryover(snapshot: dict, carryover: dict) -> dict:
     return merged
 
 
+def _cumulative_usage(snapshot: dict | None, carryover: dict) -> dict | None:
+    """Build a usage dict that preserves snapshot string fields (e.g.,
+    `model`) and replaces numeric fields with carryover-summed totals.
+    The same dict is consumed by both the tracker metrics and the
+    output JSON's `usage` field so the two cannot drift on resume."""
+    if not snapshot:
+        return None
+    return {**snapshot, **_merge_usage_carryover(snapshot, carryover)}
+
+
 def make_client(provider: str, model: str, dry_run: bool):
     if dry_run:
         return DryRunClient(model=f"{provider}-{model}-dryrun")
@@ -420,14 +430,15 @@ async def run_probe(args):
 
     # Aggregate API usage from the OpenAI client. Anthropic / dry-run
     # clients don't expose usage_summary; guard via getattr.
-    usage = None
+    snapshot = None
     if hasattr(client, "usage_summary"):
         kwargs = {}
         if (args.input_usd_per_million is not None
                 and args.output_usd_per_million is not None):
             kwargs["input_usd_per_million"] = args.input_usd_per_million
             kwargs["output_usd_per_million"] = args.output_usd_per_million
-        usage = client.usage_summary(**kwargs)
+        snapshot = client.usage_summary(**kwargs)
+    usage = _cumulative_usage(snapshot, usage_carryover)
 
     metric_kwargs = dict(
         n_per_item=len(per_item),
@@ -436,8 +447,9 @@ async def run_probe(args):
         yield_pct=100.0 * len(calibrated) / max(len(selected), 1),
     )
     if usage:
-        for k, v in _merge_usage_carryover(usage, usage_carryover).items():
-            metric_kwargs[f"usage_{k}"] = v
+        for k, v in usage.items():
+            if isinstance(v, (int, float)):
+                metric_kwargs[f"usage_{k}"] = v
     tracker.log_metrics(**metric_kwargs)
 
     return {

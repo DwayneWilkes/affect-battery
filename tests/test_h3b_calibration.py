@@ -151,6 +151,42 @@ def test_usage_carryover_skips_non_numeric_carryover(monkeypatch):
     assert merged == {"n_calls": 150}
 
 
+def test_cumulative_usage_combines_snapshot_strings_and_summed_numerics(monkeypatch):
+    """The cumulative-usage helper must preserve snapshot string fields
+    (e.g., `model`) and replace numeric fields with carryover-summed
+    totals. The same dict is used for both tracker metrics and the
+    output JSON, so they cannot drift."""
+    mod = _import_script(monkeypatch)
+    snapshot = {
+        "model": "gpt-5.4-nano",
+        "n_calls": 100,
+        "prompt_tokens": 5000,
+        "completion_tokens": 3000,
+        "estimated_usd": 0.5,
+    }
+    carryover = {
+        "usage_n_calls": 200,
+        "usage_prompt_tokens": 10000,
+        "usage_completion_tokens": 6000,
+        "usage_estimated_usd": 1.25,
+    }
+    out = mod._cumulative_usage(snapshot, carryover)
+    assert out["model"] == "gpt-5.4-nano"
+    assert out["n_calls"] == 300
+    assert out["prompt_tokens"] == 15000
+    assert out["completion_tokens"] == 9000
+    assert out["estimated_usd"] == 1.75
+
+
+def test_cumulative_usage_returns_none_when_no_snapshot(monkeypatch):
+    """Anthropic / dry-run clients without `usage_summary` produce no
+    snapshot; the cumulative helper must propagate that as None so the
+    output JSON's `usage` field stays None rather than an empty dict."""
+    mod = _import_script(monkeypatch)
+    assert mod._cumulative_usage(None, {}) is None
+    assert mod._cumulative_usage(None, {"usage_n_calls": 100}) is None
+
+
 def test_subprocess_dry_run_creates_tracker_with_metadata_and_cache(
     tmp_path: Path, monkeypatch
 ):
