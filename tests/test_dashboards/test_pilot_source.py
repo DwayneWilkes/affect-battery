@@ -164,6 +164,49 @@ def test_pilot_source_samples_cell_when_no_pass_complete(tmp_path: Path):
     assert params["n_passes"] == 3
 
 
+def test_pilot_source_preserves_zero_seed_and_temperature(tmp_path: Path):
+    """`seed=0` and `temperature=0.0` are valid run config values
+    (deterministic / greedy decoding). The params builder must not
+    treat them as missing and replace them with run_manifest or
+    sample fallbacks."""
+    _write_run_manifest(tmp_path, n_passes=1, n_items=2, n_levels=1)
+    pass_dir = tmp_path / "pass_01"
+    pass_dir.mkdir(parents=True)
+    (pass_dir / "manifest.yaml").write_text(
+        "model: gpt-x\nprovider: openai\nseed: 0\ntemperature: 0.0\n"
+    )
+    cell_dir = pass_dir / "data" / "level_1" / "neutral"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "0001.json").write_text(json.dumps({"config": {}}))
+    (cell_dir / "0002.json").write_text(json.dumps({"config": {}}))
+    snap = PilotSource().load(tmp_path)
+    params = snap.metadata["params"]
+    assert params["seed"] == 0
+    assert params["temperature"] == 0.0
+
+
+def test_pilot_source_sample_cell_filters_numeric_basenames(tmp_path: Path):
+    """`_sample_cell` must apply the same numeric-basename filter as
+    `_count_cells` and `_aggregate_usage`. A stray operator-dropped
+    JSON (e.g., `notes.json`) under `neutral/` should not be sampled
+    in place of a real cell."""
+    _write_run_manifest(tmp_path, n_passes=1, n_items=1, n_levels=1)
+    pass_dir = tmp_path / "pass_01"
+    cell_dir = pass_dir / "data" / "level_1" / "neutral"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "_notes.json").write_text(json.dumps({"comment": "scratch"}))
+    (cell_dir / "0001.json").write_text(json.dumps({
+        "config": {"model_name": "gpt-x", "temperature": 0.7},
+        "model": "gpt-x",
+    }))
+    snap = PilotSource().load(tmp_path)
+    params = snap.metadata["params"]
+    assert params["model"] == "gpt-x", (
+        f"sampler returned wrong cell content; params={params}"
+    )
+    assert params["temperature"] == 0.7
+
+
 def test_pilot_source_marks_usage_unavailable_for_legacy_cells(tmp_path: Path):
     """When cells exist but none carry a `usage` field (older runner
     build or a provider without `usage_log`), the source flags

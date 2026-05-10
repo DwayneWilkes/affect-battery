@@ -110,8 +110,13 @@ def _sample_cell(output_base: Path) -> dict:
 
     Used to populate the config panel before any pass writes its
     `manifest.yaml` (the runner writes that on completion). Returns
-    `{}` when no readable cell exists yet."""
+    `{}` when no readable cell exists yet. Applies the same
+    numeric-basename filter as `_count_cells` so stray non-cell JSONs
+    in `neutral/` (operator notes, scratch artifacts) cannot be
+    sampled in place of a real cell."""
     for p in output_base.glob("pass_*/data/level_*/neutral/*.json"):
+        if not _CELL_BASENAME.match(p.name):
+            continue
         try:
             data = json.loads(p.read_text())
         except (json.JSONDecodeError, OSError):
@@ -122,6 +127,16 @@ def _sample_cell(output_base: Path) -> dict:
             "temperature": cfg.get("temperature"),
         }
     return {}
+
+
+def _coalesce(*candidates):
+    """Return the first non-None candidate. Distinct from `or` chains
+    in that valid falsy values (`0`, `0.0`, `""`) are preserved
+    instead of being treated as missing."""
+    for c in candidates:
+        if c is not None:
+            return c
+    return None
 
 
 def _build_pass_breakdown(
@@ -190,11 +205,12 @@ class PilotSource:
 
         sample = _sample_cell(output_base) if not first_pass_md else {}
         params = {
-            "model": first_pass_md.get("model") or sample.get("model"),
+            "model": _coalesce(first_pass_md.get("model"), sample.get("model")),
             "provider": first_pass_md.get("provider"),
-            "seed": first_pass_md.get("seed") or run_md.get("seed"),
-            "temperature": (first_pass_md.get("temperature")
-                            or sample.get("temperature")),
+            "seed": _coalesce(first_pass_md.get("seed"), run_md.get("seed")),
+            "temperature": _coalesce(
+                first_pass_md.get("temperature"), sample.get("temperature"),
+            ),
             "transfer_bank": first_pass_md.get("transfer_bank"),
             "n_passes": n_passes,
             "n_items": n_items,
