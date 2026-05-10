@@ -1,14 +1,27 @@
 """Build an H3b calibrated bank YAML from a calibration JSON.
 
-Reads the JSON output of `scripts/calibration/h3b_calibration.py` and
-writes a task-bank YAML containing every item in the calibration's
-`calibrated_subset`. All-qualifiers selection: no top-N truncation,
-sorted by closeness to p̂=0.5 for display order only.
+Reads the JSON output of `scripts/calibration/h3b_calibration.py`. By
+default, retains every item in the calibration's `calibrated_subset`
+(the items already in the calibration's locked target band). When
+`--band-lo` / `--band-hi` are supplied, sources items from the full
+`per_item` list and retains those whose `p_hat` falls in the new band,
+allowing follow-up runs at a different difficulty band without
+re-spending on a fresh calibration.
+
+All-qualifiers selection: no top-N truncation. Items sort by closeness
+to the band midpoint for display order.
 
 Usage:
     direnv exec . uv run --active python scripts/calibration/build_h3b_bank.py \\
         --calibration configs/h3b_calibration_<date>.json \\
         --output configs/banks/h3b_calibrated_v2.yaml
+
+    # Effort-headroom follow-up bank from the same calibration JSON:
+    direnv exec . uv run --active python scripts/calibration/build_h3b_bank.py \\
+        --calibration configs/h3b_calibration_2026-05-08-fullpool.json \\
+        --band-lo 0.55 --band-hi 0.75 \\
+        --bank-id h3b_calibrated_v3 --bank-version 3 \\
+        --output configs/banks/h3b_calibrated_v3.yaml
 """
 from __future__ import annotations
 
@@ -43,32 +56,57 @@ def main() -> int:
     ap.add_argument("--parent-bank", default="gsm_hard_full_v1",
                     help="bank_id of the source bank that the calibration "
                          "screened. Default matches the full-pool source bank.")
+    ap.add_argument("--band-lo", type=float, default=None,
+                    help="Lower bound of the p_hat band to retain. When "
+                         "set, sources items from the calibration's full "
+                         "per_item list rather than its pre-filtered "
+                         "calibrated_subset. Pair with --band-hi.")
+    ap.add_argument("--band-hi", type=float, default=None,
+                    help="Upper bound of the p_hat band to retain.")
     args = ap.parse_args()
 
-    calibration = json.loads(args.calibration.read_text())
-    calibrated = calibration.get("calibrated_subset", [])
-    if len(calibrated) < args.min_items:
+    if (args.band_lo is None) != (args.band_hi is None):
         print(
-            f"ERROR: calibrated_subset has {len(calibrated)} items, "
-            f"below --min-items={args.min_items} floor. Run a larger "
-            f"calibration (more --n-candidates) and try again.",
+            "ERROR: --band-lo and --band-hi must be supplied together "
+            "(or both omitted to use the calibration's locked band).",
             file=sys.stderr,
         )
         return 1
 
-    # Sort by closeness to p̂=0.5 for display order; every in-band item
-    # is included — no top-N truncation.
-    selected = sorted(calibrated, key=lambda p: abs(p["p_hat"] - 0.5))
+    calibration = json.loads(args.calibration.read_text())
+    if args.band_lo is not None and args.band_hi is not None:
+        # Custom band: filter the full per_item list. Lets follow-up
+        # runs target a different difficulty band without re-calibrating.
+        target_lo, target_hi = float(args.band_lo), float(args.band_hi)
+        candidates = [
+            it for it in calibration.get("per_item", [])
+            if it.get("p_hat") is not None
+            and target_lo <= float(it["p_hat"]) <= target_hi
+        ]
+    else:
+        target_lo = calibration.get("target_lo", 0.40)
+        target_hi = calibration.get("target_hi", 0.60)
+        candidates = calibration.get("calibrated_subset", [])
 
-    # Read target band from the calibration JSON itself rather than CLI
-    # defaults — the rationale string would otherwise lie if a future
-    # caller passed inconsistent flags here.
-    target_lo = calibration.get("target_lo", 0.40)
-    target_hi = calibration.get("target_hi", 0.60)
+    if len(candidates) < args.min_items:
+        print(
+            f"ERROR: {len(candidates)} items match band "
+            f"[{target_lo:.2f}, {target_hi:.2f}], below --min-items="
+            f"{args.min_items} floor. Widen the band or run a larger "
+            f"calibration.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Sort by closeness to band midpoint for display order; every
+    # in-band item is included — no top-N truncation.
+    band_mid = 0.5 * (target_lo + target_hi)
+    selected = sorted(candidates, key=lambda p: abs(p["p_hat"] - band_mid))
 
     # Compute calibration JSON SHA so the bank can reference its
     # provenance pin in the alignment_review.rationale.
     calib_sha = hashlib.sha256(args.calibration.read_bytes()).hexdigest()
+    custom_band = args.band_lo is not None
 
     bank = {
         "bank_id": args.bank_id,
@@ -90,7 +128,15 @@ def main() -> int:
                 f"{calibration.get('model', '?')} with no stimulus at "
                 f"temperature {calibration.get('temperature', 0.7)}, retained "
                 f"for p_hat in [{target_lo:.2f}, {target_hi:.2f}] (all "
-                f"qualifiers, no truncation). "
+                f"qualifiers, no truncation"
+                + (
+                    "; band overridden via --band-lo/--band-hi from the "
+                    "calibration's full per_item list, not its locked "
+                    f"[{calibration.get('target_lo', 0.40):.2f}, "
+                    f"{calibration.get('target_hi', 0.60):.2f}] subset"
+                    if custom_band else ""
+                )
+                + "). "
                 f"Calibration JSON: {args.calibration}, sha256 {calib_sha}."
             ),
         },

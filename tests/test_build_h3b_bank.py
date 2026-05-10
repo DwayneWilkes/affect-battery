@@ -169,3 +169,58 @@ def test_builder_reads_target_band_from_json_not_cli(tmp_path: Path):
     assert "0.42" in rationale and "0.58" in rationale, (
         f"target band from JSON not honored in rationale: {rationale}"
     )
+
+
+def test_builder_band_override_filters_per_item_list(tmp_path: Path):
+    """When --band-lo / --band-hi are supplied, the builder must filter
+    the calibration's full `per_item` list (not the pre-filtered
+    `calibrated_subset`) so a follow-up bank can target a different
+    difficulty band without re-running calibration."""
+    calibrated_subset_items = [
+        _build_item(f"in_band_{i:04d}", 0.50) for i in range(5)
+    ]
+    extra_per_item_items = (
+        [_build_item(f"low_{i:04d}", 0.25) for i in range(3)]
+        + [_build_item(f"mid_{i:04d}", 0.65) for i in range(40)]
+        + [_build_item(f"high_{i:04d}", 0.90) for i in range(5)]
+    )
+    full_per_item = calibrated_subset_items + extra_per_item_items
+    calib = _make_calibration(
+        tmp_path,
+        calibrated_subset=calibrated_subset_items,
+        per_item=full_per_item,
+    )
+    out = tmp_path / "bank.yaml"
+    r = _run_builder(
+        calib, out,
+        "--band-lo", "0.55",
+        "--band-hi", "0.75",
+        "--min-items", "32",
+    )
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    bank = yaml.safe_load(out.read_text())
+    item_ids = [it["id"] for it in bank["items"]]
+    # Only the 40 mid_* items have p_hat in [0.55, 0.75].
+    assert len(item_ids) == 40
+    assert all(name.startswith("mid_") for name in item_ids)
+    rationale = bank["alignment_review"]["rationale"]
+    assert "0.55" in rationale and "0.75" in rationale
+    assert "band overridden" in rationale, (
+        "rationale must flag that the band came from CLI override, not "
+        "the calibration JSON's locked target_lo/target_hi"
+    )
+
+
+def test_builder_band_override_requires_both_endpoints(tmp_path: Path):
+    """Supplying only one of --band-lo / --band-hi is a usage error;
+    the bank-id contract is 'either keep the calibration's locked band
+    or override both endpoints together'."""
+    calib = _make_calibration(
+        tmp_path,
+        calibrated_subset=[_build_item(f"x_{i:04d}", 0.5) for i in range(50)],
+        per_item=[_build_item(f"x_{i:04d}", 0.5) for i in range(50)],
+    )
+    out = tmp_path / "bank.yaml"
+    r = _run_builder(calib, out, "--band-lo", "0.55")
+    assert r.returncode == 1
+    assert "must be supplied together" in r.stderr
