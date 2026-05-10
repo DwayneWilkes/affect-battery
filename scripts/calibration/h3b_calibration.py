@@ -174,6 +174,13 @@ async def run_one_candidate(client, item, n_reps: int, sem: asyncio.Semaphore):
         *[one_rep() for _ in range(n_reps)],
         return_exceptions=True,
     )
+    # SystemExit and KeyboardInterrupt MUST propagate so the
+    # `insufficient_quota` circuit breaker (and Ctrl-C) actually halt
+    # the run. CPython's gather currently special-cases them, but that
+    # is an implementation detail; explicit re-raise pins the contract.
+    for r in results:
+        if isinstance(r, (SystemExit, KeyboardInterrupt)):
+            raise r
     # Coerce any unexpected exception that escaped one_rep into the
     # "error" kind so aggregation below is uniform.
     normalised = []

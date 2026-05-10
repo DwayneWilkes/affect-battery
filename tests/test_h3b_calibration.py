@@ -178,6 +178,33 @@ def test_cumulative_usage_combines_snapshot_strings_and_summed_numerics(monkeypa
     assert out["estimated_usd"] == 1.75
 
 
+def test_insufficient_quota_propagates_systemexit_through_gather(monkeypatch):
+    """`one_rep` raises SystemExit(2) when the API reports
+    `insufficient_quota` so the operator sees the cost driver and the
+    cache is preserved for resume. `asyncio.gather(return_exceptions=True)`
+    captures SystemExit as a result value rather than propagating it,
+    so the calibration loop must re-raise SystemExit (and
+    KeyboardInterrupt) explicitly. Without that, the circuit breaker
+    is silently defeated and the run keeps spending against an
+    exhausted account."""
+    import asyncio
+    from src.models import NonRetryableAPIError
+    mod = _import_script(monkeypatch)
+
+    class QuotaExhaustedClient:
+        async def complete(self, *a, **kw):
+            raise NonRetryableAPIError("insufficient_quota: account out of credit")
+
+    async def _go():
+        sem = asyncio.Semaphore(1)
+        item = {"id": "x", "question": "q", "expected": "1"}
+        await mod.run_one_candidate(QuotaExhaustedClient(), item, n_reps=2, sem=sem)
+
+    with pytest.raises(SystemExit) as exc:
+        asyncio.run(_go())
+    assert exc.value.code == 2
+
+
 def test_cumulative_usage_returns_none_when_no_snapshot(monkeypatch):
     """Anthropic / dry-run clients without `usage_summary` produce no
     snapshot; the cumulative helper must propagate that as None so the
