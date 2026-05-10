@@ -124,3 +124,39 @@ def test_manifest_omits_inference_fields_when_client_is_none(tmp_path):
     )
     manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
     assert "inference_auth_source" not in manifest
+
+
+def test_manifest_marks_stimulus_bank_inert_for_single_turn_experiments(tmp_path):
+    """Exp 3a is single-turn: the conditioning stimulus is the
+    intensity-stimulus system message, not a bank read. The manifest
+    records this explicitly so a reviewer can't read the inert default
+    `bank_id` as a conditioning input that ran."""
+    from src.cli import _write_pilot_manifest, SINGLE_TURN_STIMULUS_NOTE
+
+    _write_pilot_manifest(
+        pilot_root=tmp_path, args=_args(experiment="exp3a"),
+        conditions=[], bank_id="arithmetic_easy_v1", bank_hash="abc123",
+        started_utc="x", completed_utc="y",
+        per_cond_elapsed={}, per_cond_count={},
+        client=None,
+    )
+    manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
+    assert manifest["stimulus_bank"] == SINGLE_TURN_STIMULUS_NOTE
+
+
+def test_manifest_keeps_stimulus_bank_id_for_multi_turn_experiments(tmp_path):
+    """Exp 1a / 1b / 2 do read a conditioning bank; the manifest still
+    records the bank id and SHA for those experiments."""
+    from src.cli import _write_pilot_manifest
+
+    _write_pilot_manifest(
+        pilot_root=tmp_path, args=_args(experiment="exp1a"),
+        conditions=[], bank_id="arithmetic_easy_v1", bank_hash="abc123",
+        started_utc="x", completed_utc="y",
+        per_cond_elapsed={}, per_cond_count={},
+        client=None,
+    )
+    manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text())
+    assert manifest["stimulus_bank"] == {
+        "id": "arithmetic_easy_v1", "sha256": "abc123",
+    }

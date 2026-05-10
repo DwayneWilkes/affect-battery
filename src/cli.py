@@ -32,6 +32,19 @@ DEFAULT_PILOT_CONDITIONS: tuple[Condition, ...] = (
 DEFAULT_BANK_ID: str = "arithmetic_easy_v1"
 
 
+# Experiments that do not use a conditioning-stimulus bank. For these,
+# the "stimulus" is delivered as a system-message text (see
+# `src/conditioning/prompts.py::INTENSITY_LEVELS`) rather than sourced
+# from a bank of items. The manifest writer records this explicitly so
+# readers don't read the inert default `bank_id` as a conditioning
+# input that ran.
+SINGLE_TURN_EXPERIMENTS: frozenset[str] = frozenset({"exp3a"})
+SINGLE_TURN_STIMULUS_NOTE = (
+    "n/a (single-turn paradigm; the system message carries the "
+    "intensity stimulus from INTENSITY_LEVELS, no bank read)"
+)
+
+
 def _list_available_banks() -> list[str]:
     """List available bank_ids by scanning configs/banks/*.yaml."""
     banks_dir = Path(__file__).resolve().parent.parent / "configs" / "banks"
@@ -295,7 +308,11 @@ def _write_pilot_manifest(
         "seed": args.seed,
         "temperature": getattr(args, "temperature", None),
         "is_base_model": getattr(args, "base_model", False),
-        "stimulus_bank": {"id": bank_id, "sha256": bank_hash},
+        "stimulus_bank": (
+            SINGLE_TURN_STIMULUS_NOTE
+            if args.experiment in SINGLE_TURN_EXPERIMENTS
+            else {"id": bank_id, "sha256": bank_hash}
+        ),
         "transfer_bank": transfer_bank,
         "pre_registration": prereg,
         "power_report": power,
