@@ -5,10 +5,15 @@ classes under the wrapper's `--output-base`:
 - `pass_NN/manifest.yaml` — per-pass model / provider / seed
 - `pass_NN/data/level_M/neutral/<NNNN>.json` — per-cell results
 
+Per-pass `manifest.yaml` is written by the runner at completion, so
+during in-flight runs the source samples one in-flight cell JSON for
+the model and temperature fields rendered in the config panel.
+
 Also exports `passes_panel`, the per-pass progress grid rendered in
 the pilot dashboard's right column."""
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -61,6 +66,35 @@ def _count_cells(pass_dir: Path) -> int:
     )
 
 
+def _aggregate_usage(output_base: Path) -> dict:
+    """Sum per-cell `usage` token counts across every cell JSON in
+    every pass. Returns `{"usage_n_calls", "usage_prompt_tokens",
+    "usage_completion_tokens", "usage_reasoning_tokens"}` with zero
+    values when no cell carries usage. Dashboard's usage panel
+    renders any of these keys as live cost figures."""
+    totals = {
+        "n_calls": 0, "prompt_tokens": 0,
+        "completion_tokens": 0, "reasoning_tokens": 0,
+    }
+    n_with_usage = 0
+    for p in output_base.glob("pass_*/data/level_*/neutral/*.json"):
+        if not _CELL_BASENAME.match(p.name):
+            continue
+        try:
+            data = json.loads(p.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        usage = data.get("usage") if isinstance(data, dict) else None
+        if not isinstance(usage, dict):
+            continue
+        n_with_usage += 1
+        for k in totals:
+            v = usage.get(k)
+            if isinstance(v, (int, float)):
+                totals[k] += int(v)
+    return {f"usage_{k}": v for k, v in totals.items()}, n_with_usage
+
+
 def _load_pass_manifest(pass_dir: Path) -> dict:
     md = pass_dir / "manifest.yaml"
     if not md.is_file():
@@ -69,6 +103,25 @@ def _load_pass_manifest(pass_dir: Path) -> dict:
         return yaml.safe_load(md.read_text()) or {}
     except yaml.YAMLError:
         return {}
+
+
+def _sample_cell(output_base: Path) -> dict:
+    """Return `{model, temperature}` from one in-flight cell JSON.
+
+    Used to populate the config panel before any pass writes its
+    `manifest.yaml` (the runner writes that on completion). Returns
+    `{}` when no readable cell exists yet."""
+    for p in output_base.glob("pass_*/data/level_*/neutral/*.json"):
+        try:
+            data = json.loads(p.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        cfg = data.get("config", {}) if isinstance(data, dict) else {}
+        return {
+            "model": data.get("model") or cfg.get("model_name"),
+            "temperature": cfg.get("temperature"),
+        }
+    return {}
 
 
 def _build_pass_breakdown(
@@ -135,11 +188,13 @@ class PilotSource:
             output_base, n_passes, expected_per_pass,
         )
 
+        sample = _sample_cell(output_base) if not first_pass_md else {}
         params = {
-            "model": first_pass_md.get("model"),
+            "model": first_pass_md.get("model") or sample.get("model"),
             "provider": first_pass_md.get("provider"),
-            "seed": first_pass_md.get("seed"),
-            "temperature": first_pass_md.get("temperature"),
+            "seed": first_pass_md.get("seed") or run_md.get("seed"),
+            "temperature": (first_pass_md.get("temperature")
+                            or sample.get("temperature")),
             "transfer_bank": first_pass_md.get("transfer_bank"),
             "n_passes": n_passes,
             "n_items": n_items,
@@ -147,13 +202,24 @@ class PilotSource:
             "started_utc": run_md.get("started_utc"),
         }
 
+        usage_metrics, n_with_usage = _aggregate_usage(output_base)
+        metrics: dict = {}
+        if n_with_usage > 0:
+            metrics.update(usage_metrics)
+        extras = {"passes": passes}
+        if n_with_usage == 0 and cells_done > 0:
+            # Cells exist but none carry usage (older runner build, or
+            # provider without usage_log). Signal the panel to render
+            # 'not tracked' instead of 'data yet to arrive'.
+            extras["usage_unavailable"] = True
+
         return RunSnapshot(
             title=self._title,
             cells_done=cells_done,
             cells_total=cells_total,
-            metadata={"params": params, "metrics": {}, "stages": {}},
+            metadata={"params": params, "metrics": metrics, "stages": {}},
             cells=[],
-            extras={"passes": passes},
+            extras=extras,
         )
 
 
