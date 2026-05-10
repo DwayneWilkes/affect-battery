@@ -1,31 +1,33 @@
-"""Dashboard source for `scripts/calibration/h3b_calibration.py`-style
-calibration runs. Reads the ExperimentTracker layout at
-`<output>.tracker/bank_<sha>/` via `src.lib.tracker_io`."""
+"""Dashboard source for ExperimentTracker-style calibration runs
+(used by `scripts/calibration/h3b_calibration.py` and any future
+calibrator that writes to `<output>.tracker/bank_<sha>/`)."""
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from src.lib.tracker_io import (  # noqa: E402
+from src.lib.tracker_io import (
     find_bank_subdir,
     load_cache_items,
     load_run_metadata,
     tracker_root_for,
 )
 
-from scripts.dashboards.snapshot import RunSnapshot  # noqa: E402
+from scripts.dashboards.snapshot import RunSnapshot
 
 
 class CalibrationSource:
-    """Constructs a `RunSnapshot` from a calibration tracker root."""
+    """Constructs a `RunSnapshot` from a calibration tracker root.
+
+    `title` is the header rendered at the top of the dashboard;
+    callers customize per-experiment (e.g., 'H3b Calibration',
+    'H4 Calibration')."""
+
+    def __init__(self, title: str = "Calibration") -> None:
+        self._title = title
 
     def load(self, output_path: Path) -> RunSnapshot:
-        title = "H3b Calibration"
+        title = self._title
         if output_path.is_file():
             try:
                 final = json.loads(output_path.read_text())

@@ -9,7 +9,6 @@ rendering from the source layout.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -32,6 +31,10 @@ class RunSnapshot:
             read from here.
         final: Final-state record when the run is complete (e.g., the
             calibration JSON or pilot's summary). None while in flight.
+        config_fields: Optional list of `(label, params_key)` pairs
+            specifying which keys the config panel should render and
+            in what order. None falls back to a generic default that
+            covers both calibration and pilot.
     """
 
     title: str
@@ -41,6 +44,7 @@ class RunSnapshot:
     cells: list[dict] = field(default_factory=list)
     extras: dict = field(default_factory=dict)
     final: dict | None = None
+    config_fields: list[tuple[str, str]] | None = None
 
     @property
     def progress_pct(self) -> float:

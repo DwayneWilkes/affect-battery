@@ -34,26 +34,30 @@ def header_panel(snap: RunSnapshot) -> Panel:
     )
 
 
+_DEFAULT_CONFIG_FIELDS: tuple[tuple[str, str], ...] = (
+    ("model", "model"),
+    ("provider", "provider"),
+    ("seed", "seed"),
+    ("temperature", "temperature"),
+    ("n_candidates", "n_candidates"),
+    ("n_passes", "n_passes"),
+    ("n_items", "n_items"),
+    ("n_levels", "n_levels"),
+    ("n_reps", "n_reps"),
+)
+
+
 def config_panel(snap: RunSnapshot) -> Panel:
-    """Run config: model / provider / seed / temperature / etc.
-    Reads well-known keys from `snap.metadata['params']`."""
+    """Run config: reads `(label, params_key)` pairs from
+    `snap.config_fields` if provided, else falls back to a default
+    list that covers both calibration and pilot."""
     params = snap.metadata.get("params", {})
+    fields = snap.config_fields or _DEFAULT_CONFIG_FIELDS
     table = Table.grid(padding=(0, 1))
     table.add_column(style="dim", width=12)
     table.add_column()
-    interesting = (
-        ("model", "model"),
-        ("provider", "provider"),
-        ("seed", "seed"),
-        ("temperature", "temperature"),
-        ("n_candidates", "n_candidates"),
-        ("n_passes", "n_passes"),
-        ("n_items", "n_items"),
-        ("n_levels", "n_levels"),
-        ("n_reps", "n_reps"),
-    )
     rows = 0
-    for label, key in interesting:
+    for label, key in fields:
         val = params.get(key)
         if val is None:
             continue

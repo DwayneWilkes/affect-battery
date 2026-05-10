@@ -11,17 +11,17 @@ two built-in sources:
   (`<output-base>/pass_NN/data/level_M/neutral/` layout). Path
   argument is the `--output-base` directory.
 
-Mode is auto-detected: a path that is or will be a JSON file dispatches
-to `calibration`; a path that is or will be a directory containing
-`run_manifest.txt` dispatches to `pilot`. `--mode {calibration,pilot}`
-overrides.
+Mode is auto-detected from the path's suffix: `.json` dispatches to
+`calibration`, anything else dispatches to `pilot`. `--mode` overrides.
 
 Usage:
-    python scripts/dashboards/dashboard.py <path> \\
+    python -m scripts.dashboards.dashboard <path> \\
         [--mode {calibration,pilot,auto}] [--refresh 5]
 
-Run from a second terminal while the run is in flight. Exits when the
-source reports `is_done` or on Ctrl-C.
+Invoke via `-m` (not `python scripts/dashboards/dashboard.py`) so the
+package's relative imports resolve and `src.lib.*` is reachable via
+`__init__.py`'s path bootstrap. Run from a second terminal while the
+run is in flight. Exits when the source reports `is_done` or on Ctrl-C.
 """
 from __future__ import annotations
 
@@ -30,21 +30,16 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 
-from scripts.dashboards import panels  # noqa: E402
-from scripts.dashboards.snapshot import RunSnapshot  # noqa: E402
-from scripts.dashboards.sources.calibration import CalibrationSource  # noqa: E402
-from scripts.dashboards.sources.pilot import PilotSource  # noqa: E402
-from scripts.dashboards.sources import pilot_extras  # noqa: E402
+from . import panels
+from .snapshot import RunSnapshot
+from .sources.calibration import CalibrationSource
+from .sources.pilot import PilotSource, passes_panel
 
 MODE_CALIBRATION = "calibration"
 MODE_PILOT = "pilot"
@@ -124,13 +119,16 @@ def render_calibration(snap: RunSnapshot) -> Layout:
 def render_pilot(snap: RunSnapshot) -> Layout:
     layout = Layout()
     _frame_with_left_extras(layout, snap, [])
-    layout["right"].update(pilot_extras.passes_panel(snap))
+    layout["right"].update(passes_panel(snap))
     return layout
 
 
+# Per-experiment dashboards register here. Title is the only piece
+# that hardcodes an experiment ID; future H4 etc. extends by adding a
+# new (mode, source, renderer) tuple, no module structure changes.
 SOURCES = {
-    MODE_CALIBRATION: (CalibrationSource(), render_calibration),
-    MODE_PILOT: (PilotSource(), render_pilot),
+    MODE_CALIBRATION: (CalibrationSource(title="H3b Calibration"), render_calibration),
+    MODE_PILOT: (PilotSource(title="H3b Phase 1A Pilot"), render_pilot),
 }
 
 
