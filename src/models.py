@@ -36,6 +36,23 @@ class UsageRecord:
     reasoning_tokens: int | None = None
 
 
+def capture_call_usage(client, before_idx: int) -> dict | None:
+    """Aggregate `client.usage_log` entries appended since `before_idx`
+    into a per-call usage dict. Used by experiment runners to attach
+    token counts to each result. Returns None when the client doesn't
+    expose `usage_log` (e.g., DryRunClient, AnthropicClient)."""
+    log = getattr(client, "usage_log", None)
+    if log is None or len(log) <= before_idx:
+        return None
+    new = log[before_idx:]
+    return {
+        "n_calls": len(new),
+        "prompt_tokens": sum(r.prompt_tokens for r in new),
+        "completion_tokens": sum(r.completion_tokens for r in new),
+        "reasoning_tokens": sum((r.reasoning_tokens or 0) for r in new),
+    }
+
+
 class NonRetryableAPIError(Exception):
     """Raised when the API returns a status that must halt the batch
     rather than be retried (auth, schema, missing resource)."""

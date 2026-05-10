@@ -23,6 +23,7 @@ from pathlib import Path
 from src.banks.loader import load_bank_items
 from src.banks.sampling import sample_items, sample_items_within_subjects
 from src.conditioning.prompts import INTENSITY_LEVELS
+from src.models import capture_call_usage
 from src.runner import Exp3aBody, ExperimentType, RunResult, save_result
 from src.scoring.accuracy import extract_numeric_answer
 from src.util import canonical_json_bytes
@@ -116,11 +117,13 @@ async def run_exp3a(
                 {"role": "system", "content": intensity_text},
                 {"role": "user", "content": item["question"]},
             ]
+            usage_before = len(getattr(client, "usage_log", ()))
             start = time.time()
             response = await client.complete(
                 messages, temperature=config.temperature, max_tokens=512,
             )
             end = time.time()
+            usage = capture_call_usage(client, usage_before)
 
             expected = str(item["expected"])
             binary = _score(response, expected)
@@ -133,6 +136,7 @@ async def run_exp3a(
                 condition=config.condition.value,
                 start_time=start,
                 end_time=end,
+                usage=usage,
                 body=Exp3aBody(
                     intensity_level=level,
                     model_response=response,
