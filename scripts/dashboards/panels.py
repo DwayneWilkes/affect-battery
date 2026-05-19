@@ -17,12 +17,13 @@ from scripts.dashboards.snapshot import RunSnapshot
 
 
 def _fmt_dur(seconds: float) -> str:
-    """Human-readable duration string. Sub-second values render as
-    decimal seconds; `humanize.precisedelta` rounds anything below
-    1s to '0 seconds', so the threshold short-circuits there."""
-    if seconds < 1.0:
-        return f"{seconds:.2f}s"
-    return humanize.precisedelta(timedelta(seconds=seconds), minimum_unit="seconds")
+    """Human-readable duration string at second resolution. Values
+    that round to zero render as '<1 second' rather than '0 seconds'
+    so the panel never claims a stage took no time at all."""
+    s = int(round(seconds))
+    if s <= 0:
+        return "<1 second"
+    return humanize.precisedelta(timedelta(seconds=s), minimum_unit="seconds")
 
 
 def header_panel(snap: RunSnapshot) -> Panel:
@@ -70,7 +71,9 @@ def config_panel(snap: RunSnapshot) -> Panel:
 
 
 def progress_panel(snap: RunSnapshot) -> Panel:
-    """Cells done / cells total + percentage bar."""
+    """Cells done / total + percentage bar, plus elapsed wall-clock
+    and ETA when `started_utc` is in `metadata.params`. ETA
+    extrapolates linearly from the cell-rate over the run so far."""
     pct = snap.progress_pct
     bar = ProgressBar(total=max(snap.cells_total, 1), completed=snap.cells_done,
                       width=40)
@@ -81,17 +84,51 @@ def progress_panel(snap: RunSnapshot) -> Panel:
         f"[bold]{snap.cells_done:,}[/bold] / {snap.cells_total:,} cells "
         f"([cyan]{pct:.1f}%[/cyan])"
     ))
+    started = snap.metadata.get("params", {}).get("started_utc")
+    timing = _timing_line(started, snap.cells_done, snap.cells_total)
+    if timing:
+        body.add_row(Text.from_markup(timing))
     return Panel(body, title="progress", border_style="green")
+
+
+def _timing_line(started_iso, done: int, total: int) -> str | None:
+    """Format an `elapsed · ETA` line for the progress panel. Returns
+    None when `started_iso` is missing or unparseable."""
+    if not started_iso:
+        return None
+    try:
+        started_dt = datetime.fromisoformat(str(started_iso).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if started_dt.tzinfo is None:
+        started_dt = started_dt.replace(tzinfo=timezone.utc)
+    elapsed_s = max((datetime.now(timezone.utc) - started_dt).total_seconds(), 0.0)
+    line = f"elapsed [bold]{_fmt_dur(elapsed_s)}[/bold]"
+    if done > 0 and total > done and elapsed_s > 0:
+        rate = done / elapsed_s
+        if rate > 0:
+            remaining_s = (total - done) / rate
+            line += f" · ETA [bold]{_fmt_dur(remaining_s)}[/bold]"
+    return line
 
 
 def usage_panel(snap: RunSnapshot) -> Panel:
     """API usage / cost from the `usage_*` keys in
-    `snap.metadata['metrics']`. Renders 'no data yet' when those
-    keys are absent."""
+    `snap.metadata['metrics']`. Sources that cannot surface usage set
+    `extras["usage_unavailable"]` so the panel renders an explicit
+    'not tracked' message; absent metrics without the flag render
+    'no data yet' for early-startup states that will populate."""
     metrics = snap.metadata.get("metrics", {})
     n_calls = metrics.get("usage_n_calls")
     if n_calls is None:
-        return Panel(Text.from_markup("[dim](no usage data yet)[/dim]"),
+        if snap.extras.get("usage_unavailable"):
+            msg = (
+                "[dim]usage not tracked for this run mode\n"
+                "(see platform.openai.com/usage for live spend)[/dim]"
+            )
+        else:
+            msg = "[dim](no usage data yet)[/dim]"
+        return Panel(Text.from_markup(msg),
                      title="usage", border_style="magenta")
     table = Table.grid(padding=(0, 1))
     table.add_column(style="dim", width=18)

@@ -108,6 +108,59 @@ def test_render_pilot_renders_config_progress_and_passes(tmp_path: Path):
     assert "waiting" in out, "waiting pass status missing"
 
 
+def test_progress_panel_renders_elapsed_and_eta():
+    """When `metadata.params.started_utc` is set and the run has
+    written cells, the progress panel surfaces both elapsed
+    wall-clock and a projected ETA."""
+    from datetime import datetime, timedelta, timezone
+    from scripts.dashboards.panels import progress_panel
+    from scripts.dashboards.snapshot import RunSnapshot
+    started = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    snap = RunSnapshot(
+        title="test", cells_done=100, cells_total=400,
+        metadata={"params": {"started_utc": started}, "metrics": {},
+                  "stages": {}},
+    )
+    out = _capture(progress_panel(snap))
+    assert "elapsed" in out
+    assert "ETA" in out
+
+
+def test_progress_panel_omits_eta_when_no_cells_yet():
+    """Before the first cell is written, ETA cannot be projected.
+    Elapsed alone renders so the operator can see how long they've
+    been waiting."""
+    from datetime import datetime, timedelta, timezone
+    from scripts.dashboards.panels import progress_panel
+    from scripts.dashboards.snapshot import RunSnapshot
+    started = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+    snap = RunSnapshot(
+        title="test", cells_done=0, cells_total=400,
+        metadata={"params": {"started_utc": started}, "metrics": {},
+                  "stages": {}},
+    )
+    out = _capture(progress_panel(snap))
+    assert "elapsed" in out
+    assert "ETA" not in out
+
+
+def test_usage_panel_renders_unavailable_when_flagged():
+    """Pilot mode signals via `extras["usage_unavailable"]` that
+    token tracking isn't possible from the cell schema. The panel
+    points operators to the OpenAI dashboard instead of implying
+    usage data will arrive."""
+    from scripts.dashboards.panels import usage_panel
+    from scripts.dashboards.snapshot import RunSnapshot
+    snap = RunSnapshot(
+        title="test", cells_done=0, cells_total=10,
+        metadata={"params": {}, "metrics": {}, "stages": {}},
+        extras={"usage_unavailable": True},
+    )
+    out = _capture(usage_panel(snap))
+    assert "not tracked" in out
+    assert "platform.openai.com" in out
+
+
 def test_render_calibration_completion_shows_done_panel(tmp_path: Path):
     """Final-state JSON makes the source's `final` non-None, and the
     renderer dispatches to the COMPLETE branch with the headline

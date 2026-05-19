@@ -139,3 +139,64 @@ def test_pilot_source_carries_run_metadata(tmp_path: Path):
     assert md["params"]["n_passes"] == 2
     assert md["params"]["n_items"] == 3
     assert md["params"]["n_levels"] == 2
+
+
+def test_pilot_source_samples_cell_when_no_pass_complete(tmp_path: Path):
+    """Per-pass `manifest.yaml` is written by the runner only after a
+    pass completes. While every pass is still in flight, the source
+    falls back to one of the in-flight cell JSONs to populate model
+    and temperature for the config panel."""
+    _write_run_manifest(tmp_path, n_passes=3, n_items=4, n_levels=2)
+    pass_dir = tmp_path / "pass_01"
+    cell_dir = pass_dir / "data" / "level_1" / "neutral"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "0001.json").write_text(json.dumps({
+        "config": {"model_name": "gpt-5.4-nano", "temperature": 0.7,
+                   "experiment_type": "exp3a"},
+        "model": "gpt-5.4-nano",
+        "experiment_type": "exp3a",
+    }))
+    snap = PilotSource().load(tmp_path)
+    params = snap.metadata["params"]
+    assert params["model"] == "gpt-5.4-nano"
+    assert params["temperature"] == 0.7
+    assert params["seed"] == 42  # from run_manifest.txt
+    assert params["n_passes"] == 3
+
+
+def test_pilot_source_marks_usage_unavailable_for_legacy_cells(tmp_path: Path):
+    """When cells exist but none carry a `usage` field (older runner
+    build or a provider without `usage_log`), the source flags
+    `usage_unavailable` so the panel renders a clear 'not tracked'
+    message rather than 'data yet to arrive'."""
+    _write_run_manifest(tmp_path, n_passes=2, n_items=3, n_levels=2)
+    _write_pass(tmp_path, 1, n_items=3, n_levels=2)  # cells with no usage
+    snap = PilotSource().load(tmp_path)
+    assert snap.extras.get("usage_unavailable") is True
+
+
+def test_pilot_source_aggregates_per_cell_usage(tmp_path: Path):
+    """When cells carry a `usage` dict, the source sums each token
+    field across every cell into `metadata.metrics.usage_*`. The
+    dashboard's usage panel renders these as live cost figures."""
+    _write_run_manifest(tmp_path, n_passes=1, n_items=2, n_levels=1)
+    pass_dir = tmp_path / "pass_01"
+    cell_dir = pass_dir / "data" / "level_1" / "neutral"
+    cell_dir.mkdir(parents=True)
+    (cell_dir / "0001.json").write_text(json.dumps({
+        "config": {"model_name": "gpt-x"}, "model": "gpt-x",
+        "usage": {"n_calls": 1, "prompt_tokens": 100,
+                  "completion_tokens": 50, "reasoning_tokens": 10},
+    }))
+    (cell_dir / "0002.json").write_text(json.dumps({
+        "config": {"model_name": "gpt-x"}, "model": "gpt-x",
+        "usage": {"n_calls": 1, "prompt_tokens": 80,
+                  "completion_tokens": 40, "reasoning_tokens": 5},
+    }))
+    snap = PilotSource().load(tmp_path)
+    metrics = snap.metadata["metrics"]
+    assert metrics["usage_n_calls"] == 2
+    assert metrics["usage_prompt_tokens"] == 180
+    assert metrics["usage_completion_tokens"] == 90
+    assert metrics["usage_reasoning_tokens"] == 15
+    assert "usage_unavailable" not in snap.extras
