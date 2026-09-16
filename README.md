@@ -1,6 +1,6 @@
 # Affect Battery
 
-Eval harness for the Affect Battery study: do AI emotional states follow biological patterns?
+Eval harness for the Affect Battery: does affective context shift LLM task behavior?
 
 **Project:** Sentient Futures Project Incubator, P1
 **Lead:** Dwayne Wilkes | **Mentor:** Julia Bossmann
@@ -10,23 +10,12 @@ Eval harness for the Affect Battery study: do AI emotional states follow biologi
 
 ```bash
 uv sync
-uv run pytest                                       # ~800 tests, all should pass
+uv run pytest
 uv run affect-battery pilot --dry-run               # dry-run smoke test, no GPU needed
 uv run affect-battery analyze --results-dir results/pilot --model dry-run
 ```
 
 See **[docs/RUNNING_EXPERIMENTS.md](docs/RUNNING_EXPERIMENTS.md)** for a complete walkthrough: per-experiment runs, runner-config YAML schemas, intensity-pilot pre-registration, the analyze pipeline, the multi-experiment orchestrator, and the interactive results dashboard.
-
-For real experiments (requires vLLM on RunPod):
-
-```bash
-uv run affect-battery run \
-    --experiment exp1a \
-    --model meta-llama/Meta-Llama-3-8B-Instruct \
-    --condition strong_negative \
-    --num-runs 50 \
-    --base-url http://<endpoint>/v1
-```
 
 ## Project Structure
 
@@ -61,29 +50,30 @@ src/
   prereg/
     finalize.py            # v0 → v1 SHA + amendment_chain
 configs/
-  banks/                   # Per-bank YAMLs (arithmetic_easy_v1, logiqa_v1)
+  banks/                   # Per-bank YAMLs; see the run guide
   hedging_codebook.yaml    # 5-category hedging patterns + paper-flag enforcement
   osf_prereg_v1.yaml       # Pre-registration: hypotheses, MDEs, stopping rules
 docs/
   RUNNING_EXPERIMENTS.md   # End-to-end run/configure/analyze guide
   preregistrations/        # Pre-registration documents (canonical methodology)
-tests/                     # ~800 tests
-results/                   # Output (gitignored)
+tests/                     # pytest suite
+results/                   # Run output (gitignored) plus a few tracked artifacts
 ```
 
 ## Experiments
 
-See `The_Affect_Battery.pdf` (proposal) for the full scientific design. In brief:
+See `configs/osf_prereg_v1.yaml` and [docs/preregistrations/](docs/preregistrations/) for the design as preregistered. Section marks like §3.2.1 point to the project proposal.
 
-| Experiment | Hypothesis | What it tests |
+Two studies have preregistered data collection in this repository.
+
+| Study | Runner | Preregistration |
 |---|---|---|
-| 1a | H1 (Transfer) | Does conditioning on math affect performance on unrelated tasks? |
-| 1b | H1b (Falsification) | Do effects vanish in a new conversation? (Expected: yes) |
-| 2 | H2 (Persistence) | How many neutral turns until performance returns to baseline? |
-| 3a | H3a (Arousal-performance) | Is the intensity-performance relationship nonlinear (inverted-U)? |
-| 3b | H3b (Cognitive scope) | Does positive conditioning broaden output diversity? |
-| 3c | H3c (Conservative shift) | Does negative conditioning increase hedging? |
-| H4 | Cross-experiment | Does base-vs-instruct asymmetry differ across model variants? |
+| H3a: is the intensity-performance relationship nonlinear? | `exp3a` | `docs/preregistrations/h3a_2026-04-27.md` and amendments 001 to 003 |
+| H3b single-turn arm: a calibrated replication of H3a | `exp3a` with `configs/banks/h3b_calibrated_v2.yaml` | `docs/preregistrations/h3b_2026-05-07.md` |
+
+The identifier H3b names two different experiments here. `configs/osf_prereg_v1.yaml` §3.4.2 uses it for cognitive scope, which the `exp3b` runner implements and which has no preregistered data collection. `docs/preregistrations/h3b_2026-05-07.md` uses it for the single-turn arm above. Any H3b result attributed to this repository is the second. That arm's report is pending public release.
+
+Runners also exist for H1 transfer (`exp1a`), H1b falsification (`exp1b`), H2 persistence (`exp2`), H3b cognitive scope (`exp3b`), and H3c conservative shift (`exp3c`). They have been exercised only as pilots, at 30 runs per condition on a single model, with the pre-registration and power gates bypassed. Treat those outputs as smoke tests, not findings. H4, the base-versus-instruct comparison, is analysis only (`src/analysis/h4.py`) and has no preregistered inputs.
 
 ## Conditioning Design
 

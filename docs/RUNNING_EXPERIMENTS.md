@@ -148,7 +148,7 @@ UX controls at the top:
 Verify the harness end-to-end with a fake model:
 
 ```bash
-uv run pytest                                                           # ~840 tests pass
+uv run pytest
 uv run affect-battery pilot --dry-run                                   # 5 runs × 7 conditions, results/pilot/
 uv run affect-battery analyze --results-dir results/pilot --model dry-run
 ```
@@ -158,6 +158,7 @@ The `analyze` step always produces `results/pilot/AGGREGATE_REPORT.md`. Per-expe
 ## Real runs (per experiment)
 
 Common flags:
+- The per-experiment examples below omit the pre-registration and power-report flags, which the runtime gate requires; see [Pre-registration](#pre-registration).
 - `--model <name>` (paper §3.1 model, or `gpt-5` / `claude-opus-4-7` etc. when using API providers)
 - `--provider {vllm,openai,anthropic}` (default: `vllm`). `openai` and `anthropic` route through their official SDKs; set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in env.
 - `--base-url http://<endpoint>/v1` (only relevant for `--provider vllm`)
@@ -263,23 +264,26 @@ emit_seed(
     result,
     axis_id="primary_valence_axis",
     n_levels=7,
-    pilot_date="2026-04-25",
-    output_path="configs/intensity_pilot_pass_2026-04-25.json",
+    pilot_date="2026-04-27",
+    output_path="results/pilots/intensity/2026-04-27.json",
 )
 ```
+
+The CLI form is `scripts/probes/run_intensity_pilot.py`, whose `--output` default is the tracked seed path, so pass an explicit `--output` under `results/`; `configs/intensity_pilot_seed.json` is the signed pass the runner validates, and promoting a new pilot output to that path is a deliberate copy and commit.
+
+The tracked seed `configs/intensity_pilot_seed.json` is a single-rater pilot (`solo_rater: true`, `irr_validated: false`, rater_PI, 2026-04-27), accepted for H3a by `docs/preregistrations/h3a_2026-04-27.md`; the multi-rater pilot above is the OSF v1 design gate (`krippendorff-pilot-gate`), not the path the reported runs took.
 
 Then `--runner-config` schema (`configs/exp3a_runner.yaml`):
 
 ```yaml
 intensity_levels: [1, 2, 3, 4, 5, 6, 7]
-pilot_seed_path: configs/intensity_pilot_pass_2026-04-25.json
+pilot_seed_path: configs/intensity_pilot_seed.json
 ```
 
 ```bash
 uv run affect-battery run \
     --experiment exp3a \
     --model meta-llama/Meta-Llama-3-8B-Instruct \
-    --condition strong_positive \
     --num-runs 50 \
     --base-url http://<endpoint>/v1 \
     --output-dir results/exp3a \
@@ -288,7 +292,9 @@ uv run affect-battery run \
 
 Per-level subdirs are written under `results/exp3a/level_1/`, `level_2/`, etc.
 
-### Exp 3b: cognitive scope (H3b)
+The single-turn calibrated H3b arm runs through the locked invocation in `docs/preregistrations/h3b_2026-05-07.md`. The wrapper `scripts/pilots/run_h3b_phase1a.py` runs it for the twenty-pass corpus.
+
+### Exp 3b: cognitive scope (H3b, configs/osf_prereg_v1.yaml §3.4.2)
 
 `--runner-config` schema (`configs/exp3b_runner.yaml`):
 
@@ -378,14 +384,13 @@ The runner accepts **two equivalent pre-registration vehicles**. Pick whichever 
 
 ### Option A: GitHub commit (fast, no third-party dependency)
 
-The methodology lives in the repo: `docs/preregistrations/`, `configs/osf_prereg_v1.yaml`, `scripts/`, and the runners + analyzers. A signed Git tag at a specific commit gives timestamping and immutability comparable to OSF, and reviewers can `git show <tag>` to see exactly what was pre-registered.
+The methodology lives in the repo: `docs/preregistrations/`, `configs/osf_prereg_v1.yaml`, `scripts/`, and the runners + analyzers. An annotated Git tag at a specific commit marks the preregistered revision, and reviewers can `git show <tag>` to see exactly what was pre-registered; no signing key is configured.
 
 ```bash
 # At a clean commit on a branch that's been pushed to origin:
 python -m scripts.create_prereg_tag \
     --tag prereg-affect-battery-2026-04-26 \
-    --message "Affect Battery study, full pre-registration" \
-    --sign
+    --message "Affect Battery study, full pre-registration"
 
 # Prints the --pre-registration-github-commit flag, e.g.:
 #   --pre-registration-github-commit DwayneWilkes/affect-battery@1ed7b43...
@@ -493,11 +498,11 @@ results/
 └── AGGREGATE_REPORT.md
 ```
 
-The whole `results/` tree is gitignored by default. Reports are markdown; commit them outside the worktree if you need versioning.
+`results/` is gitignored by default, apart from a few tracked artifacts. Reports are markdown; commit them outside the worktree if you need versioning.
 
 ## Common gotchas
 
-- **Exp 3a refuses to start with `pilot-seed SHA mismatch`**: someone edited the seed JSON after `emit_seed`. Re-run the pilot (or restore the original) and re-emit; the SHA must match canonicalized JSON exactly.
+- **Exp 3a refuses to start with `pilot-seed SHA mismatch`**: the tracked seed was edited after signing; restore `configs/intensity_pilot_seed.json` from git; a new pilot pass is promoted by copy and commit, not by writing in place.
 - **Manipulation check returns `UNAVAILABLE`**: the model has no `no_conditioning` runs. Schedule a no_conditioning condition alongside the treatment arms; UNAVAILABLE is a measurement gap, NOT a fail.
 - **Candidate-status bank excluded from primary aggregation**: a bank with `status: candidate` is excluded by `src/conditioning/banks.py::is_primary_analysis_eligible` until its alignment review records `verdict: pass`. Promote a published-benchmark bank by re-ingesting (`scripts/ingest_logic_bank.py`, etc.) which sets `status: active` automatically.
 - **`affect-battery analyze` produces empty per-experiment tables**: the corpus dir exists but no result JSONs match the schema. Check `<pilot_root>/data/<exp>/<condition>/*.json` parses and has `experiment_type`, `condition`, and `body` fields. Legacy flat layouts at `<pilot_root>/<exp>/*.json` still work via backward-compat fallback in `_resolve_corpus_dir`.
