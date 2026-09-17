@@ -64,25 +64,16 @@ from src.models import (  # noqa: E402
     ModelClient,
     OpenAIClient,
 )
-from src.scoring.accuracy import extract_numeric_answer  # noqa: E402
+from src.scoring.accuracy import score_arithmetic_binary  # noqa: E402
 
 
 def score_response(response: str, expected: str) -> int:
     """Score a single GSM8K response. Returns 1 on match, 0 otherwise.
 
-    Uses extract_numeric_answer to pull the final number from the model's
-    response (which often includes chain-of-reasoning). The expected value
-    is converted to float; integer answers like "31" and float answers
-    like "2796088.0" both compare cleanly.
+    Integer answers like "31" and float answers like "2796088.0" both
+    compare cleanly because the bank's expected is parsed as a float.
     """
-    extracted = extract_numeric_answer(response)
-    if extracted is None:
-        return 0
-    try:
-        target = float(expected)
-    except (TypeError, ValueError):
-        return 0
-    return int(abs(extracted - target) < 0.01)
+    return score_arithmetic_binary(response, expected)
 
 
 def make_client(provider: str, model: str, dry_run: bool) -> ModelClient:

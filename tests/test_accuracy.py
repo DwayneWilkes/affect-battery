@@ -7,7 +7,13 @@ Spec priority (Requirement: Numeric answer extraction):
     4. Last number in response (fallback)
 """
 
-from src.scoring.accuracy import extract_numeric_answer, score_arithmetic, score_factual_qa
+from src.scoring.accuracy import (
+    ARITHMETIC_TOLERANCE,
+    extract_numeric_answer,
+    score_arithmetic,
+    score_arithmetic_binary,
+    score_factual_qa,
+)
 
 
 class TestExtractNumericAnswer:
@@ -132,6 +138,144 @@ class TestExtractionPriority:
         ) == 42.0
 
 
+class TestLatexDigitGroupSeparators:
+    """LaTeX digit-group separators must not truncate the answer.
+
+    gpt-5.4-nano writes GSM-Hard answers in display math and groups
+    digits with the TeX idioms `{,}` and the thin-space macros
+    (`\\,` `\\!` `\\;` `\\:`). Every response quoted here is taken from a
+    stored result in results/h3b_2026-05-07 or
+    results/h3a_2026-05-10_n122_20reps except where noted.
+    """
+
+    def test_brace_separators_inside_boxed(self):
+        """h3b_2026-05-07, expected_answer 39652742.0."""
+        response = r"**There are \(\boxed{39{,}652{,}742}\) pink gumballs.**"
+        assert extract_numeric_answer(response) == 39652742.0
+
+    def test_brace_separators_outside_boxed(self):
+        """h3b_2026-05-07, expected_answer 22463288.0."""
+        response = r"**Answer: \(22{,}463{,}288\) crabs.**"
+        assert extract_numeric_answer(response) == 22463288.0
+
+    def test_brace_separators_bare_token(self):
+        """A bare grouped number reaching the last-number fallback."""
+        assert extract_numeric_answer(r"22{,}463{,}288") == 22463288.0
+
+    def test_brace_separators_after_equals_in_display_math(self):
+        """h3b_2026-05-07, expected_answer 22463288.0."""
+        response = (
+            "Total for all three:\n"
+            r"\[" "\n"
+            r"7{,}487{,}762 + 7{,}487{,}758 + 7{,}487{,}768 = 22{,}463{,}288" "\n"
+            r"\]"
+        )
+        assert extract_numeric_answer(response) == 22463288.0
+
+    def test_thin_space_comma_separator(self):
+        """h3b_2026-05-07, expected_answer 40556910.0."""
+        response = (
+            r"\[" "\n"
+            r"\text{Father} = 5 \times 8\,111\,382 = 40\,556\,910" "\n"
+            r"\]"
+        )
+        assert extract_numeric_answer(response) == 40556910.0
+
+    def test_thin_space_negative_kern_separator(self):
+        """h3a_2026-05-10_n122_20reps: a `\\!` kern splits the digits."""
+        response = r"\(870373 \cdot 75 = 65{,}278{,}0\!75\)"
+        assert extract_numeric_answer(response) == 65278075.0
+
+    def test_thin_space_medium_separator(self):
+        """`\\;` is the same TeX spacing family; not seen in these corpora."""
+        assert extract_numeric_answer(r"The answer is 8\;111\;382") == 8111382.0
+
+    def test_thin_space_thick_separator(self):
+        """`\\:` is the same TeX spacing family; not seen in these corpora."""
+        assert extract_numeric_answer(r"The answer is 8\:111\:382") == 8111382.0
+
+
+class TestCurrencyMarkerAfterEquals:
+    """A currency marker between `=` and the number must not hide it."""
+
+    def test_escaped_dollar_after_equals_in_display_math(self):
+        assert extract_numeric_answer(r"\[6 + 5 + 3 = \$14\]") == 14.0
+
+    def test_escaped_dollar_after_equals_real_response(self):
+        """h3b_2026-05-07, expected_answer 9731083.0."""
+        response = (
+            "Total:\n"
+            r"\[" "\n"
+            r"\$24 + \$9{,}731{,}053 + \$6 = \$9{,}731{,}083" "\n"
+            r"\]"
+        )
+        assert extract_numeric_answer(response) == 9731083.0
+
+    def test_plain_dollar_after_equals_in_bold(self):
+        assert extract_numeric_answer("= **$300**") == 300.0
+
+    def test_plain_dollar_after_equals_outside_math(self):
+        """h3b_2026-05-07, expected_answer 5631305.0.
+
+        No display math anywhere in this response; every `=` is followed
+        by a bare `$`, so the equals tier finds nothing and the fallback
+        lands on an intermediate operand.
+        """
+        response = (
+            "He received from the first bank: **$4000**.  \n"
+            "From the second bank: **twice as much as the first**, "
+            "so **$2 × 4000 = $8000**.\n\n"
+            "Total added to his capital: **$4000 + $8000 = $12000**.  \n\n"
+            "Initial capital: **$5,619,305**  \n"
+            "New capital: **$5,619,305 + $12,000 = $5,631,305**.\n\n"
+            "✅ **He has $5,631,305 in capital now.**"
+        )
+        assert extract_numeric_answer(response) == 5631305.0
+
+
+    def test_spaced_dollar_is_a_math_delimiter_not_currency(self):
+        """h3b_qwen3_2026-07-22, expected_answer -22868213.0.
+
+        Qwen wraps inline math in `$ ... $`. A `$` separated from its
+        digits by a space is a delimiter, never a currency marker, so
+        stripping it would expose an operand ("Total = $ 22 + ...") to
+        the explicit-marker tier and hide the final answer.
+        """
+        response = (
+            "### Step 3: Total cost of cheese  \n"
+            "- Total = $ 22 + 22,868,241 = 22,868,263 $ dollars\n\n"
+            "### Step 4: Subtract total cost from initial amount  \n"
+            "- Amor starts with $50  \n"
+            "- Money left = $ 50 - 22,868,263 = -22,868,213 $ dollars\n\n"
+            "### Final Answer:\n"
+            "Amor will have **–22,868,213** left."
+        )
+        assert extract_numeric_answer(response) == -22868213.0
+
+
+class TestNoNumberGuard:
+    def test_marker_with_no_number_returns_none(self):
+        """A marker followed by a stray comma must return None, not raise.
+
+        The number token has to start with a digit; otherwise a bare
+        comma reaches float() and raises ValueError.
+        """
+        assert extract_numeric_answer("Total = , see the table above.") is None
+
+    def test_prose_with_no_digits_returns_none(self):
+        assert extract_numeric_answer("I could not work this one out.") is None
+
+
+class TestSeparatorRegressionPins:
+    """Pins for the forms that already worked before the LaTeX fix."""
+
+    def test_ascii_comma_grouping(self):
+        assert extract_numeric_answer("The answer is 22,463,288") == 22463288.0
+
+    def test_plain_boxed(self):
+        assert extract_numeric_answer(r"The answer is \boxed{42}") == 42.0
+
+
 class TestScoreArithmetic:
     def test_correct(self):
         assert score_arithmetic("The answer is 42.", 42.0) is True
@@ -144,6 +288,41 @@ class TestScoreArithmetic:
 
     def test_close_float(self):
         assert score_arithmetic("The answer is 42.001", 42.0) is True
+
+
+class TestScoreArithmeticBinary:
+    """Shared binary scorer: the runner and the analysis scripts all need
+    a str-valued `expected` scored at the same tolerance."""
+
+    def test_tolerance_is_one_hundredth(self):
+        assert ARITHMETIC_TOLERANCE == 0.01
+
+    def test_correct_returns_one(self):
+        assert score_arithmetic_binary("The answer is 42.", "42") == 1
+
+    def test_incorrect_returns_zero(self):
+        assert score_arithmetic_binary("The answer is 43.", "42") == 0
+
+    def test_no_number_returns_zero(self):
+        assert score_arithmetic_binary("I don't know", "42") == 0
+
+    def test_float_expected_string(self):
+        assert score_arithmetic_binary("The answer is 2796088", "2796088.0") == 1
+
+    def test_unparseable_expected_returns_zero(self):
+        assert score_arithmetic_binary("The answer is 42.", "not a number") == 0
+
+    def test_none_expected_returns_zero(self):
+        assert score_arithmetic_binary("The answer is 42.", None) == 0
+
+    def test_inside_tolerance(self):
+        assert score_arithmetic_binary("The answer is 42.005", "42") == 1
+
+    def test_outside_tolerance(self):
+        assert score_arithmetic_binary("The answer is 42.5", "42") == 0
+
+    def test_accepts_numeric_expected(self):
+        assert score_arithmetic_binary("The answer is 42.", 42.0) == 1
 
 
 class TestScoreFactualQA:

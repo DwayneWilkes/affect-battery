@@ -24,7 +24,7 @@ from src.banks.loader import load_bank_items
 from src.banks.sampling import sample_items, sample_items_within_subjects
 from src.conditioning.prompts import INTENSITY_LEVELS
 from src.runner import Exp3aBody, ExperimentType, RunResult, save_result
-from src.scoring.accuracy import extract_numeric_answer
+from src.scoring.accuracy import score_arithmetic_binary
 from src.util import canonical_json_bytes
 
 
@@ -43,15 +43,8 @@ def _validate_pilot_seed(seed_path: Path) -> dict:
 
 
 def _score(response: str, expected: str) -> int:
-    """Binary correctness with tolerance 0.01 against the bank's expected."""
-    extracted = extract_numeric_answer(response)
-    if extracted is None:
-        return 0
-    try:
-        target = float(expected)
-    except (TypeError, ValueError):
-        return 0
-    return int(abs(extracted - target) < 0.01)
+    """Binary correctness at ARITHMETIC_TOLERANCE against the bank's expected."""
+    return score_arithmetic_binary(response, expected)
 
 
 async def run_exp3a(

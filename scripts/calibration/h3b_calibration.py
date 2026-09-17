@@ -65,7 +65,7 @@ sys.path.insert(0, str(AFFECT_BATTERY_ROOT))
 
 from src.banks.loader import load_bank_items  # noqa: E402
 from src.models import OpenAIClient, AnthropicClient, DryRunClient, NonRetryableAPIError  # noqa: E402
-from src.scoring.accuracy import extract_numeric_answer  # noqa: E402
+from src.scoring.accuracy import score_arithmetic_binary  # noqa: E402
 from src.lib.tracker_io import load_run_metadata  # noqa: E402
 from src.lib.tracking import ExperimentTracker  # noqa: E402
 
@@ -110,15 +110,7 @@ def make_client(provider: str, model: str, dry_run: bool):
 async def run_cell(client, question: str, expected: str):
     messages = [{"role": "user", "content": question}]
     response = await client.complete(messages, temperature=0.7, max_tokens=512)
-    extracted = extract_numeric_answer(response)
-    correct = 0
-    if extracted is not None:
-        try:
-            target = float(expected)
-            correct = int(abs(extracted - target) < 0.01)
-        except (TypeError, ValueError):
-            pass
-    return correct
+    return score_arithmetic_binary(response, expected)
 
 
 async def run_one_candidate(client, item, n_reps: int, sem: asyncio.Semaphore):

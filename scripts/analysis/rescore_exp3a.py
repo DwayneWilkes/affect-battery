@@ -24,18 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.scoring.accuracy import extract_numeric_answer  # noqa: E402
-
-
-def _score(response: str, expected: str) -> int:
-    extracted = extract_numeric_answer(response)
-    if extracted is None:
-        return 0
-    try:
-        target = float(expected)
-    except (TypeError, ValueError):
-        return 0
-    return int(abs(extracted - target) < 0.01)
+from src.scoring.accuracy import score_arithmetic_binary as _score  # noqa: E402
 
 
 def main() -> int:
