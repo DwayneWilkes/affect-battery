@@ -13,27 +13,48 @@ import pytest
 
 
 class TestBootstrapRatioP:
-    def test_single_value_ratio_above_null_low_p(self):
-        """When the observed ratio is meaningfully above 1.0 with no
-        variance to bootstrap, p should be close to 0."""
+    def test_single_element_numerator_raises(self):
+        """Resampling a one-element list is the identity, so every
+        resample reproduces the observed ratio and p collapses to 0.0 or
+        1.0 regardless of the data. Refuse the input instead."""
+        from src.analysis.stats.bootstrap import bootstrap_ratio_p
+
+        with pytest.raises(ValueError, match="at least 2"):
+            bootstrap_ratio_p(
+                numerator=[3.0],
+                denominator=[1.0, 1.1],
+                n_resamples=200, seed=0,
+            )
+
+    def test_single_element_denominator_raises(self):
+        from src.analysis.stats.bootstrap import bootstrap_ratio_p
+
+        with pytest.raises(ValueError, match="at least 2"):
+            bootstrap_ratio_p(
+                numerator=[3.0, 2.8],
+                denominator=[1.0],
+                n_resamples=200, seed=0,
+            )
+
+    def test_both_single_element_raises(self):
+        from src.analysis.stats.bootstrap import bootstrap_ratio_p
+
+        with pytest.raises(ValueError, match="at least 2"):
+            bootstrap_ratio_p(
+                numerator=[0.5],
+                denominator=[1.0],
+                n_resamples=200, seed=0,
+            )
+
+    def test_two_elements_is_accepted(self):
         from src.analysis.stats.bootstrap import bootstrap_ratio_p
 
         p = bootstrap_ratio_p(
-            numerator=[3.0],
-            denominator=[1.0],
+            numerator=[3.0, 2.8],
+            denominator=[1.0, 1.1],
             n_resamples=200, seed=0,
         )
-        assert p == 0.0
-
-    def test_single_value_ratio_below_null_high_p(self):
-        from src.analysis.stats.bootstrap import bootstrap_ratio_p
-
-        p = bootstrap_ratio_p(
-            numerator=[0.5],
-            denominator=[1.0],
-            n_resamples=200, seed=0,
-        )
-        assert p == 1.0
+        assert 0.0 <= p <= 1.0
 
     def test_distributed_ratio_p_in_unit_interval(self):
         """Multi-value bootstrap with overlap between groups should
@@ -107,9 +128,10 @@ class TestBootstrapDifferenceP:
 
 
 class TestPipelineBootstrapWiring:
-    def test_h2_p_value_added_when_exp2_present(self, tmp_path):
-        """When the corpus contains Exp 2 runs with strong-positive +
-        strong-negative AUCs, the family-wise p_values dict gets H2."""
+    def test_h2_skipped_when_only_a_scalar_auc_per_condition(self):
+        """analyze_exp2_corpus exposes one AUC per condition, not the
+        per-run AUCs a bootstrap needs. H2 must be omitted with a stated
+        reason rather than reported as a degenerate p."""
         from src.analysis.pipeline import _extract_primary_p_values
 
         exp2_analysis = {
@@ -123,16 +145,16 @@ class TestPipelineBootstrapWiring:
                 },
             },
         }
-        p = _extract_primary_p_values(
+        p, skipped = _extract_primary_p_values(
             exp1a_analysis=None,
             exp1b_analysis=None,
             exp2_analysis=exp2_analysis,
             exp3a_analysis=None,
             h4_analysis=None,
         )
-        assert "H2" in p
-        # Asymmetric (neg larger) -> ratio > 1 -> p < 0.5
-        assert 0.0 <= p["H2"] <= 1.0
+        assert "H2" not in p
+        assert "H2" in skipped
+        assert skipped["H2"]
 
     def test_h3a_p_value_pulled_from_exp3a_analysis(self):
         from src.analysis.pipeline import _extract_primary_p_values
@@ -141,7 +163,7 @@ class TestPipelineBootstrapWiring:
             "model": "test",
             "beta_2_p_one_sided": 0.012,
         }
-        p = _extract_primary_p_values(
+        p, skipped = _extract_primary_p_values(
             exp1a_analysis=None,
             exp1b_analysis=None,
             exp2_analysis=None,
@@ -149,10 +171,12 @@ class TestPipelineBootstrapWiring:
             h4_analysis=None,
         )
         assert p["H3a"] == 0.012
+        assert "H3a" not in skipped
 
-    def test_h4_uses_bootstrap_not_coarse_mapping(self):
-        """The H4 p-value is now a bootstrap on per-model ratios, not
-        the previous binary outcome -> 0.04/1.0 mapping."""
+    def test_h4_skipped_when_each_model_has_one_geomean_ratio(self):
+        """per_model_aggregates carries a single geomean ratio per model,
+        so there is nothing to resample. H4 must be omitted with a stated
+        reason rather than reported as a degenerate p."""
         from src.analysis.pipeline import _extract_primary_p_values
 
         h4_analysis = {
@@ -164,15 +188,41 @@ class TestPipelineBootstrapWiring:
                 "I": {"ratio_geomean": 3.0},
             },
         }
-        p = _extract_primary_p_values(
+        p, skipped = _extract_primary_p_values(
             exp1a_analysis=None,
             exp1b_analysis=None,
             exp2_analysis=None,
             exp3a_analysis=None,
             h4_analysis=h4_analysis,
         )
-        assert "H4" in p
-        # The bootstrap with single-value ratios returns either 0.0 (when
-        # the ratio is consistently above 1.0 across all resamples) or a
-        # finite fraction. NOT one of the hard-coded {0.04, 1.0} values.
-        assert p["H4"] not in {0.04, 1.0} or p["H4"] == 0.0
+        assert "H4" not in p
+        assert "H4" in skipped
+        assert skipped["H4"]
+
+    def test_no_degenerate_p_reaches_the_family_correction(self):
+        """A skipped hypothesis must not sneak back in as p = 0."""
+        from src.analysis.pipeline import _extract_primary_p_values
+
+        p, skipped = _extract_primary_p_values(
+            exp1a_analysis=None,
+            exp1b_analysis=None,
+            exp2_analysis={
+                "verdict": "complete",
+                "by_condition": {
+                    "strong_negative": {"recovery_metrics": {"auc": 9.0}},
+                    "strong_positive": {"recovery_metrics": {"auc": 1.0}},
+                },
+            },
+            exp3a_analysis=None,
+            h4_analysis={
+                "verdict": "complete",
+                "base_model": "B",
+                "instruct_model": "I",
+                "per_model_aggregates": {
+                    "B": {"ratio_geomean": 1.0},
+                    "I": {"ratio_geomean": 9.0},
+                },
+            },
+        )
+        assert p == {}
+        assert set(skipped) == {"H2", "H4"}

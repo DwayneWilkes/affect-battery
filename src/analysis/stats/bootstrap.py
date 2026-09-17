@@ -46,12 +46,26 @@ def bootstrap_ratio_p(
     null. Returns 1.0 when the observed ratio is below the null
     (test cannot reject).
 
-    Both arrays must be non-empty. The denominator entries are taken in
-    absolute value so the ratio operates in magnitude space (consistent
-    with paper §3.3 asymmetry-ratio convention).
+    Both arrays need at least 2 entries. Resampling a one-element list
+    with replacement is the identity, so every resample reproduces the
+    observed ratio and the returned p is 0.0 or 1.0 by construction
+    rather than by evidence. Callers holding a single summary statistic
+    must pass the per-run values it was computed from, or not report a
+    p-value at all.
+
+    The denominator entries are taken in absolute value so the ratio
+    operates in magnitude space (consistent with paper §3.3
+    asymmetry-ratio convention).
     """
     if not numerator or not denominator:
         raise ValueError("numerator and denominator must be non-empty")
+    if len(numerator) < 2 or len(denominator) < 2:
+        raise ValueError(
+            "numerator and denominator need at least 2 elements each to "
+            "bootstrap; got "
+            f"len(numerator)={len(numerator)}, "
+            f"len(denominator)={len(denominator)}"
+        )
     rng = random.Random(seed)
     n_a, n_b = len(numerator), len(denominator)
     n_below_or_at_null = 0

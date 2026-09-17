@@ -145,9 +145,13 @@ def _extract_primary_p_values(
     exp2_analysis: dict | None,
     exp3a_analysis: dict | None,
     h4_analysis: dict | None,
-) -> dict[str, float]:
+) -> tuple[dict[str, float], dict[str, str]]:
     """Pull the primary-family p-values that exist out of the per-experiment
     analyses for family-wise correction.
+
+    Returns `(p_values, skipped)`. `skipped` maps a hypothesis to the
+    reason no p-value was emitted for it, so an omission is visible in
+    the aggregate report instead of silently shrinking the family.
 
     Hypotheses in the primary family per power-analysis spec:
       H1       -> Exp 1a per-condition tests; smallest Holm-corrected p
@@ -160,9 +164,8 @@ def _extract_primary_p_values(
       H4       -> H4 cross-experiment asymmetry_delta_ratio bootstrap p
                   (one-sided H_a: ratio_instruct / ratio_base > 1.0)
     """
-    from src.analysis.stats.bootstrap import bootstrap_ratio_p
-
     p: dict[str, float] = {}
+    skipped: dict[str, str] = {}
 
     if exp1a_analysis and exp1a_analysis.get("verdict") == "complete":
         per_cond = exp1a_analysis.get("per_condition_vs_baseline", {})
@@ -184,10 +187,12 @@ def _extract_primary_p_values(
         if tost:
             p["H1b_TOST"] = min(tost)
 
-    # H2: asymmetry-ratio bootstrap on the per-condition AUCs. The
-    # analyze_exp2_corpus output exposes per-condition `recovery_metrics`
-    # with the AUC values; we pull the strong-positive and strong-negative
-    # AUCs and bootstrap-test |neg|/|pos| > 1.0.
+    # H2: the pre-registered test is an asymmetry-ratio bootstrap on
+    # |neg_auc| / |pos_auc|. analyze_exp2_corpus reduces each condition
+    # to one AUC over the mean recovery curve, so there is no per-run
+    # sample to resample; a bootstrap on the two scalars would return
+    # 0.0 or 1.0 by construction. Report the omission instead. Emitting
+    # H2 again needs per-run AUCs plumbed through analyze_exp2_corpus.
     if exp2_analysis and exp2_analysis.get("verdict") == "complete":
         by_cond = exp2_analysis.get("by_condition", {})
         neg_cell = by_cond.get("strong_negative", {})
@@ -195,11 +200,10 @@ def _extract_primary_p_values(
         neg_auc = (neg_cell.get("recovery_metrics") or {}).get("auc")
         pos_auc = (pos_cell.get("recovery_metrics") or {}).get("auc")
         if neg_auc is not None and pos_auc is not None:
-            p["H2"] = bootstrap_ratio_p(
-                numerator=[neg_auc],
-                denominator=[pos_auc],
-                n_resamples=2000,
-                seed=0,
+            skipped["H2"] = (
+                "exp2 analysis exposes one AUC per condition over the mean "
+                "recovery curve; the asymmetry-ratio bootstrap needs at "
+                "least 2 per-run AUCs per arm"
             )
 
     # H3a: the analyze_exp3a output exposes a Student-t one-sided p for
@@ -207,9 +211,12 @@ def _extract_primary_p_values(
     if exp3a_analysis and "beta_2_p_one_sided" in exp3a_analysis:
         p["H3a"] = float(exp3a_analysis["beta_2_p_one_sided"])
 
-    # H4: bootstrap p-value on the cross-experiment asymmetry_delta_ratio
-    # using the per-model aggregate ratios. Pre-registered test (a) is
-    # `delta_ratio > 1.0` (one-sided).
+    # H4: the pre-registered test (a) is `delta_ratio > 1.0` (one-sided)
+    # via a bootstrap on the per-model ratios. analyze_h4_corpus builds
+    # each model's aggregate from a single pair, so ratio_geomean is one
+    # number per model with nothing to resample. Report the omission
+    # instead. Emitting H4 again needs per-pair ratios kept in
+    # per_model_aggregates.
     if h4_analysis and h4_analysis.get("verdict") == "complete":
         per_model = h4_analysis.get("per_model_aggregates") or {}
         base_model = h4_analysis.get("base_model")
@@ -217,14 +224,13 @@ def _extract_primary_p_values(
         base_ratio = (per_model.get(base_model) or {}).get("ratio_geomean")
         instruct_ratio = (per_model.get(instruct_model) or {}).get("ratio_geomean")
         if base_ratio is not None and instruct_ratio is not None and base_ratio > 0:
-            p["H4"] = bootstrap_ratio_p(
-                numerator=[instruct_ratio],
-                denominator=[base_ratio],
-                n_resamples=2000,
-                seed=0,
+            skipped["H4"] = (
+                "h4 per_model_aggregates expose one geomean ratio per "
+                "model; the delta-ratio bootstrap needs at least 2 "
+                "per-pair ratios per model"
             )
 
-    return p
+    return p, skipped
 
 
 _VALID_EXPERIMENT_NAMES = frozenset(
@@ -401,7 +407,7 @@ def analyze_results_dir(
             }
 
     # ---- Family-wise corrections (A6) ----
-    p_values = _extract_primary_p_values(
+    p_values, skipped_p_values = _extract_primary_p_values(
         exp1a_analysis=exp1a_analysis,
         exp1b_analysis=exp1b_analysis,
         exp2_analysis=exp2_analysis,
@@ -412,6 +418,8 @@ def analyze_results_dir(
         family_membership = {h: "primary" for h in p_values}
         corrected = apply_family_corrections(p_values, family_membership)
         aggregate_payload["primary_family_corrections"] = corrected
+    if skipped_p_values:
+        aggregate_payload["primary_family_skipped"] = skipped_p_values
 
     # ---- Aggregate landing page ----
     aggregate_path = reports_dir / "AGGREGATE_REPORT.md"

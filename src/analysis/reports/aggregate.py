@@ -83,5 +83,13 @@ def render_aggregate(all_results: dict, output_path: Path) -> Path:
             )
     lines.append("")
 
+    skipped = all_results.get("primary_family_skipped", {})
+    if skipped:
+        lines.append("### Hypotheses with no p-value")
+        lines.append("")
+        for h, reason in sorted(skipped.items()):
+            lines.append(f"- **{h}**: {reason}")
+        lines.append("")
+
     output_path.write_text("\n".join(lines) + "\n")
     return output_path
