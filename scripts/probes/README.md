@@ -30,18 +30,27 @@ The α math + decision rule live in `src/probes/intensity_pilot.py`.
 
 # Intensity-axis pilot protocol
 
-Three or more human raters independently rate the seven
-`INTENSITY_LEVELS` stimuli on a signed intensity scale; the pilot
-computes Krippendorff α and writes a signed pilot-seed artifact when
-the rater agreement gate passes. Pilots run with a single rater are
-supported via the `--solo-rater` flag (see *Single-rater pilot* below).
+The pilot rates the seven `INTENSITY_LEVELS` stimuli on a signed
+intensity scale and writes a signed pilot-seed artifact.
 
-## Protocol
+What this repository contains: `configs/intensity_pilot_seed.json` is a
+single-rater pilot, rated by `rater_PI` on 2026-04-27, with
+`solo_rater: true`, `irr_validated: false`, and no Krippendorff α
+computed. `docs/preregistrations/h3a_2026-04-27.md` authorizes the H3a
+runner to accept it, and both reported runs used it. See *Single-rater
+pilot* below for how it was produced.
 
-### 1. Recruit at least three raters
+The multi-rater protocol that follows has not been run. It is the design
+for a reliability-validated pilot, kept here so the axis can be
+revalidated later.
 
-Three raters is the minimum; more raters give a tighter α estimate.
-Raters should not have prior exposure to the stimulus set.
+## Multi-rater protocol (not yet run)
+
+### 1. Recruit exactly three raters
+
+`run_intensity_pilot` accepts exactly three rater forms, or one with
+`--solo-rater`; any other count is rejected. Raters should not have
+prior exposure to the stimulus set.
 
 ### 2. Generate per-rater forms
 
